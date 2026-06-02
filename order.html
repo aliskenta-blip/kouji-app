@@ -162,18 +162,40 @@ body.role-viewer .fab{display:none!important}
 .pdf-tag:hover{background:#bbdefb}
 .pdf-tag .pdf-rm{color:#e53935;margin-left:2px;font-size:14px;cursor:pointer}
 
-/* 受発注一覧 印刷用 */
+/* 印刷用（受発注一覧 / 月別 共通） */
 @media print{
-  body{background:#fff!important;font-size:10px!important}
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff!important;font-size:10px!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .hdr,.tabs,.fab,.no-print,.mov{display:none!important}
   .panel{display:none!important}
-  #p-print{display:block!important}
+  body:not(.printing-monthly) #p-print{display:block!important}
   .page{padding:0!important;max-width:none!important}
   .card{box-shadow:none!important;border:1px solid #ccc!important;break-inside:avoid}
   table{font-size:9px!important}
   th{background:#333!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   td{padding:4px 6px!important}
   .print-hdr{display:block!important}
+  .twrap{max-height:none!important;overflow:visible!important}
+
+  /* 月別タブ印刷 */
+  body.printing-monthly #p-monthly{display:block!important}
+  body.printing-monthly #p-monthly #mKpi,
+  body.printing-monthly #p-monthly #mClientWrap,
+  body.printing-monthly #p-monthly #mRemind,
+  body.printing-monthly #p-monthly #mCards{display:none!important}
+  body.printing-monthly #mTbl{font-size:8px!important;width:100%!important;table-layout:auto}
+  body.printing-monthly #mTbl th,
+  body.printing-monthly #mTbl td{padding:2px 3px!important;white-space:normal!important;word-break:break-word!important;font-size:8px!important}
+  body.printing-monthly #mTbl .big{font-size:9px!important}
+  body.printing-monthly #mTbl input{border:none!important;background:transparent!important;padding:0!important;font-size:7px!important;width:auto!important;-webkit-appearance:none;appearance:none;color:#000!important}
+  body.printing-monthly #mTbl .ck{background:transparent!important;border:none!important;color:#000!important;min-width:0!important;height:auto!important;padding:0!important;font-size:9px!important;display:inline}
+  body.printing-monthly #mTbl .sekou{padding:1px 3px!important;font-size:8px!important}
+  body.printing-monthly #mTbl tbody > tr.sub-r{display:none!important}
+  body.printing-monthly #mTbl thead > tr > th:first-child,
+  body.printing-monthly #mTbl thead > tr > th:last-child,
+  body.printing-monthly #mTbl tbody > tr:not(.sub-r) > td:first-child,
+  body.printing-monthly #mTbl tbody > tr:not(.sub-r) > td:last-child,
+  body.printing-monthly #mTbl tfoot > tr > td:last-child{display:none!important}
 }
 .print-hdr{display:none;text-align:center;margin-bottom:12px}
 .print-hdr h2{font-size:18px;margin-bottom:4px}
@@ -342,9 +364,14 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 
 <!-- 月別 -->
 <div id="p-monthly" class="panel">
-  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+  <div class="print-hdr" id="printHdrM">
+    <h2 id="printTitleM">月別発注一覧</h2>
+    <div class="print-info" id="printInfoM"></div>
+  </div>
+  <div class="no-print" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <button class="btn bn pc-only edit-only" onclick="openAdd()">＋ 案件追加</button>
     <button class="btn bg btn-sm" onclick="doCSV('month')">📥 CSV</button>
+    <button class="btn bp no-print" onclick="printMonthly()">🖨️ 印刷</button>
     <input type="text" id="srch_m" placeholder="🔍 検索" oninput="renderMonthly()"
       style="flex:1;min-width:120px;max-width:240px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
   </div>
@@ -1890,6 +1917,18 @@ function renderMonthly(){
     </div>`;
   }).join(''):`<div class="empty">この月のデータなし<br><small>右下＋から追加</small></div>`;
 }
+
+// ── 月別 印刷 ──
+function printMonthly(){
+  const yr=getYr(),mo=getMo();
+  const ti=document.getElementById('printTitleM');
+  const inf=document.getElementById('printInfoM');
+  if(ti)ti.textContent=`${yr}年${mo}月 月別発注一覧`;
+  if(inf)inf.textContent=`印刷日: ${new Date().toLocaleDateString('ja-JP')}`;
+  document.body.classList.add('printing-monthly');
+  setTimeout(()=>window.print(),50);
+}
+window.addEventListener('afterprint',()=>{document.body.classList.remove('printing-monthly');});
 
 // ── マスター ──
 function renderMaster(){
