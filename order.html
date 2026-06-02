@@ -183,24 +183,45 @@ body.role-viewer .fab{display:none!important}
   body.printing-monthly #p-monthly .pc-only,
   body.printing-monthly #p-monthly .card.pc-only{display:block!important}
   body.printing-monthly #p-monthly .twrap{display:block!important;overflow:visible!important;max-height:none!important}
-  /* スマホ用カードと不要セクションは非表示 */
-  body.printing-monthly #p-monthly #mKpi,
-  body.printing-monthly #p-monthly #mClientWrap,
-  body.printing-monthly #p-monthly #mRemind,
+  /* スマホ用カードのみ非表示 */
   body.printing-monthly #p-monthly #mCards,
   body.printing-monthly #p-monthly .sp-only{display:none!important}
-  /* テーブル要素の display を明示的に復元（外側ルールで非表示化されるのを防ぐ） */
-  body.printing-monthly #mTbl{display:table!important;font-size:8px!important;width:100%!important;table-layout:auto}
+
+  /* KPI / 発注者別 / リマインドも印刷対象 */
+  body.printing-monthly #p-monthly #mKpi{display:grid!important;grid-template-columns:repeat(6,1fr)!important;gap:4px!important;margin-bottom:6px!important}
+  body.printing-monthly #p-monthly #mKpi .kpi{padding:4px 6px!important;border-radius:4px!important;box-shadow:none!important;border:1px solid #ccc!important;border-left:3px solid #1f4e79!important}
+  body.printing-monthly #p-monthly #mKpi .kl{font-size:8px!important;margin-bottom:1px!important}
+  body.printing-monthly #p-monthly #mKpi .kv{font-size:11px!important}
+  body.printing-monthly #p-monthly #mKpi .ks{font-size:7px!important}
+  body.printing-monthly #p-monthly #mClientWrap{display:block!important;margin-bottom:6px!important}
+  /* 発注者別の折りたたみを印刷時は強制展開 */
+  body.printing-monthly #p-monthly #mClientWrap > div > div:nth-child(2){display:block!important;padding:4px 8px!important}
+  body.printing-monthly #p-monthly #mClientWrap table{font-size:8px!important;width:100%!important}
+  body.printing-monthly #p-monthly #mClientWrap th,
+  body.printing-monthly #p-monthly #mClientWrap td{padding:2px 4px!important}
+  body.printing-monthly #p-monthly #mRemind{display:block!important;font-size:9px!important;margin-bottom:6px!important}
+  body.printing-monthly #p-monthly #mRemind > div{padding:4px 8px!important;margin-bottom:4px!important}
+  /* メインカードヘッダーは薄くしてヒント文を消す */
+  body.printing-monthly #p-monthly .card.pc-only > .card-hdr{padding:3px 8px!important;font-size:10px!important;background:transparent!important;color:#000!important;border-bottom:1px solid #999}
+  body.printing-monthly #p-monthly .card.pc-only > .card-hdr > span:last-child{display:none!important}
+
+  /* メイン明細テーブル: 横長 nowrap 維持・極小フォントで1ページに収める */
+  body.printing-monthly #mTbl{display:table!important;font-size:7px!important;width:100%!important;table-layout:auto;border-collapse:collapse}
   body.printing-monthly #mTbl thead{display:table-header-group!important}
   body.printing-monthly #mTbl tbody{display:table-row-group!important}
   body.printing-monthly #mTbl tfoot{display:table-footer-group!important}
   body.printing-monthly #mTbl > * > tr{display:table-row!important}
   body.printing-monthly #mTbl th,
-  body.printing-monthly #mTbl td{display:table-cell!important;padding:2px 3px!important;white-space:normal!important;word-break:break-word!important;font-size:8px!important}
-  body.printing-monthly #mTbl .big{font-size:9px!important}
-  body.printing-monthly #mTbl input{border:none!important;background:transparent!important;padding:0!important;font-size:7px!important;width:auto!important;-webkit-appearance:none;appearance:none;color:#000!important}
-  body.printing-monthly #mTbl .ck{background:transparent!important;border:none!important;color:#000!important;min-width:0!important;height:auto!important;padding:0!important;font-size:9px!important;display:inline}
-  body.printing-monthly #mTbl .sekou{padding:1px 3px!important;font-size:8px!important}
+  body.printing-monthly #mTbl td{display:table-cell!important;padding:1px 2px!important;white-space:nowrap!important;word-break:keep-all!important;overflow:hidden!important;font-size:7px!important;line-height:1.25!important;vertical-align:middle}
+  body.printing-monthly #mTbl .big{font-size:7px!important;font-weight:700}
+  body.printing-monthly #mTbl input{border:none!important;background:transparent!important;padding:0!important;margin:0!important;font-size:6px!important;width:40px!important;height:auto!important;-webkit-appearance:none;appearance:none;color:#000!important}
+  body.printing-monthly #mTbl .ck{background:transparent!important;border:none!important;color:#000!important;min-width:0!important;height:auto!important;padding:0!important;margin:0!important;font-size:8px!important;display:inline}
+  body.printing-monthly #mTbl .sekou{padding:0 2px!important;font-size:6px!important;background:transparent!important;color:#000!important;border:1px solid #999;display:inline-block}
+  /* 長文列のみ max-width + ellipsis（縦潰れ防止 / 横はみ出し防止） */
+  body.printing-monthly #mTbl tbody > tr:not(.sub-r) > td:nth-child(5),
+  body.printing-monthly #mTbl tbody > tr:not(.sub-r) > td:nth-child(6),
+  body.printing-monthly #mTbl tbody > tr:not(.sub-r) > td:nth-child(8){max-width:72px!important;text-overflow:ellipsis!important}
+  body.printing-monthly #mTbl tbody > tr:not(.sub-r) > td:nth-child(29){max-width:22px!important;text-overflow:ellipsis!important}
   /* 協社サブ行 / トグル列 / 操作列を非表示（display 復元より後に書いて優先させる） */
   body.printing-monthly #mTbl tbody > tr.sub-r{display:none!important}
   body.printing-monthly #mTbl thead > tr > th:first-child,
