@@ -179,17 +179,29 @@ body.role-viewer .fab{display:none!important}
 
   /* 月別タブ印刷 */
   body.printing-monthly #p-monthly{display:block!important}
+  /* .pc-only の印刷時非表示を打ち消し、テーブルカードを必ず表示 */
+  body.printing-monthly #p-monthly .pc-only,
+  body.printing-monthly #p-monthly .card.pc-only{display:block!important}
+  body.printing-monthly #p-monthly .twrap{display:block!important;overflow:visible!important;max-height:none!important}
+  /* スマホ用カードと不要セクションは非表示 */
   body.printing-monthly #p-monthly #mKpi,
   body.printing-monthly #p-monthly #mClientWrap,
   body.printing-monthly #p-monthly #mRemind,
-  body.printing-monthly #p-monthly #mCards{display:none!important}
-  body.printing-monthly #mTbl{font-size:8px!important;width:100%!important;table-layout:auto}
+  body.printing-monthly #p-monthly #mCards,
+  body.printing-monthly #p-monthly .sp-only{display:none!important}
+  /* テーブル要素の display を明示的に復元（外側ルールで非表示化されるのを防ぐ） */
+  body.printing-monthly #mTbl{display:table!important;font-size:8px!important;width:100%!important;table-layout:auto}
+  body.printing-monthly #mTbl thead{display:table-header-group!important}
+  body.printing-monthly #mTbl tbody{display:table-row-group!important}
+  body.printing-monthly #mTbl tfoot{display:table-footer-group!important}
+  body.printing-monthly #mTbl > * > tr{display:table-row!important}
   body.printing-monthly #mTbl th,
-  body.printing-monthly #mTbl td{padding:2px 3px!important;white-space:normal!important;word-break:break-word!important;font-size:8px!important}
+  body.printing-monthly #mTbl td{display:table-cell!important;padding:2px 3px!important;white-space:normal!important;word-break:break-word!important;font-size:8px!important}
   body.printing-monthly #mTbl .big{font-size:9px!important}
   body.printing-monthly #mTbl input{border:none!important;background:transparent!important;padding:0!important;font-size:7px!important;width:auto!important;-webkit-appearance:none;appearance:none;color:#000!important}
   body.printing-monthly #mTbl .ck{background:transparent!important;border:none!important;color:#000!important;min-width:0!important;height:auto!important;padding:0!important;font-size:9px!important;display:inline}
   body.printing-monthly #mTbl .sekou{padding:1px 3px!important;font-size:8px!important}
+  /* 協社サブ行 / トグル列 / 操作列を非表示（display 復元より後に書いて優先させる） */
   body.printing-monthly #mTbl tbody > tr.sub-r{display:none!important}
   body.printing-monthly #mTbl thead > tr > th:first-child,
   body.printing-monthly #mTbl thead > tr > th:last-child,
