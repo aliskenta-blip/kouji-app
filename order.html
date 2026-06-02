@@ -2705,6 +2705,16 @@ function openAdd(){
   document.getElementById('addMov').classList.add('open');
   setTimeout(()=>document.getElementById('f_pl').focus(),300);
 }
+// 保存済みの値が select の options に無い場合に補完するヘルパー
+// （マスタが後から編集された / client_links のフィルタから漏れた等で
+//   select.value=値 をしても option が無く空欄になるのを防ぐ）
+function ensureOption(id,val){
+  if(val==null||val==='')return;
+  const sel=document.getElementById(id);if(!sel)return;
+  if(Array.from(sel.options).some(o=>o.value===val))return;
+  const o=document.createElement('option');o.value=val;o.textContent=val;
+  sel.appendChild(o);
+}
 function editCase(id){
   if(!canEdit()){alert('編集権限がありません');return;}
   const c=S.cases.find(c=>c.id===id);if(!c)return;
@@ -2739,7 +2749,19 @@ function editCase(id){
   document.getElementById('f_pdf_h').value='';
   document.getElementById('f_pdf_s').value='';
   renderPdfTags();renderKE();updateSels();
-  setTimeout(()=>{vs('f_cl',c.client);vs('f_br',c.branch);vs('f_ta',c.tantou);vs('f_kb',c.kubun);vs('f_moto',c.moto_shita||'');vs('f_jv',c.jv||'');vs('f_gishi',c.gishi_type||'');vs('f_kouji_type',c.kouji_type||'');},50);
+  setTimeout(()=>{
+    // 発注者→支店→担当 は client_links で連動フィルタされるので、
+    // 親を変えるたびに依存 select を再構築してから値をセットする。
+    // また、保存済みの値がマスタ/リンクから漏れていても確実に選択できるよう ensureOption で option を補完する。
+    ensureOption('f_cl',c.client);vs('f_cl',c.client);
+    updateBranchSel();
+    ensureOption('f_br',c.branch);vs('f_br',c.branch);
+    updateTantouSel();
+    ensureOption('f_ta',c.tantou);vs('f_ta',c.tantou);
+    ensureOption('f_kb',c.kubun);vs('f_kb',c.kubun);
+    vs('f_moto',c.moto_shita||'');vs('f_jv',c.jv||'');vs('f_gishi',c.gishi_type||'');
+    ensureOption('f_kouji_type',c.kouji_type||'');vs('f_kouji_type',c.kouji_type||'');
+  },50);
   document.getElementById('addMov').classList.add('open');
 }
 function closeMov(){document.getElementById('addMov').classList.remove('open');}
