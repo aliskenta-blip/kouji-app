@@ -21,11 +21,12 @@
 .det td.am{text-align:right;padding:2px 4px;font-size:11px;font-weight:700;background:#fafafa}
 .det .ft td{font-weight:700;background:#f0f0f0;border-top:2px solid #333}
 .rd{background:none;border:none;color:#c62828;cursor:pointer;font-size:12px;padding:0 2px;opacity:0}tr:hover .rd{opacity:1}
+.tgl{font-size:9px;padding:1px 4px;border:1px solid #999;background:#fff;border-radius:3px;cursor:pointer;line-height:1}.tgl:hover{background:#333;color:#fff}
 @media print{.hdr,.sidebar,.no-print,.rd{display:none!important}.main{margin-left:0;padding:0}.page{box-shadow:none;margin:0;width:100%;height:auto}.page input{border-bottom:none!important}body{background:#fff}@page{size:A4 landscape;margin:5mm}}
 @media(max-width:900px){.sidebar{display:none}.main{margin-left:0}.page{width:100%;height:auto}}
 </style></head><body>
 <div class="hdr"><h1>📐 見積管理</h1><div class="hdr-btns">
-<button onclick="newEst()">＋新規</button><button onclick="delEst()">🗑</button><button onclick="dupEst()">📄</button><button onclick="window.print()">🖨️</button>
+<button onclick="newEst()">＋新規</button><button onclick="delEst()">🗑</button><button onclick="dupEst()">📄</button><button onclick="doPrint()">🖨️</button>
 <button onclick="exportBk()">💾</button><button onclick="document.getElementById('bkF').click()">📥</button>
 <input type="file" id="bkF" accept=".json" style="display:none" onchange="importBk(this)">
 </div></div>
@@ -41,7 +42,23 @@ let D={estimates:[],unitPrices:[],activeId:null};
 const SK='kouji_estimate';
 function ld(){try{const d=localStorage.getItem(SK);if(d)D=JSON.parse(d);}catch(e){}}
 function sv(){try{localStorage.setItem(SK,JSON.stringify(D));}catch(e){}if(window._fbSvEst)window._fbSvEst();}
-function fixD(){if(!D.estimates)D.estimates=[];if(!D.unitPrices)D.unitPrices=[];}
+function fixD(){if(!D.estimates)D.estimates=[];if(!D.unitPrices)D.unitPrices=[];
+  D.estimates.forEach(e=>{(e.lines||[]).forEach(l=>{if(l.type===undefined)l.type='minor';if(l.no===undefined)l.no='';});});}
+function blankLine(){return {nm:'',sp:'',qt:'',un:'',pr:'',am:0,bk:'',type:'minor',no:''};}
+function majorSummary(e){
+  const res=[];let curMajor=null;
+  e.lines.forEach((l,idx)=>{
+    if(l.type==='major'){
+      curMajor={name:l.nm||'',amount:0,lineIndex:idx};res.push(curMajor);
+    }else{
+      const amt=fn(l.am);
+      if(amt===0&&!(l.nm))return;
+      if(!curMajor){curMajor={name:'（未分類）',amount:0,lineIndex:idx};res.push(curMajor);}
+      curMajor.amount+=amt;
+    }
+  });
+  return res.filter(m=>m.name!==''||m.amount!==0);
+}
 function cur(){return D.estimates.find(e=>e.id===D.activeId);}
 function renderSB(){
   document.getElementById('sbList').innerHTML=D.estimates.map(e=>{
@@ -51,13 +68,13 @@ function renderSB(){
 }
 function newEst(){
   const e={id:uid(),no:'',client:'',date:new Date().toISOString().slice(0,10),kouji:'',place:'',start:'',valid:'３ヶ月',pay:'従来通り',notes:'※記載以外の事項は全て別途工事となります。',lines:[]};
-  for(let i=0;i<ROWS;i++)e.lines.push({nm:'',sp:'',qt:'',un:'',pr:'',am:0,bk:''});
+  for(let i=0;i<ROWS;i++)e.lines.push(blankLine());
   D.estimates.push(e);D.activeId=e.id;sv();renderAll();
 }
 function loadEst(id){D.activeId=id;sv();renderAll();}
 function renderAll(){
   const e=cur();if(!e){document.getElementById('main').innerHTML='';renderSB();return;}
-  while(e.lines.length%ROWS!==0||e.lines.length<ROWS)e.lines.push({nm:'',sp:'',qt:'',un:'',pr:'',am:0,bk:''});
+  while(e.lines.length%ROWS!==0||e.lines.length<ROWS)e.lines.push(blankLine());
   const sub=e.lines.reduce((a,l)=>a+fn(l.am),0);
   const tax=Math.round(sub*0.1);const total=sub+tax;
   const pages=Math.ceil(e.lines.length/ROWS);
@@ -139,22 +156,76 @@ function renderAll(){
     for(let i=0;i<5;i++){const el=document.getElementById('note'+(i+1));if(el)el.value=notes[i]||'';}
   },50);
 
+  // ═══ 大項目集計明細書 ═══
+  {
+    const ms=majorSummary(e);
+    if(ms.length&&ms.some(m=>m.name!=='（未分類）')){
+      h+='<div class="page" style="padding:8mm 10mm">';
+      h+='<div style="font-weight:700;font-size:12px;margin-bottom:2mm">御見積内訳書（総括）</div>';
+      h+='<table class="det"><thead><tr>'
+        +'<th style="width:30px">No</th>'
+        +'<th>工　種（大項目）</th>'
+        +'<th style="width:120px">金　額</th>'
+        +'<th style="width:90px">備考</th>'
+        +'</tr></thead><tbody>';
+      ms.forEach((m,i)=>{
+        h+='<tr>'
+          +'<td style="text-align:center">'+(i+1)+'</td>'
+          +'<td style="font-weight:700;padding:2px 6px">'+(m.name||'').replace(/</g,'&lt;')+'</td>'
+          +'<td class="am">'+(m.amount?'¥'+fmt(m.amount):'')+'</td>'
+          +'<td></td>'
+          +'</tr>';
+      });
+      h+='<tr class="ft"><td colspan="2" style="text-align:right;padding:4px 8px">小　計</td><td class="am">¥'+fmt(sub)+'</td><td></td></tr>';
+      h+='<tr class="ft"><td colspan="2" style="text-align:right;padding:4px 8px">消費税(10%)</td><td class="am">¥'+fmt(tax)+'</td><td></td></tr>';
+      h+='<tr class="ft"><td colspan="2" style="text-align:right;padding:4px 8px;font-size:13px">合　計</td><td class="am" style="font-size:13px">¥'+fmt(total)+'</td><td></td></tr>';
+      h+='</tbody></table>';
+      h+='</div>';
+    }
+  }
+
   // ═══ 明細 ═══
+  // 表示NOを全行で事前計算（ページ分割をまたいでも採番が崩れないように）
+  const dispNo=new Array(e.lines.length).fill('');
+  {let cnt=0;e.lines.forEach((l,g)=>{
+    if(l.type==='major'){cnt=0;dispNo[g]='';}
+    else{if(l.nm){cnt++;dispNo[g]=l.no?l.no:String(cnt);}else{dispNo[g]=l.no||'';}}
+  });}
   for(let p=0;p<pages;p++){
     const s=p*ROWS,pl=e.lines.slice(s,s+ROWS);
     h+='<div class="page" style="padding:8mm 10mm">';
     h+='<div style="font-weight:700;font-size:12px;margin-bottom:2mm">内訳明細書　No.'+(p+1)+'</div>';
-    h+='<table class="det"><thead><tr><th style="width:18px">No</th><th>名　称</th><th style="width:75px">規　格</th><th style="width:48px">数量</th><th style="width:32px">単位</th><th style="width:65px">単　価</th><th style="width:80px">金　額</th><th style="width:55px">備考</th><th style="width:14px" class="no-print"></th></tr></thead><tbody>';
-    pl.forEach((l,i)=>{const g=s+i;const no=l.nm?(g+1):'';
-      h+='<tr><td style="text-align:center;font-size:9px;color:#888">'+no+'</td><td><input type="text" value="'+(l.nm||'').replace(/"/g,'&quot;')+'" lang="ja" style="ime-mode:active" onchange="uL('+g+',\'nm\',this.value)"></td><td><input type="text" value="'+(l.sp||'').replace(/"/g,'&quot;')+'" lang="ja" onchange="uL('+g+',\'sp\',this.value)"></td><td class="ni"><input type="number" value="'+(l.qt||'')+'" inputmode="decimal" step="0.1" onchange="uL('+g+',\'qt\',this.value);rc('+g+')"></td><td><input type="text" value="'+(l.un||'').replace(/"/g,'&quot;')+'" style="text-align:center" onchange="uL('+g+',\'un\',this.value)"></td><td class="ni"><input type="number" value="'+(l.pr||'')+'" inputmode="decimal" onchange="uL('+g+',\'pr\',this.value);rc('+g+')"></td><td class="am">'+(fn(l.am)?'¥'+fmt(l.am):'')+'</td><td><input type="text" value="'+(l.bk||'').replace(/"/g,'&quot;')+'" lang="ja" onchange="uL('+g+',\'bk\',this.value)" style="font-size:9px"></td><td class="no-print"><button class="rd" onclick="cr('+g+')">×</button></td></tr>';
+    h+='<table class="det"><thead><tr><th style="width:14px" class="no-print"></th><th style="width:24px">No</th><th>名　称</th><th style="width:75px">規　格</th><th style="width:48px">数量</th><th style="width:32px">単位</th><th style="width:65px">単　価</th><th style="width:80px">金　額</th><th style="width:55px">備考</th><th style="width:14px" class="no-print"></th></tr></thead><tbody>';
+    pl.forEach((l,i)=>{const g=s+i;const isMajor=(l.type==='major');const no=dispNo[g];
+      if(isMajor){
+        h+='<tr style="background:#eef2f9">'
+          +'<td style="text-align:center" class="no-print"><button class="tgl" onclick="tgT('+g+')" title="小項目へ">大</button></td>'
+          +'<td colspan="7"><input type="text" value="'+(l.nm||'').replace(/"/g,'&quot;')+'" lang="ja" style="font-weight:700" onchange="uL('+g+',\'nm\',this.value)" placeholder="【大項目】仮設工事 など"></td>'
+          +'<td><input type="text" value="'+(l.bk||'').replace(/"/g,'&quot;')+'" lang="ja" onchange="uL('+g+',\'bk\',this.value)" style="font-size:9px"></td>'
+          +'<td class="no-print"><button class="rd" onclick="cr('+g+')">×</button></td>'
+          +'</tr>';
+      }else{
+        h+='<tr>'
+          +'<td style="text-align:center" class="no-print"><button class="tgl" onclick="tgT('+g+')" title="大項目へ">小</button></td>'
+          +'<td class="ni" style="padding:0"><input type="text" value="'+(l.no||'').replace(/"/g,'&quot;')+'" placeholder="'+no+'" style="text-align:center;font-size:9px;color:#555" onchange="uL('+g+',\'no\',this.value)"></td>'
+          +'<td><input type="text" value="'+(l.nm||'').replace(/"/g,'&quot;')+'" lang="ja" style="ime-mode:active" onchange="uL('+g+',\'nm\',this.value)"></td>'
+          +'<td><input type="text" value="'+(l.sp||'').replace(/"/g,'&quot;')+'" lang="ja" onchange="uL('+g+',\'sp\',this.value)"></td>'
+          +'<td class="ni"><input type="number" value="'+(l.qt||'')+'" inputmode="decimal" step="0.1" onchange="uL('+g+',\'qt\',this.value);rc('+g+')"></td>'
+          +'<td><input type="text" value="'+(l.un||'').replace(/"/g,'&quot;')+'" style="text-align:center" onchange="uL('+g+',\'un\',this.value)"></td>'
+          +'<td class="ni"><input type="number" value="'+(l.pr||'')+'" inputmode="decimal" onchange="uL('+g+',\'pr\',this.value);rc('+g+')"></td>'
+          +'<td class="am">'+(fn(l.am)?'¥'+fmt(l.am):'')+'</td>'
+          +'<td><input type="text" value="'+(l.bk||'').replace(/"/g,'&quot;')+'" lang="ja" onchange="uL('+g+',\'bk\',this.value)" style="font-size:9px"></td>'
+          +'<td class="no-print"><button class="rd" onclick="cr('+g+')">×</button></td>'
+          +'</tr>';
+      }
     });
     if(p===pages-1){
-      h+='<tr class="ft"><td colspan="6" style="text-align:right;padding:4px 8px">小　計</td><td class="am">¥'+fmt(sub)+'</td><td></td><td class="no-print"></td></tr>';
-      h+='<tr class="ft"><td colspan="6" style="text-align:right;padding:4px 8px">消費税(10%)</td><td class="am">¥'+fmt(tax)+'</td><td></td><td class="no-print"></td></tr>';
-      h+='<tr class="ft"><td colspan="6" style="text-align:right;padding:4px 8px;font-size:13px">合　計</td><td class="am" style="font-size:13px">¥'+fmt(total)+'</td><td></td><td class="no-print"></td></tr>';
+      h+='<tr class="ft"><td colspan="7" style="text-align:right;padding:4px 8px">小　計</td><td class="am">¥'+fmt(sub)+'</td><td></td><td class="no-print"></td></tr>';
+      h+='<tr class="ft"><td colspan="7" style="text-align:right;padding:4px 8px">消費税(10%)</td><td class="am">¥'+fmt(tax)+'</td><td></td><td class="no-print"></td></tr>';
+      h+='<tr class="ft"><td colspan="7" style="text-align:right;padding:4px 8px;font-size:13px">合　計</td><td class="am" style="font-size:13px">¥'+fmt(total)+'</td><td></td><td class="no-print"></td></tr>';
     }
     h+='</tbody></table>';
-    h+='<div class="no-print" style="margin-top:3px;text-align:right"><button onclick="ap()" style="background:#333;color:#fff;border:none;padding:3px 10px;border-radius:3px;font-size:10px;cursor:pointer">＋次ページ</button></div>';
+    h+='<div class="no-print" style="margin-top:3px;text-align:right"><button onclick="addMajor()" style="background:#1565c0;color:#fff;border:none;padding:3px 10px;border-radius:3px;font-size:10px;cursor:pointer;margin-right:4px">＋大項目</button><button onclick="ap()" style="background:#333;color:#fff;border:none;padding:3px 10px;border-radius:3px;font-size:10px;cursor:pointer">＋次ページ</button></div>';
     h+='</div>';
   }
   document.getElementById('main').innerHTML=h;renderSB();
@@ -163,8 +234,11 @@ function saveNotes(){const e=cur();if(!e)return;const lines=[];for(let i=1;i<=5;
 function as(f,v){const e=cur();if(!e)return;e[f]=v;sv();renderSB();}
 function uL(i,f,v){const e=cur();if(!e)return;e.lines[i][f]=v;sv();}
 function rc(i){const e=cur();if(!e)return;const l=e.lines[i];l.am=Math.round(fn(l.pr)*fn(l.qt));sv();renderAll();}
-function cr(i){const e=cur();if(!e)return;e.lines[i]={nm:'',sp:'',qt:'',un:'',pr:'',am:0,bk:''};sv();renderAll();}
-function ap(){const e=cur();if(!e)return;for(let i=0;i<ROWS;i++)e.lines.push({nm:'',sp:'',qt:'',un:'',pr:'',am:0,bk:''});sv();renderAll();}
+function cr(i){const e=cur();if(!e)return;e.lines[i]=blankLine();sv();renderAll();}
+function ap(){const e=cur();if(!e)return;for(let i=0;i<ROWS;i++)e.lines.push(blankLine());sv();renderAll();}
+function tgT(i){const e=cur();if(!e)return;e.lines[i].type=(e.lines[i].type==='major')?'minor':'major';if(e.lines[i].type==='major'){e.lines[i].qt='';e.lines[i].pr='';e.lines[i].am=0;e.lines[i].un='';}sv();renderAll();}
+function addMajor(){const e=cur();if(!e)return;let idx=e.lines.findIndex(l=>!l.nm&&l.type==='minor');if(idx<0){e.lines.push(blankLine());idx=e.lines.length-1;}e.lines[idx].type='major';sv();renderAll();}
+function doPrint(){const e=cur();if(e){let cnt=0;e.lines.forEach(l=>{if(l.type==='major'){cnt=0;}else if(l.nm){cnt++;if(!l.no)l.no=String(cnt);}});sv();renderAll();}setTimeout(()=>window.print(),100);}
 function delEst(){if(!D.activeId)return;if(!confirm('削除？'))return;D.estimates=D.estimates.filter(e=>e.id!==D.activeId);D.activeId=D.estimates.length?D.estimates[0].id:null;sv();if(D.activeId)loadEst(D.activeId);else renderAll();}
 function dupEst(){const e=cur();if(!e)return;const n=JSON.parse(JSON.stringify(e));n.id=uid();n.client+='（複製）';D.estimates.push(n);D.activeId=n.id;sv();loadEst(n.id);}
 function exportBk(){const b=new Blob([JSON.stringify(D,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='見積BK_'+new Date().toISOString().slice(0,10)+'.json';a.click();}
