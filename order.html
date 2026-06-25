@@ -2492,11 +2492,12 @@ function renderMstUI(){
       if(showTerms){
         const sel=document.createElement('select');
         sel.style.cssText='padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px';
-        sel.innerHTML='<option value="">期限未設定</option><option value="翌月末">翌月末</option><option value="翌々末">翌々月末</option><option value="翌">翌○日</option><option value="翌々">翌々○日</option>';
+        sel.innerHTML='<option value="">期限未設定</option><option value="翌月末">翌月末</option><option value="翌々末">翌々月末</option><option value="翌">翌○日</option><option value="翌々">翌々○日</option>'+(type==='client'?'<option value="でんさい">でんさい</option>':'');
         if(t.type==='翌月末')sel.value='翌月末';
         else if(t.type==='翌々末')sel.value='翌々末';
         else if(t.type==='翌')sel.value='翌';
         else if(t.type==='翌々')sel.value='翌々';
+        else if(t.type==='でんさい')sel.value='でんさい';
         sel.onchange=function(){setTerm(type,v,this.value);};
         rDiv.appendChild(sel);
         if(t.type==='翌'||t.type==='翌々'){
@@ -2506,6 +2507,18 @@ function renderMstUI(){
           rDiv.appendChild(inp);
           const dayLabel=document.createElement('span');dayLabel.textContent='日';dayLabel.style.fontSize='10px';
           rDiv.appendChild(dayLabel);
+        }
+        if(t.type==='でんさい'){
+          // 決済サイト：翌○ヶ月後の 末／○日（でんさいが現金化される日）
+          const lab1=document.createElement('span');lab1.textContent='翌';lab1.style.fontSize='10px';rDiv.appendChild(lab1);
+          const mInp=document.createElement('input');mInp.type='number';mInp.value=t.months||2;mInp.min=1;mInp.max=6;
+          mInp.style.cssText='width:32px;padding:2px;border:1px solid #ddd;border-radius:3px;font-size:10px;text-align:center';
+          mInp.onchange=function(){setTermMonths(type,v,this.value);};rDiv.appendChild(mInp);
+          const lab2=document.createElement('span');lab2.textContent='ヶ月';lab2.style.fontSize='10px';rDiv.appendChild(lab2);
+          const dSel=document.createElement('select');dSel.style.cssText='padding:2px;border:1px solid #ddd;border-radius:3px;font-size:10px';
+          dSel.innerHTML='<option value="0">末</option>'+[5,10,15,20,25].map(d=>`<option value="${d}">${d}日</option>`).join('');
+          dSel.value=String(t.day||0);
+          dSel.onchange=function(){setTermDay(type,v,this.value);};rDiv.appendChild(dSel);
         }
         if(t.type){
           const label=document.createElement('span');
@@ -2556,14 +2569,22 @@ function setTerm(type,name,val){
   else if(val==='翌々末')S.masters[key][name]={type:'翌々末'};
   else if(val==='翌')S.masters[key][name]={type:'翌',day:20};
   else if(val==='翌々')S.masters[key][name]={type:'翌々',day:15};
+  else if(val==='でんさい')S.masters[key][name]={type:'でんさい',months:2,day:0};
   sv();renderMstUI();
 }
 function setTermDay(type,name,val){
   const key=type==='client'?'client_terms':'kyousha_terms';
   if(!S.masters[key])S.masters[key]={};
   const t=S.masters[key][name]||{};
-  t.day=parseInt(val)||1;
-  S.masters[key][name]=t;sv();
+  t.day=t.type==='でんさい'?(parseInt(val)||0):(parseInt(val)||1);
+  S.masters[key][name]=t;sv();renderMstUI();
+}
+function setTermMonths(type,name,val){
+  const key=type==='client'?'client_terms':'kyousha_terms';
+  if(!S.masters[key])S.masters[key]={};
+  const t=S.masters[key][name]||{};
+  t.months=Math.max(1,parseInt(val)||2);
+  S.masters[key][name]=t;sv();renderMstUI();
 }
 function getTermLabel(t){
   if(!t||!t.type)return'';
@@ -2571,6 +2592,7 @@ function getTermLabel(t){
   if(t.type==='翌々末')return'';
   if(t.type==='翌')return'→翌'+t.day+'日';
   if(t.type==='翌々')return'→翌々'+t.day+'日';
+  if(t.type==='でんさい')return'💳でんさい 翌'+(t.months||2)+'ヶ月'+(t.day?t.day+'日':'末');
   return'';
 }
 function calcDueDate(baseDate,term){
@@ -2581,6 +2603,7 @@ function calcDueDate(baseDate,term){
   if(term.type==='翌々末'){return new Date(y,m+3,0);}
   if(term.type==='翌'){const day=term.day||20;return new Date(y,m+1,day);}
   if(term.type==='翌々'){const day=term.day||15;return new Date(y,m+2,day);}
+  if(term.type==='でんさい'){const mo=term.months||2;const day=term.day||0;return day?new Date(y,m+mo,day):new Date(y,m+mo+1,0);}
   return null;
 }
 function getOverdueReminders(mk){
