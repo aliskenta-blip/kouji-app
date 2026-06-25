@@ -1820,15 +1820,15 @@ function renderMonthly(){
   let remind='';
   if(prevMisu.length){
     const totalMisu=prevMisu.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=remindCard('#fff8e1','#f9a825','#e65100',`⚠ 未収金繰越（前月以前）${prevMisu.length}件`,`合計 ¥${fmt(totalMisu)}`,prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join(''),'前の月までに請求したのに、まだ入金されていない案件です。入金を確認したら各案件の「入済」にチェックしてください。'));
+    remind+=remindCard('#fff8e1','#f9a825','#e65100',`⚠ 未収金繰越（前月以前）${prevMisu.length}件`,`合計 ¥${fmt(totalMisu)}`,prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join(''),'前の月までに請求したのに、まだ入金されていない案件です。入金を確認したら各案件の「入済」にチェックしてください。');
   }
   if(moreCases.length){
     const totalMore=moreCases.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=remindCard('#fce4ec','#e53935','#c62828',`🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalMore)}`,moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join(''),'請求済にしたが入金が確認できず、次の月へ繰り越した案件です。今月あらためて請求・入金確認をしてください。'));
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalMore)}`,moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join(''),'請求済にしたが入金が確認できず、次の月へ繰り越した案件です。今月あらためて請求・入金確認をしてください。');
   }
   if(remainCases.length){
     const totalRemain=remainCases.reduce((a,c)=>a+calc(c).remaining,0);
-    remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''),'発注額のうち、まだ請求していない残りがある案件です。出来高請求の漏れ防止に。クリックで請求を入力できます。'));
+    remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''),'発注額のうち、まだ請求していない残りがある案件です。出来高請求の漏れ防止に。クリックで請求を入力できます。');
   }
 
   let remEl=document.getElementById('mRemind');
@@ -1839,10 +1839,10 @@ function renderMonthly(){
   const odClient=overdues.filter(o=>o.type==='client');
   const odKyousha=overdues.filter(o=>o.type==='kyousha');
   if(odClient.length){
-    remind+=remindCard('#fce4ec','#e53935','#c62828',`⏰ 入金期限超過 ${odClient.length}件`,'',odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} ← ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join(''),'お客さんの入金期日（設定の入金条件で計算）を過ぎても入金が確認できていない案件です。催促の目安に。'));
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`⏰ 入金期限超過 ${odClient.length}件`,'',odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} ← ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join(''),'お客さんの入金期日（設定の入金条件で計算）を過ぎても入金が確認できていない案件です。催促の目安に。');
   }
   if(odKyousha.length){
-    remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} → ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''),'協力会社への支払期日（設定の支払条件で計算）を過ぎても、まだ支払っていない案件です。'));
+    remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} → ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''),'協力会社への支払期日（設定の支払条件で計算）を過ぎても、まだ支払っていない案件です。');
   }
 
   remEl.innerHTML=remind;
