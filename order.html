@@ -352,8 +352,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 <div class="tabs">
   <div class="tab on" onclick="sw('dash')">📊 ダッシュボード</div>
   <div class="tab" onclick="sw('monthly')">📅 月別入力</div>
-  <div class="tab" onclick="sw('master')">📋 マスター</div>
-  <div class="tab" onclick="sw('print')">🖨️ 受発注一覧</div>
+  <div class="tab" onclick="sw('master')">📋 マスター（全案件）</div>
   <div class="tab" onclick="sw('keireki')">📄 工事内容出力</div>
   <div class="tab" onclick="sw('log')">📝 操作ログ</div>
   <div class="tab master-only" onclick="sw('mst')">⚙️ 設定</div>
@@ -409,6 +408,21 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <input type="text" id="af_tx" placeholder="🔍 フリー検索" oninput="renderMaster()"
       style="flex:1;min-width:120px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
     <button class="btn bg btn-sm" onclick="doCSV('all')">📥 全件CSV</button>
+    <button class="btn bp btn-sm no-print" onclick="window.print()">🖨️ 印刷</button>
+  </div>
+  <div id="maBatchBar" class="no-print" style="display:none;background:#e3f2fd;border-radius:8px;padding:10px 14px;margin-bottom:10px;flex-wrap:wrap;gap:8px;align-items:center">
+    <span style="font-weight:700;color:#1565c0" id="maBatchCount">0件選択</span>
+    <select id="maBatchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px" onchange="maBatchFieldChg()">
+      <option value="date">記入月</option>
+      <option value="seikyuu_t">請求月</option>
+      <option value="kubun">区分</option>
+      <option value="tantou">担当</option>
+      <option value="branch">支店</option>
+    </select>
+    <input type="month" id="maBatchMonthVal" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px">
+    <input type="text" id="maBatchTextVal" placeholder="値を入力" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;display:none;width:120px">
+    <button class="btn bn btn-sm" onclick="maApplyBatch()">✅ 一括変更</button>
+    <button class="btn bx btn-sm" onclick="maClearSel()">選択解除</button>
   </div>
   <div class="kpis" id="aKpi"></div>
   <div class="card">
@@ -2012,6 +2026,7 @@ function renderMaster(){
   // ヘッダー生成
   const t='master';
   document.getElementById('aHead').innerHTML=`<tr>
+    <th class="no-print"><input type="checkbox" id="maAllCk" onchange="maToggleAll(this.checked)" style="width:16px;height:16px"></th>
     ${sortTh('month','請求月',t)}${sortTh('date','記入月',t)}${sortTh('place','場所',t)}
     ${sortTh('client','発注者',t)}${sortTh('tantou','担当',t)}${sortTh('kouji','工事名',t)}${sortTh('kubun','区分',t)}
     <th>施工</th>${sortTh('jisha_h','発注額',t)}${sortTh('jisha_s','請求額',t)}${sortTh('nyukin','入金済',t)}${sortTh('misu','未収金',t)}
@@ -2035,6 +2050,7 @@ function renderMaster(){
   document.getElementById('aBody').innerHTML=cases.map((c,i)=>{
     const r=calc(c);totH+=fn(c.jisha_h);ts+=r.js;tn+=fn(c.nyukin);tmi+=r.misu;tky+=r.km;tksr+=r.ksr;tsh+=r.ksh;tmp+=r.miharai;tar+=r.arari;
     return `<tr class="${i%2?'alt':''}">
+      <td class="ctr no-print"><input type="checkbox" class="ma-ck" data-id="${c.id}" onchange="maUpdateBatch()" style="width:16px;height:16px"></td>
       <td class="ctr">${cMo(c)}</td><td class="ctr">${c.date||''}</td>
       <td>${c.place||''}</td><td>${c.client||''}</td><td class="ctr">${c.tantou||''}</td>
       <td>${c.kouji||''}</td><td class="ctr">${c.kubun||''}</td>
@@ -2056,10 +2072,10 @@ function renderMaster(){
       <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${c.biko||''}</td>
       <td class="ctr" style="white-space:nowrap"><button class="btn bo btn-sm edit-only" onclick="editCase('${c.id}')">編</button> <button class="btn br btn-sm del-only" onclick="delCase('${c.id}')">削</button></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="26" class="empty">データなし</td></tr>`;
+  }).join('')||`<tr><td colspan="27" class="empty">データなし</td></tr>`;
 
   const tr2=ts>0?tar/ts*100:0;
-  document.getElementById('aFoot').innerHTML=`<tr class="tot"><td colspan="8">合計（${cases.length}件）</td>
+  document.getElementById('aFoot').innerHTML=`<tr class="tot"><td colspan="9">合計（${cases.length}件）</td>
     <td class="num" style="font-weight:700">¥${fmt(totH)}</td><td class="num">¥${fmt(ts)}</td><td class="num">¥${fmt(tn)}</td><td class="num">¥${fmt(tmi)}</td>
     <td class="num" style="font-weight:700">¥${fmt(tky)}</td><td class="num">¥${fmt(tksr)}</td><td class="num">¥${fmt(tsh)}</td><td class="num">¥${fmt(tmp)}</td>
     <td class="num" style="font-weight:700">¥${fmt(tar)}</td><td class="ctr">${fmtP(tr2)}</td><td colspan="8"></td>
@@ -2201,6 +2217,23 @@ function applyBatch(){
   ids.forEach(id=>{const c=S.cases.find(c=>c.id===id);if(c)c[field]=val;});
   sv();addLog('edit',`一括変更: ${labels[field]}→${val}（${ids.length}件）`);
   renderAll();clearBatchSel();
+}
+// ── マスター画面の一括変更 ──
+function maBatchFieldChg(){const isMonth=['date','seikyuu_t'].includes(vg('maBatchField'));document.getElementById('maBatchMonthVal').style.display=isMonth?'':'none';document.getElementById('maBatchTextVal').style.display=isMonth?'none':'';}
+function maUpdateBatch(){const sel=document.querySelectorAll('.ma-ck:checked');const bar=document.getElementById('maBatchBar');if(!bar)return;bar.style.display=sel.length>0?'flex':'none';const c=document.getElementById('maBatchCount');if(c)c.textContent=sel.length+'件選択';}
+function maToggleAll(ck){document.querySelectorAll('.ma-ck').forEach(cb=>{cb.checked=ck;});maUpdateBatch();}
+function maClearSel(){document.querySelectorAll('.ma-ck').forEach(cb=>{cb.checked=false;});const a=document.getElementById('maAllCk');if(a)a.checked=false;maUpdateBatch();}
+function maApplyBatch(){
+  const ids=[...document.querySelectorAll('.ma-ck:checked')].map(cb=>cb.dataset.id);
+  if(!ids.length){alert('案件を選択してください');return;}
+  const field=vg('maBatchField');const isMonth=['date','seikyuu_t'].includes(field);
+  const val=isMonth?vg('maBatchMonthVal'):vg('maBatchTextVal');
+  if(!val){alert('値を入力してください');return;}
+  const labels={date:'記入月',seikyuu_t:'請求月',kubun:'区分',tantou:'担当',branch:'支店'};
+  if(!confirm(`${ids.length}件の「${labels[field]}」を「${val}」に変更しますか？`))return;
+  ids.forEach(id=>{const c=S.cases.find(c=>c.id===id);if(c)c[field]=val;});
+  sv();addLog('edit',`一括変更: ${labels[field]}→${val}（${ids.length}件）`);
+  renderAll();maClearSel();
 }
 
 // ── ダッシュボード ──
