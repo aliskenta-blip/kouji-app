@@ -352,7 +352,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <div class="tab" onclick="sw('monthly')">📅 月別入力</div>
   <div class="tab" onclick="sw('master')">📋 マスター</div>
   <div class="tab" onclick="sw('print')">🖨️ 受発注一覧</div>
-  <div class="tab" onclick="sw('keireki')">📄 工事経歴書</div>
+  <div class="tab" onclick="sw('keireki')">📄 工事内容出力</div>
   <div class="tab" onclick="sw('log')">📝 操作ログ</div>
   <div class="tab master-only" onclick="sw('mst')">⚙️ 設定</div>
 </div>
@@ -470,24 +470,29 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 
 <!-- 工事経歴書 -->
 <div id="p-keireki" class="panel">
-  <div class="no-print" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">
-    <div class="fg" style="flex:0 0 auto;min-width:180px">
+  <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+    <button class="btn krdoc-btn bn" id="krd_keireki" onclick="setKrDoc('keireki')">📄 工事経歴書</button>
+    <button class="btn krdoc-btn bx" id="krd_jyuchu" onclick="setKrDoc('jyuchu')">🏗️ 受注表（着工前）</button>
+    <button class="btn krdoc-btn bx" id="krd_kanryo" onclick="setKrDoc('kanryo')">✅ 完了工事表</button>
+  </div>
+  <div class="no-print" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fg" id="krc_type" style="flex:0 0 auto;min-width:180px">
       <label style="font-size:11px;font-weight:700;color:#555">建設工事の種類</label>
       <select id="kr_type" onchange="renderKeireki()" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"></select>
     </div>
-    <div class="fg" style="flex:0 0 auto">
+    <div class="fg" id="krc_tax" style="flex:0 0 auto">
       <label style="font-size:11px;font-weight:700;color:#555">税込/税抜</label>
-      <select id="kr_tax" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px">
+      <select id="kr_tax" onchange="renderKeireki()" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px">
         <option value="税込">税込</option><option value="税抜">税抜</option>
       </select>
     </div>
-    <div class="fg" style="flex:0 0 auto">
+    <div class="fg" id="krc_year" style="flex:0 0 auto">
       <label style="font-size:11px;font-weight:700;color:#555">対象年度</label>
       <select id="kr_year" onchange="renderKeireki()" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"></select>
     </div>
-    <button class="btn bp" onclick="printKeireki()" style="margin-top:auto">🖨️ 印刷 / PDF</button>
-    <button class="btn bg" onclick="exportKerekiWord()" style="margin-top:auto">📄 Word形式</button>
-    <button class="btn bn" onclick="exportKerekiExcel()" style="margin-top:auto">📊 Excel出力</button>
+    <button class="btn bp" onclick="printKrDoc()" style="margin-top:auto">🖨️ 印刷 / PDF</button>
+    <button class="btn bg" id="krc_word" onclick="exportKerekiWord()" style="margin-top:auto">📄 Word形式</button>
+    <button class="btn bn" onclick="exportKrExcel()" style="margin-top:auto">📊 Excel出力</button>
   </div>
   <div id="kerekiOut"></div>
 </div>
@@ -3361,7 +3366,135 @@ function toSenYen(val,isTaxExcl){
   return Math.round(amt/1000);
 }
 
+// ── 工事内容出力：帳票切替（工事経歴書 / 受注表 / 完了工事表） ──
+let krDoc='keireki';
+function setKrDoc(d){
+  krDoc=d;
+  [['keireki','krd_keireki'],['jyuchu','krd_jyuchu'],['kanryo','krd_kanryo']].forEach(([k,id])=>{
+    const b=document.getElementById(id);if(b){b.classList.toggle('bn',k===d);b.classList.toggle('bx',k!==d);}
+  });
+  const show=(id,on)=>{const e=document.getElementById(id);if(e)e.style.display=on?'':'none';};
+  show('krc_type',d==='keireki');      // 工事種類は経歴書のみ
+  show('krc_year',d!=='jyuchu');        // 受注表は現時点スナップなので年度不要
+  show('krc_word',d==='keireki');       // Wordは経歴書(様式第二号)のみ
+  renderKeireki();
+}
 function renderKeireki(){
+  if(krDoc==='jyuchu')return renderJyuchu();
+  if(krDoc==='kanryo')return renderKanryo();
+  return renderKeirekiSheet();
+}
+// 着工前＝未完了 かつ 工期開始がまだ先（または未定/未設定）
+function nowYM(){return `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;}
+function isChakkouMae(c){
+  if(c.kanryo==='✓')return false;          // 完了は除外
+  if(fn(c.jisha_h)<=0)return false;          // 受注金額（請負額）が無いものは除外
+  if(fn(c.jisha_s)>0)return false;           // 既に請求が立っている＝着手済とみなし除外
+  const ks=(c.kouki_s||'');
+  if(ks==='未定'||ks==='')return true;       // 工期開始が未定/未設定＝着工前
+  return ks.slice(0,7)>nowYM();              // 工期開始が今月より先＝着工前
+}
+function krCompYear(c){return ((c.kouki_e&&c.kouki_e!=='未定')?c.kouki_e:(cMo(c)||'')).slice(0,4);}
+function krJyuchuList(){
+  return S.cases.filter(isChakkouMae).sort((a,b)=>{
+    const ak=(a.kouki_s&&a.kouki_s!=='未定')?a.kouki_s:'9999';const bk=(b.kouki_s&&b.kouki_s!=='未定')?b.kouki_s:'9999';
+    if(ak!==bk)return ak<bk?-1:1;return fn(b.jisha_h)-fn(a.jisha_h);
+  });
+}
+function krKanryoList(){
+  const yr=vg('kr_year')||'';
+  return S.cases.filter(c=>c.kanryo==='✓'&&(!yr||krCompYear(c)===String(yr))).sort((a,b)=>{
+    const ae=(a.kouki_e&&a.kouki_e!=='未定')?a.kouki_e:(cMo(a)||'');const be=(b.kouki_e&&b.kouki_e!=='未定')?b.kouki_e:(cMo(b)||'');
+    return be.localeCompare(ae);
+  });
+}
+function krAmt(c,isTaxExcl){const v=fn(c.jisha_h);return isTaxExcl?Math.round(v/1.1):v;}
+function krYM(v,kind){return (v==='未定'||!v)?(kind==='jyuchu'?'未定':'—'):v.replace('-','/');}
+function renderJyuchu(){
+  const el=document.getElementById('kerekiOut');if(!el)return;
+  const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
+  const cases=krJyuchuList();let tot=0;
+  const rows=cases.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;
+    return `<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="ctr">${krYM(c.kouki_s,'jyuchu')}</td><td class="ctr">${krYM(c.kouki_e,'jyuchu')}</td><td class="num">¥${fmt(a)}</td><td>${c.biko||''}</td></tr>`;}).join('');
+  el.innerHTML=`<div class="card"><div class="card-hdr ch-grn"><span>🏗️ 工事受注表（着工前・受注見込み）</span><span style="font-size:11px;opacity:.85">完了を除く・${cases.length}件・${isTaxExcl?'税抜':'税込'}</span></div>
+  <div style="padding:8px 14px;font-size:11px;color:#666">※「完了」未チェック・受注金額あり・未請求で、工期開始がまだ先（または未定）の受注工事を表示。銀行提出用。着工して請求が立つ、または「完了」にチェックすると自動で一覧から外れます。</div>
+  <div class="twrap"><table style="min-width:780px"><thead><tr><th>No</th><th style="text-align:left">受注先（注文者）</th><th style="text-align:left">工事名</th><th style="text-align:left">工事場所</th><th>着工予定</th><th>完成予定</th><th>請負金額</th><th style="text-align:left">備考</th></tr></thead>
+  <tbody>${rows||`<tr><td colspan="8" class="empty">着工前の受注工事はありません</td></tr>`}</tbody>
+  <tfoot><tr class="tot"><td colspan="6" style="text-align:center">合計　${cases.length}件</td><td class="num">¥${fmt(tot)}</td><td></td></tr></tfoot></table></div></div>`;
+}
+function renderKanryo(){
+  const el=document.getElementById('kerekiOut');if(!el)return;
+  const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
+  const yr=vg('kr_year')||'';
+  const cases=krKanryoList();let tot=0;
+  const rows=cases.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;
+    return `<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="ctr">${krYM(c.kouki_s,'kanryo')}</td><td class="ctr">${krYM(c.kouki_e,'kanryo')}</td><td class="num">¥${fmt(a)}</td></tr>`;}).join('');
+  el.innerHTML=`<div class="card"><div class="card-hdr ch-nav"><span>✅ 完了工事表</span><span style="font-size:11px;opacity:.85">${yr?yr+'年完成・':''}${cases.length}件・${isTaxExcl?'税抜':'税込'}</span></div>
+  <div style="padding:8px 14px;font-size:11px;color:#666">※「完了」にチェックした工事を表示。対象年度で絞り込みできます（完成月の年で判定）。</div>
+  <div class="twrap"><table style="min-width:740px"><thead><tr><th>No</th><th style="text-align:left">注文者</th><th style="text-align:left">工事名</th><th style="text-align:left">工事場所</th><th>着工</th><th>完成</th><th>請負金額</th></tr></thead>
+  <tbody>${rows||`<tr><td colspan="7" class="empty">完了工事はありません（対象年度を変えてお試しください）</td></tr>`}</tbody>
+  <tfoot><tr class="tot"><td colspan="6" style="text-align:center">合計　${cases.length}件</td><td class="num">¥${fmt(tot)}</td></tr></tfoot></table></div></div>`;
+}
+function printKrDoc(){
+  if(krDoc==='jyuchu')return printSimpleReport('jyuchu');
+  if(krDoc==='kanryo')return printSimpleReport('kanryo');
+  return printKeireki();
+}
+function exportKrExcel(){
+  if(krDoc==='jyuchu')return exportSimpleExcel('jyuchu');
+  if(krDoc==='kanryo')return exportSimpleExcel('kanryo');
+  return exportKerekiExcel();
+}
+function printSimpleReport(kind){
+  const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
+  const jisha=S.masters.jisha_name||'';
+  const today=new Date().toLocaleDateString('ja-JP');
+  let title,sub,headHtml,rowsHtml='',tot=0,cs,footColspan,footExtra='';
+  if(kind==='jyuchu'){
+    cs=krJyuchuList();title='工 事 受 注 表';sub='（着工前・受注見込み工事　'+(isTaxExcl?'税抜':'税込')+'）';
+    headHtml='<th>No</th><th>受注先（注文者）</th><th>工事名</th><th>工事場所</th><th>着工予定</th><th>完成予定</th><th>請負金額</th><th>備考</th>';
+    rowsHtml=cs.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;return `<tr><td class="c">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="c">${krYM(c.kouki_s,'jyuchu')}</td><td class="c">${krYM(c.kouki_e,'jyuchu')}</td><td class="r">${fmt(a)}</td><td>${c.biko||''}</td></tr>`;}).join('');
+    footColspan=6;footExtra='<td></td>';
+  }else{
+    cs=krKanryoList();const yr=vg('kr_year')||'';title='完 了 工 事 表';sub='（'+(yr?yr+'年完成・':'')+(isTaxExcl?'税抜':'税込')+'）';
+    headHtml='<th>No</th><th>注文者</th><th>工事名</th><th>工事場所</th><th>着工</th><th>完成</th><th>請負金額</th>';
+    rowsHtml=cs.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;return `<tr><td class="c">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="c">${krYM(c.kouki_s,'kanryo')}</td><td class="c">${krYM(c.kouki_e,'kanryo')}</td><td class="r">${fmt(a)}</td></tr>`;}).join('');
+    footColspan=6;
+  }
+  const w=window.open('','_blank','width=1000,height=800');
+  if(!w){alert('ポップアップがブロックされました。ブラウザで許可してください。');return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+  <style>@page{size:A4 landscape;margin:10mm}body{font-family:'Meiryo','メイリオ',sans-serif;padding:10mm;color:#000}h1{font-size:18px;text-align:center;letter-spacing:6px;margin:0 0 4px}.sub{text-align:center;font-size:12px;margin-bottom:8px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #333;padding:4px 6px}th{background:#1f4e79;color:#fff}.c{text-align:center}.r{text-align:right}tfoot td{font-weight:700;background:#f0f0f0}@media print{.np{display:none}}</style></head><body>
+  <h1>${title}</h1><div class="sub">${sub}</div>
+  <div class="meta"><span>${jisha}</span><span>作成日：${today}　${cs.length}件</span></div>
+  <table><thead><tr>${headHtml}</tr></thead><tbody>${rowsHtml||'<tr><td colspan="8" style="text-align:center;padding:14px">該当なし</td></tr>'}</tbody>
+  <tfoot><tr><td class="c" colspan="${footColspan}">合計　${cs.length}件</td><td class="r">${fmt(tot)}</td>${footExtra}</tr></tfoot></table>
+  <div class="np" style="margin-top:14px;text-align:center"><button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
+  </body></html>`);
+  w.document.close();
+}
+function exportSimpleExcel(kind){
+  if(typeof XLSX==='undefined'){alert('Excelライブラリ未読込。ネット接続を確認してください');return;}
+  const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
+  let aoa,fname,cs,tot=0;
+  if(kind==='jyuchu'){
+    cs=krJyuchuList();
+    aoa=[['工事受注表（着工前・受注見込み）'+(isTaxExcl?' 税抜':' 税込')],['No','受注先（注文者）','工事名','工事場所','着工予定','完成予定','請負金額','備考']];
+    cs.forEach((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;aoa.push([i+1,c.client||'',c.kouji||'',c.genba||c.place||'',krYM(c.kouki_s,'jyuchu'),krYM(c.kouki_e,'jyuchu'),a,c.biko||'']);});
+    aoa.push(['','','','','','合計',tot,'']);
+    fname='工事受注表_'+new Date().toISOString().slice(0,10)+'.xlsx';
+  }else{
+    cs=krKanryoList();const yr=vg('kr_year')||'';
+    aoa=[['完了工事表'+(yr?'（'+yr+'年完成）':'')+(isTaxExcl?' 税抜':' 税込')],['No','注文者','工事名','工事場所','着工','完成','請負金額']];
+    cs.forEach((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;aoa.push([i+1,c.client||'',c.kouji||'',c.genba||c.place||'',krYM(c.kouki_s,'kanryo'),krYM(c.kouki_e,'kanryo'),a]);});
+    aoa.push(['','','','','','合計',tot]);
+    fname='完了工事表_'+new Date().toISOString().slice(0,10)+'.xlsx';
+  }
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,kind==='jyuchu'?'受注表':'完了工事表');
+  XLSX.writeFile(wb,fname);
+}
+function renderKeirekiSheet(){
   const el=document.getElementById('kerekiOut');if(!el)return;
   const type=vg('kr_type');
   const tax=vg('kr_tax')||'税込';
