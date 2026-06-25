@@ -2827,15 +2827,24 @@ function delCase(id){
   S.cases=S.cases.filter(c=>c.id!==id);sv();renderAll();
 }
 function updField(id,field,val){const c=S.cases.find(x=>x.id===id);if(!c)return;c[field]=val;sv();}
+// 月（YYYY-MM）を delta か月ずらす
+function shiftYM(ym,delta){
+  if(!ym||ym.length<7)return ym;
+  let y=parseInt(ym.slice(0,4)),m=parseInt(ym.slice(5,7))+delta;
+  while(m>12){m-=12;y++;}while(m<1){m+=12;y--;}
+  return y+'-'+String(m).padStart(2,'0');
+}
 function togMorei(id){
   if(!canEdit())return;
   const c=S.cases.find(x=>x.id===id);if(!c)return;
-  const cur=c.date||'';
+  const cur=(c.date||'').slice(0,7);
   if(!cur){alert('記入月が未設定です');return;}
-  const y=parseInt(cur.slice(0,4)),m=parseInt(cur.slice(5,7));
-  const ny=m>=12?y+1:y;const nm=m>=12?1:m+1;
-  const next=ny+'-'+String(nm).padStart(2,'0');
+  const next=shiftYM(cur,1);
   if(!confirm(`「${c.place||''} ${c.kouji||''}」を請求漏れとして${next}に移動しますか？`))return;
+  // 請求した金額（billings）も一緒に翌月へ繰越す
+  (c.billings||[]).forEach(b=>{if((b.month||'')===cur)b.month=next;});
+  if((c.seikyuu_t||'')===cur)c.seikyuu_t=next;
+  c.more_prev=cur;       // 解除時に戻す月（請求漏れを押した月）を記憶
   c.date=next;
   c.more_flag='✓';
   sv();addLog('edit',`${c.place||''}を請求漏れ→${next}に移動`);renderAll();
@@ -2843,8 +2852,16 @@ function togMorei(id){
 function clearMorei(id){
   if(!canEdit())return;
   const c=S.cases.find(x=>x.id===id);if(!c)return;
+  const curM=(c.date||'').slice(0,7);
+  const prev=c.more_prev||shiftYM(curM,-1);   // 請求漏れを最後に押した月（前月）へ戻す
+  if(!confirm(`「${c.place||''} ${c.kouji||''}」の請求漏れを解除して${prev}に戻しますか？`))return;
+  // 繰越していた請求額も元の月へ戻す
+  (c.billings||[]).forEach(b=>{if((b.month||'')===curM)b.month=prev;});
+  if((c.seikyuu_t||'')===curM)c.seikyuu_t=prev;
+  c.date=prev;
   c.more_flag='';
-  sv();renderAll();
+  c.more_prev='';
+  sv();addLog('edit',`${c.place||''}を請求漏れ解除→${prev}に戻す`);renderAll();
 }
 function editKoukiSel(id,el){
   if(!canEdit())return;
