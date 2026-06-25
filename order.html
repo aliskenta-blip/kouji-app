@@ -747,7 +747,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   </div>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
     <button class="btn bx" onclick="closeMov()">キャンセル</button>
-
+    <button class="btn bg" id="btnSaveCont" onclick="saveCase(true)" style="min-width:88px">保存して続けて追加</button>
     <button class="btn bn" onclick="saveCase()" style="min-width:88px">保　存</button>
   </div>
 </div>
@@ -2702,8 +2702,12 @@ function openAdd(){
   renderPdfTags();renderKE();updateSels();
   // 工事経歴書テンプレート復元（updateSels後）
   setTimeout(()=>{try{const tpl=JSON.parse(safeLS("get",'keireki_tpl')||'null');if(tpl){vs('f_moto',tpl.moto||'');vs('f_jv',tpl.jv||'');vs('f_haichi',tpl.haichi||'');vs('f_gishi',tpl.gishi||'');vs('f_kouji_type',tpl.kouji_type||'');}}catch(e){}},50);
+  document.getElementById('btnSaveCont').style.display='';
   document.getElementById('addMov').classList.add('open');
-  setTimeout(()=>document.getElementById('f_pl').focus(),300);
+  // 場所欄へ確実にフォーカス（最初からすぐ入力できるように）
+  const fp=document.getElementById('f_pl');
+  setTimeout(()=>{try{fp.focus();}catch(e){}},120);
+  setTimeout(()=>{try{fp.focus();}catch(e){}},320);
 }
 // 保存済みの値が select の options に無い場合に補完するヘルパー
 // （マスタが後から編集された / client_links のフィルタから漏れた等で
@@ -2730,6 +2734,7 @@ function editCase(id){
   formBillings=JSON.parse(JSON.stringify(c.billings||[]));
   pdfH=c.pdf_hacchu||null;pdfS=c.pdf_seikyuu||null;
   document.getElementById('mdlT').textContent='案件編集';
+  document.getElementById('btnSaveCont').style.display='none';
   vs('f_dt',(c.date||'').slice(0,7));vs('f_pl',c.place);vs('f_kj',c.kouji);
   vs('f_jh',fn(c.jisha_h)?parseFloat((fn(c.jisha_h)/10000).toFixed(4)):'');
   vs('f_nd',c.nyukin_d);vs('f_ny',fn(c.nyukin)?parseFloat((fn(c.nyukin)/10000).toFixed(4)):'');vs('f_m3',c.m3);vs('f_bk',c.biko);
@@ -2766,7 +2771,7 @@ function editCase(id){
 }
 function closeMov(){document.getElementById('addMov').classList.remove('open');}
 
-function saveCase(){
+function saveCase(cont){
   if(!vg('f_pl')&&!vg('f_cl')){alert('場所または発注者を入力してください');return;}
   const CK=['shashin','zando','nyukin_c','kanryo','seikyuu_c'];
   const base={
@@ -2799,9 +2804,20 @@ function saveCase(){
     S.cases.push(base);
     addLog('add',`${base.place||''}（${base.client||''}）を追加`);
   }
-  sv();closeMov();renderAll();
+  sv();
   // 工事経歴書テンプレート保存
   try{safeLS("set",'keireki_tpl',JSON.stringify({moto:vg('f_moto'),jv:vg('f_jv'),haichi:vg('f_haichi'),gishi:vg('f_gishi'),kouji_type:vg('f_kouji_type')}));}catch(e){}
+  renderAll();
+  if(cont&&!editId){
+    // 連続追加：記入月を引き継いでフォームをリセットし、開いたまま次の入力へ
+    const keepDt=base.date;
+    openAdd();
+    vs('f_dt',keepDt);
+    const t=document.getElementById('mdlT');t.textContent='✓ 保存しました — 続けて入力';t.style.color='#2e7d32';
+    setTimeout(()=>{t.textContent='案件追加';t.style.color='';},1800);
+  } else {
+    closeMov();
+  }
 }
 function delCase(id){
   if(!canDelete()){alert('削除権限がありません');return;}
