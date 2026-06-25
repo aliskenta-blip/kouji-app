@@ -2294,7 +2294,7 @@ function renderDash(){
     <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--nav)">${fyLabel(dashFY)}</div><div style="font-size:11px;color:#888">2月決算ベース・${casesFY.length}件${isNow?' <span style="color:#2e7d32;font-weight:700">（今期）</span>':''}</div></div>
     <button class="btn bn btn-sm" onclick="dashFYShift(1)">次期 ▶</button>
   </div>
-  <div style="text-align:center;margin-bottom:12px"><button class="btn bg btn-sm" onclick="printDashSummary()">📄 決算サマリーを印刷 / PDF出力</button></div>`;
+  <div style="text-align:center;margin-bottom:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn bg btn-sm" onclick="printDashSummary()">📄 決算サマリーを印刷 / PDF出力</button><button class="btn bo btn-sm" onclick="printShiharaiList()">🖨️ 協力会社 支払リスト</button></div>`;
 
   // ── 6つの合計KPI ──
   const kpi=`<div class="kpis">
@@ -2409,12 +2409,23 @@ function renderDash(){
     <div class="card"><div class="card-hdr ch-org">📷 現場チェック未完了</div><div class="twrap"><table style="min-width:340px"><thead><tr><th>請求月</th><th>場所</th><th>写真</th><th>残土</th><th>確認</th><th>メール</th></tr></thead><tbody>${chkBody}</tbody></table></div></div>
   </div>`;
 
+  // ── 赤字・低粗利アラート（粗利率15%未満。協力会社のある案件のみ） ──
+  const lp=casesFY.map(c=>({c,r:calc(c)})).filter(x=>x.r.cnt>0&&x.r.js>0&&(x.r.arari<0||x.r.arariRate<15)).sort((a,b)=>a.r.arariRate-b.r.arariRate);
+  const lpBody=lp.length?lp.map(({c,r})=>{const red=r.arari<0;return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eee;cursor:pointer" onclick="editCase('${c.id}')"><span style="font-size:12px">${red?'🔴':'🟡'} ${c.place||''} ${c.kouji||''} <span style="color:#999">${c.client||''}</span></span><span style="font-weight:700;color:${red?'#c62828':'#e65100'};white-space:nowrap">粗利¥${fmt(r.arari)}（${fmtP(r.arariRate)}）</span></div>`;}).join(''):'<div class="empty" style="padding:14px">赤字・低粗利の案件はありません ✓</div>';
+  const lpCard=`<div class="card"><div class="card-hdr ch-red">⚠️ 赤字・低粗利アラート（粗利率15%未満 / ${lp.length}件）</div><div class="card-body" style="max-height:300px;overflow-y:auto">${lpBody}</div></div>`;
+
+  // ── 入金予定チェックリスト（〜今月。通帳照合→まとめて消込） ──
+  const curM=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+  const ny=S.cases.map(c=>({c,m:calc(c).misu,due:nyuyoteiYM(c)})).filter(x=>x.m>0&&x.due&&x.due<=curM).sort((a,b)=>(a.due||'').localeCompare(b.due||''));
+  const nyBody=ny.length?ny.map(({c,m,due})=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eee"><span style="font-size:12px;cursor:pointer" onclick="editCase('${c.id}')"><b>${due}</b> ${c.client||''} ${c.place||''} ${c.kouji||''}</span><span style="display:flex;align-items:center;gap:6px;white-space:nowrap"><b style="color:#c62828">¥${fmt(m)}</b><button class="btn bg btn-sm" onclick="markPaidFull('${c.id}')">入金済</button></span></div>`).join(''):'<div class="empty" style="padding:14px">今月までの入金予定はありません ✓</div>';
+  const nyCard=`<div class="card"><div class="card-hdr ch-grn">💰 入金予定チェックリスト（〜今月 / ${ny.length}件・¥${fmt(ny.reduce((a,x)=>a+x.m,0))}）</div><div class="card-body" style="max-height:340px;overflow-y:auto">${nyBody}</div></div>`;
+
   // ── 最近の操作 ──
   const recent=actLog.slice(0,8);
   const logBody=recent.length?recent.map(l=>{const badgeCls={add:'add',edit:'edit',del:'del',check:'check'}[l.action]||'edit';const badgeLbl={add:'追加',edit:'編集',del:'削除',check:'チェック'}[l.action]||l.action;const t=new Date(l.time);const tss=`${(t.getMonth()+1)}/${t.getDate()} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;return `<div class="log-item"><div class="avatar sm" style="background:${l.avColor||'#2e75b6'}">${l.avIcon||l.userName.charAt(0)}</div><div class="log-body"><div style="display:flex;align-items:center;gap:6px"><span class="log-user">${l.userName}</span><span class="log-time">${tss}</span></div><div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${l.detail||''}</div></div></div>`;}).join(''):'<div class="empty">操作ログなし</div>';
   const logCard=`<div class="card"><div class="card-hdr ch-nav">📝 最近の操作</div><div class="card-body" style="max-height:240px;overflow-y:auto">${logBody}</div></div>`;
 
-  root.innerHTML=head+kpi+funnel+trend+clCard+kbCard+progCard+kyCard+cfCard+bottom+logCard;
+  root.innerHTML=head+kpi+funnel+nyCard+lpCard+trend+clCard+kbCard+progCard+kyCard+cfCard+bottom+logCard;
  }catch(e){
   const root=document.getElementById('dashRoot');
   if(root)root.innerHTML='<div class="card"><div class="card-body" style="color:#c62828">ダッシュボードの表示でエラーが発生しました（データには影響ありません）。<br><small>'+(e&&e.message||e)+'</small></div></div>';
@@ -2454,6 +2465,51 @@ function printDashSummary(){
   <h2>工種・区分別</h2>
   <table><thead><tr><th>区分</th><th>件数</th><th>請求額</th><th>協力原価</th><th>粗利</th></tr></thead><tbody>${kbRows||'<tr><td colspan=5>データなし</td></tr>'}</tbody></table>
   <div class="np" style="margin-top:16px"><button onclick="window.print()" style="padding:8px 18px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
+  </body></html>`);
+  w.document.close();
+}
+// ── 入金予定（消込用）：案件の入金予定月を返す ──
+function nyuyoteiYM(c){
+  const term=S.masters.client_terms&&S.masters.client_terms[c.client];
+  const bd=c.seikyuu_c_date||(cMo(c)?cMo(c)+'-01':c.date);
+  if(!term||!bd)return cMo(c)||'';
+  if(term.type==='でんさい')return dueYMfromSite(bd,term.months||2,term.day||0)||(cMo(c)||'');
+  return dueMonthOf(bd,term)||(cMo(c)||'');
+}
+// 全額入金済にする（通帳と照合してまとめて消込）
+function markPaidFull(id){
+  if(!canEdit()){alert('権限がありません');return;}
+  const c=S.cases.find(x=>x.id===id);if(!c)return;
+  const js=calc(c).js;
+  if(!confirm(`「${c.place||''} ${c.client||''}」を全額入金済（¥${fmt(Math.max(0,js-fn(c.nyukin)))}）にしますか？`))return;
+  const today=new Date().toISOString().slice(0,10);
+  if((c.billings||[]).length){(c.billings).forEach(b=>{if(fn(b.amount)>0&&fn(b.nyukin)<fn(b.amount)){b.nyukin=b.amount;if(!b.nyukin_d)b.nyukin_d=today;}});syncBillings(id);}
+  else{c.nyukin=String(js);if(!c.nyukin_d)c.nyukin_d=today;}
+  c.nyukin_c='✓';
+  sv();addLog('check',`${c.place||''}を入金済（消込）`);renderAll();
+}
+// ── 協力会社への支払（振込）リスト印刷 ──
+function printShiharaiList(){
+  const map={};
+  S.cases.forEach(c=>(c.kyousha_list||[]).forEach(k=>{
+    const mp=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));if(mp<=0||!k.name)return;
+    const d=(map[k.name]=map[k.name]||{tot:0,rows:[]});d.tot+=mp;
+    d.rows.push({place:c.place||'',kouji:c.kouji||'',type:k.type||'',due:k.shiharai_t||'',amt:mp});
+  }));
+  const names=Object.keys(map).sort((a,b)=>map[b].tot-map[a].tot);
+  const grand=names.reduce((a,n)=>a+map[n].tot,0);
+  const jisha=S.masters.jisha_name||'';const today=new Date().toLocaleDateString('ja-JP');
+  const blocks=names.map(n=>{const d=map[n];const rows=d.rows.map(r=>`<tr><td>${r.place}</td><td>${r.kouji}</td><td>${r.type}</td><td class="c">${r.due||''}</td><td class="r">${fmt(r.amt)}</td></tr>`).join('');
+    return `<h2>${n}　<span style="font-size:12px">未払残 合計 ¥${fmt(d.tot)}</span></h2><table><thead><tr><th>現場</th><th>工事名</th><th>工種</th><th>支払月</th><th>未払残</th></tr></thead><tbody>${rows}</tbody></table>`;}).join('');
+  const w=window.open('','_blank','width=900,height=800');
+  if(!w){alert('ポップアップがブロックされました。許可してください。');return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>協力会社 支払リスト</title>
+  <style>@page{size:A4;margin:12mm}body{font-family:'Meiryo','メイリオ',sans-serif;padding:10mm;color:#000}h1{font-size:18px;text-align:center;margin:0 0 4px}h2{font-size:13px;margin:14px 0 2px;border-bottom:2px solid #1f4e79;padding-bottom:2px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #333;padding:3px 6px}th{background:#1f4e79;color:#fff}.c{text-align:center}.r{text-align:right}.grand{margin-top:14px;font-size:14px;font-weight:700;text-align:right;border-top:2px solid #000;padding-top:6px}@media print{.np{display:none}}</style></head><body>
+  <h1>協力会社 支払リスト（未払残）</h1>
+  <div class="meta"><span>${jisha}</span><span>作成日：${today}　${names.length}社</span></div>
+  ${blocks||'<div style="text-align:center;padding:20px">未払残はありません</div>'}
+  <div class="grand">支払合計　¥${fmt(grand)}</div>
+  <div class="np" style="margin-top:14px;text-align:center"><button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
   </body></html>`);
   w.document.close();
 }
