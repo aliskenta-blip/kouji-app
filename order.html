@@ -1338,9 +1338,37 @@ function doSort(field,table){
   else if(table==='monthly')renderMonthly();
   else if(table==='print')renderPrint();
 }
+// 列見出しの説明（マウスを合わせると出る）— 馬鹿でもわかるように平易に
+const COL_TIPS={
+  date:'この案件を記録した月（記入月）',
+  month:'お客さんへ請求した月（請求月）',
+  place:'工事をする場所・現場名',
+  client:'発注してくれた会社（注文者）',
+  tantou:'社内の担当者',
+  kouji:'工事の名前・枝番',
+  kubun:'工事の種類分け（造成・給排水・舗装など）',
+  jisha_h:'お客さんから受注した契約金額（発注金額）',
+  jisha_s:'お客さんへ請求した金額。クリックで月ごとの出来高を入力',
+  misu:'請求したのにまだ入金されていない金額（請求−入金）',
+  km:'協力会社の見積金額',
+  ksr:'協力会社からの請求金額＝外注の原価',
+  ksh:'協力会社へ支払い済みの金額',
+  miharai:'協力会社へまだ払っていない金額（協請求−支払済）',
+  nyukin:'当月に入金された金額',
+  arari:'粗利（外注分の自社受注額−外注原価）',
+  arariRate:'粗利率',
+  m3:'数量（㎥）。工事経歴書に使用',
+  seikyuu_c:'請求書を出したらチェック（請求済）',
+  nyukin_c:'入金を確認したらチェック（入金済）',
+  kanryo:'累計の請求が発注金額に達すると自動で完工になります',
+  branch:'支店・営業所',
+  kyousha:'外注先（協力会社）の名前',
+  nyStatus:'入金の状況（入金済／一部入金／未入金）'
+};
 function sortTh(field,label,table){
   const cls=sortState.table===table&&sortState.field===field?(sortState.dir==='asc'?'sortable sort-asc':'sortable sort-desc'):'sortable';
-  return `<th class="${cls}" onclick="doSort('${field}','${table}')">${label}</th>`;
+  const tip=COL_TIPS[field];
+  return `<th class="${cls}"${tip?' title="'+tip+'"':''} onclick="doSort('${field}','${table}')">${label}</th>`;
 }
 const fmt=n=>n==null||n===''?'':Number(n).toLocaleString('ja-JP');
 const fmtP=n=>(Number(n)||0).toFixed(1)+'%';
@@ -1728,13 +1756,13 @@ function togSub(id){
 
 // ── 月別 ──
 // 折りたたみリマインド枠（ヘッダーを押すと開閉）
-function remindCard(bg,border,color,titleHtml,rightHtml,bodyHtml){
+function remindCard(bg,border,color,titleHtml,rightHtml,bodyHtml,desc){
   return `<div style="background:${bg};border:1px solid ${border};border-radius:8px;margin-bottom:10px;overflow:hidden">
     <div style="padding:10px 14px;font-weight:700;color:${color};cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'':'none';this.querySelector('.rc-ar').textContent=b.style.display==='none'?'▶':'▼'">
       <span style="display:flex;align-items:center;gap:6px"><span class="rc-ar">▶</span>${titleHtml}</span>
       <span>${rightHtml||''}</span>
     </div>
-    <div style="display:none;padding:2px 14px 10px">${bodyHtml}</div>
+    <div style="display:none;padding:2px 14px 10px">${desc?`<div style="font-size:11px;color:#555;background:rgba(255,255,255,.7);border-radius:6px;padding:6px 9px;margin:4px 0 8px;line-height:1.6">💡 ${desc}</div>`:''}${bodyHtml}</div>
   </div>`;
 }
 function renderMonthly(){
@@ -1747,12 +1775,12 @@ function renderMonthly(){
   let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0;
   cases.forEach(c=>{const r=calc(c);const bm=getBilledMonth(c,mk);const nyM=getNyukinMonth(c,mk);ts+=bm;tn+=nyM;tmi+=r.misu;tar+=r.arari;tky+=r.ksr;tmp+=r.miharai;});
   document.getElementById('mKpi').innerHTML=`
-    <div class="kpi"><div class="kl">当月請求（税込）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${cases.length}件</div></div>
-    <div class="kpi g"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
-    <div class="kpi r"><div class="kl">未収金</div><div class="kv">¥${fmt(tmi)}</div></div>
-    <div class="kpi o"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
-    <div class="kpi r"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
-    <div class="kpi g"><div class="kl">粗利</div><div class="kv">¥${fmt(tar)}</div></div>`;
+    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）"><div class="kl">当月請求（税込）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${cases.length}件</div></div>
+    <div class="kpi g" title="この月に入金された金額の合計"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
+    <div class="kpi r" title="請求したのに未入金の合計（請求−入金）"><div class="kl">未収金</div><div class="kv">¥${fmt(tmi)}</div></div>
+    <div class="kpi o" title="協力会社からの請求合計＝外注の原価"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
+    <div class="kpi r" title="協力会社へまだ支払っていない合計"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
+    <div class="kpi g" title="粗利の合計（外注分の自社受注額−外注原価）"><div class="kl">粗利</div><div class="kv">¥${fmt(tar)}</div></div>`;
 
   // 発注者別当月請求合計
   const byClient={};
@@ -1792,15 +1820,15 @@ function renderMonthly(){
   let remind='';
   if(prevMisu.length){
     const totalMisu=prevMisu.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=remindCard('#fff8e1','#f9a825','#e65100',`⚠ 未収金繰越（前月以前）${prevMisu.length}件`,`合計 ¥${fmt(totalMisu)}`,prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join(''));
+    remind+=remindCard('#fff8e1','#f9a825','#e65100',`⚠ 未収金繰越（前月以前）${prevMisu.length}件`,`合計 ¥${fmt(totalMisu)}`,prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join(''),'前の月までに請求したのに、まだ入金されていない案件です。入金を確認したら各案件の「入済」にチェックしてください。'));
   }
   if(moreCases.length){
     const totalMore=moreCases.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=remindCard('#fce4ec','#e53935','#c62828',`🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalMore)}`,moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join(''));
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalMore)}`,moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join(''),'請求済にしたが入金が確認できず、次の月へ繰り越した案件です。今月あらためて請求・入金確認をしてください。'));
   }
   if(remainCases.length){
     const totalRemain=remainCases.reduce((a,c)=>a+calc(c).remaining,0);
-    remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''));
+    remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''),'発注額のうち、まだ請求していない残りがある案件です。出来高請求の漏れ防止に。クリックで請求を入力できます。'));
   }
 
   let remEl=document.getElementById('mRemind');
@@ -1811,10 +1839,10 @@ function renderMonthly(){
   const odClient=overdues.filter(o=>o.type==='client');
   const odKyousha=overdues.filter(o=>o.type==='kyousha');
   if(odClient.length){
-    remind+=remindCard('#fce4ec','#e53935','#c62828',`⏰ 入金期限超過 ${odClient.length}件`,'',odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} ← ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join(''));
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`⏰ 入金期限超過 ${odClient.length}件`,'',odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} ← ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join(''),'お客さんの入金期日（設定の入金条件で計算）を過ぎても入金が確認できていない案件です。催促の目安に。'));
   }
   if(odKyousha.length){
-    remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} → ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''));
+    remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} → ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''),'協力会社への支払期日（設定の支払条件で計算）を過ぎても、まだ支払っていない案件です。'));
   }
 
   remEl.innerHTML=remind;
@@ -1829,26 +1857,26 @@ function renderMonthly(){
 
   // ヘッダー生成
   const mt='monthly';
-  const sM=(f,l)=>{const on=sortState.table==='monthly'&&sortState.field===f;return `<th class="${on?'sortable sort-'+(sortState.dir):'sortable'}" onclick="doSort('${f}','monthly')">${l}</th>`;};
+  const sM=(f,l)=>{const on=sortState.table==='monthly'&&sortState.field===f;const tip=COL_TIPS[f];return `<th class="${on?'sortable sort-'+(sortState.dir):'sortable'}"${tip?' title="'+tip+'"':''} onclick="doSort('${f}','monthly')">${l}</th>`;};
   document.getElementById('mHead').innerHTML=`<tr>
     <th style="width:20px"></th>
     <th>No</th>${sortTh('date','記入月',mt)}
-    <th>工期</th>
+    <th title="工事の期間（着工〜完成）。クリックで編集">工期</th>
     ${sortTh('place','場所',mt)}
     ${sortTh('client','発注者',mt)}${sortTh('tantou','担当',mt)}
     ${sortTh('kouji','工事名',mt)}${sortTh('kubun','区分',mt)}
     ${sM('jisha_h','発注額')}${sM('jisha_s','請求額')}${sM('misu','未収金')}
-    <th>施工</th>
-    ${sM('km','協見積')}${sM('ksr','協請求')}<th class="s">協請月</th><th class="s">協振込</th>
+    <th title="施工形態。自社＝自社施工 / 単独＝外注のみ / 合同＝自社＋外注">施工</th>
+    ${sM('km','協見積')}${sM('ksr','協請求')}<th class="s" title="協力会社へ請求した月">協請月</th><th class="s" title="協力会社へ支払う（振込）月">協振込</th>
     ${sM('miharai','未払残')}
     ${sM('nyukin','当月入金')}
-    <th>既入金</th>
-    ${sM('arari','粗利')}<th>率</th>
-    <th>㎥</th>
-    <th class="pg sortable" onclick="doSort('seikyuu_c','monthly')">請済</th>
-    <th class="pg sortable" onclick="doSort('nyukin_c','monthly')">入済</th>
-    <th class="pg">写</th><th class="pg">伝票</th>
-    <th class="gg sortable" onclick="doSort('kanryo','monthly')">完了</th>
+    <th title="前月までに入金済みの累計額">既入金</th>
+    ${sM('arari','粗利')}<th title="粗利率（粗利÷受注額）">率</th>
+    <th title="数量（㎥）。工事経歴書に使用">㎥</th>
+    <th class="pg sortable" title="請求書を出したらチェック（請求済）" onclick="doSort('seikyuu_c','monthly')">請済</th>
+    <th class="pg sortable" title="入金を確認したらチェック（入金済）" onclick="doSort('nyukin_c','monthly')">入済</th>
+    <th class="pg" title="現場写真を撮ったらチェック">写</th><th class="pg" title="残土伝票を受け取ったらチェック">伝票</th>
+    <th class="gg sortable" title="累計請求が発注額に達すると自動で完工になります" onclick="doSort('kanryo','monthly')">完了</th>
     <th>備考</th><th>操作</th>
   </tr>`;
 
