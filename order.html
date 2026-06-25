@@ -1927,9 +1927,9 @@ function renderMonthly(){
     const showArari=r.cnt>0&&(r.hasJuchu||!isSelf);
     const ec=`style="cursor:pointer" title="クリックで編集"`;
     // 請済/入済は当月（最新の請求月）に対する状態。繰越表示された月では空欄にする
-    const ckMonth=(c.seikyuu_t||c.date||'').slice(0,7);
-    const ckPrimary=!ckMonth||mk===ckMonth;
-    const blankCk=lbl=>`<span class="ck gk" style="opacity:.3;cursor:default" title="この月は対象外です（最新の請求月で操作してください）">${lbl}</span>`;
+    // 請済/入済は「その現場の本来の月（記入月）」で操作可。繰越先＝記入月が動くので押せる。前月以前のエコー再掲行のみ空欄ロック
+    const ckPrimary=mk===(c.date||'').slice(0,7);
+    const blankCk=lbl=>`<span class="ck gk" style="opacity:.3;cursor:default" title="これは前月以前からの再掲です。チェックは元の（記入）月で操作してください">${lbl}</span>`;
     const doneCk=isDone(c)?`<span class="ck gk on" title="累計請求が発注額に到達＝完工">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="累計請求が発注額に達すると自動で完工になります">完</span>`;
     const mainRow=`<tr class="${i%2?'alt':''}${isMorei?' style="background:#fff8e1"':''}">
       <td class="ctr" style="cursor:pointer;font-size:11px" id="exp-${c.id}" onclick="togSub('${c.id}')">${r.cnt>0?'▶':''}</td>
