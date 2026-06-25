@@ -2205,7 +2205,8 @@ function renderDash(){
     <button class="btn bn btn-sm" onclick="dashFYShift(-1)">◀ 前期</button>
     <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--nav)">${fyLabel(dashFY)}</div><div style="font-size:11px;color:#888">2月決算ベース・${casesFY.length}件${isNow?' <span style="color:#2e7d32;font-weight:700">（今期）</span>':''}</div></div>
     <button class="btn bn btn-sm" onclick="dashFYShift(1)">次期 ▶</button>
-  </div>`;
+  </div>
+  <div style="text-align:center;margin-bottom:12px"><button class="btn bg btn-sm" onclick="printDashSummary()">📄 決算サマリーを印刷 / PDF出力</button></div>`;
 
   // ── 6つの合計KPI ──
   const kpi=`<div class="kpis">
@@ -2248,6 +2249,22 @@ function renderDash(){
   const thd=`<thead><tr><th style="text-align:left">項目</th>${mlbl.map(m=>`<th>${m}</th>`).join('')}<th style="background:var(--nav2)">累計</th></tr></thead>`;
   const tbd=items.map(it=>{let cum=0;const cells=fyMonths.map(mk=>{const v=casesFY.filter(c=>cMo(c)===mk).reduce((a,c)=>a+it.f(c),0);cum+=v;return `<td class="num ${it.cls}">${v?'¥'+fmt(v):''}</td>`;}).join('');return `<tr><td style="text-align:left;font-weight:${it.hl?800:600};white-space:nowrap;padding:6px 8px">${it.l}</td>${cells}<td class="num" style="background:var(--nav);color:#fff;font-weight:700">¥${fmt(cum)}</td></tr>`;}).join('');
   const trend=`<div class="card"><div class="card-hdr ch-nav">📈 月次推移（${dashFY}年3月〜${dashFY+1}年2月）</div><div class="twrap"><table style="min-width:780px">${thd}<tbody>${tbd}</tbody></table></div></div>`;
+
+  // ── 発注者別 年間分析 ──
+  const clMap={};
+  casesFY.forEach(c=>{const cl=c.client||'（未設定）';const r=calc(c);const d=(clMap[cl]=clMap[cl]||{cnt:0,jh:0,js:0,ny:0,ksr:0,ar:0});d.cnt++;d.jh+=fn(c.jisha_h);d.js+=r.js;d.ny+=r.ny;d.ksr+=r.ksr;d.ar+=r.arari;});
+  const clArr=Object.entries(clMap).sort((a,b)=>b[1].js-a[1].js);
+  const clMaxV=Math.max(1,...clArr.map(([,d])=>d.js));
+  const clBody=clArr.length?clArr.map(([n,d])=>{const mi=Math.max(0,d.js-d.ny);return `<tr><td style="min-width:130px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,clMaxV)}%;height:100%;background:var(--nav2)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="${mi>0?'cl':'ca'}">¥${fmt(mi)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">データなし</td></tr>';
+  const clCard=`<div class="card"><div class="card-hdr ch-nav">🏢 発注者別 年間分析（請求シェア順）</div><div class="twrap"><table style="min-width:640px"><thead><tr><th style="text-align:left">発注者</th><th>件数</th><th>発注額</th><th>請求額</th><th>入金</th><th>未収金</th><th>粗利</th><th>率</th></tr></thead><tbody>${clBody}</tbody></table></div></div>`;
+
+  // ── 工種・区分別 集計 ──
+  const kbMap={};
+  casesFY.forEach(c=>{const kb=c.kubun||'（未分類）';const r=calc(c);const d=(kbMap[kb]=kbMap[kb]||{cnt:0,js:0,ksr:0,ar:0});d.cnt++;d.js+=r.js;d.ksr+=r.ksr;d.ar+=r.arari;});
+  const kbArr=Object.entries(kbMap).sort((a,b)=>b[1].js-a[1].js);
+  const kbMaxV=Math.max(1,...kbArr.map(([,d])=>d.js));
+  const kbBody=kbArr.length?kbArr.map(([n,d])=>`<tr><td style="min-width:120px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,kbMaxV)}%;height:100%;background:var(--purp)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.js)}</td><td class="num">¥${fmt(d.ksr)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
+  const kbCard=`<div class="card"><div class="card-hdr ch-gry">🧱 工種・区分別 集計</div><div class="twrap"><table style="min-width:520px"><thead><tr><th style="text-align:left">区分</th><th>件数</th><th>請求額</th><th>協力原価</th><th>粗利</th><th>率</th></tr></thead><tbody>${kbBody}</tbody></table></div></div>`;
 
   // ── 発注残高・進捗管理 ──
   const prog=casesFY.filter(c=>calc(c).remaining>0).map(c=>({c,r:calc(c)})).sort((a,b)=>b.r.remaining-a.r.remaining);
@@ -2294,12 +2311,48 @@ function renderDash(){
   const logBody=recent.length?recent.map(l=>{const badgeCls={add:'add',edit:'edit',del:'del',check:'check'}[l.action]||'edit';const badgeLbl={add:'追加',edit:'編集',del:'削除',check:'チェック'}[l.action]||l.action;const t=new Date(l.time);const tss=`${(t.getMonth()+1)}/${t.getDate()} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;return `<div class="log-item"><div class="avatar sm" style="background:${l.avColor||'#2e75b6'}">${l.avIcon||l.userName.charAt(0)}</div><div class="log-body"><div style="display:flex;align-items:center;gap:6px"><span class="log-user">${l.userName}</span><span class="log-time">${tss}</span></div><div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${l.detail||''}</div></div></div>`;}).join(''):'<div class="empty">操作ログなし</div>';
   const logCard=`<div class="card"><div class="card-hdr ch-nav">📝 最近の操作</div><div class="card-body" style="max-height:240px;overflow-y:auto">${logBody}</div></div>`;
 
-  root.innerHTML=head+kpi+funnel+trend+progCard+kyCard+cfCard+bottom+logCard;
+  root.innerHTML=head+kpi+funnel+trend+clCard+kbCard+progCard+kyCard+cfCard+bottom+logCard;
  }catch(e){
   const root=document.getElementById('dashRoot');
   if(root)root.innerHTML='<div class="card"><div class="card-body" style="color:#c62828">ダッシュボードの表示でエラーが発生しました（データには影響ありません）。<br><small>'+(e&&e.message||e)+'</small></div></div>';
   console.error('renderDash error',e);
  }
+}
+
+// ── 決算サマリー出力（2月決算・年度） ──
+function printDashSummary(){
+  if(dashFY==null)dashFY=curFYStart();
+  const fyMonths=fyMonthKeys(dashFY),fySet=new Set(fyMonths);
+  const cs=S.cases.filter(c=>fySet.has(cMo(c)));
+  let tjh=0,tjs=0,tny=0,tky=0,tar=0;cs.forEach(c=>{const r=calc(c);tjh+=fn(c.jisha_h);tjs+=r.js;tny+=r.ny;tky+=r.ksr;tar+=r.arari;});
+  const tmi=Math.max(0,tjs-tny);
+  const jisha=S.masters.jisha_name||'';
+  const items=[['発注金額',c=>fn(c.jisha_h)],['請求金額',c=>calc(c).js],['入金額',c=>calc(c).ny],['未収金',c=>calc(c).misu],['協力会社請求',c=>calc(c).ksr],['粗利',c=>calc(c).arari]];
+  const mhead=fyMonths.map(mk=>`<th>${parseInt(mk.slice(5,7))}月</th>`).join('');
+  const mrows=items.map(([l,f])=>{let cum=0;const tds=fyMonths.map(mk=>{const v=cs.filter(c=>cMo(c)===mk).reduce((a,c)=>a+f(c),0);cum+=v;return `<td style="text-align:right">${v?fmt(v):''}</td>`;}).join('');return `<tr><td>${l}</td>${tds}<td style="text-align:right;font-weight:700">${fmt(cum)}</td></tr>`;}).join('');
+  const clMap={};cs.forEach(c=>{const cl=c.client||'（未設定）';const r=calc(c);const d=(clMap[cl]=clMap[cl]||{cnt:0,jh:0,js:0,ny:0,ar:0});d.cnt++;d.jh+=fn(c.jisha_h);d.js+=r.js;d.ny+=r.ny;d.ar+=r.arari;});
+  const clRows=Object.entries(clMap).sort((a,b)=>b[1].js-a[1].js).map(([n,d])=>`<tr><td>${n}</td><td style="text-align:center">${d.cnt}</td><td style="text-align:right">${fmt(d.jh)}</td><td style="text-align:right">${fmt(d.js)}</td><td style="text-align:right">${fmt(d.ny)}</td><td style="text-align:right">${fmt(Math.max(0,d.js-d.ny))}</td><td style="text-align:right">${fmt(d.ar)}</td></tr>`).join('');
+  const kbMap={};cs.forEach(c=>{const kb=c.kubun||'（未分類）';const r=calc(c);const d=(kbMap[kb]=kbMap[kb]||{cnt:0,js:0,ksr:0,ar:0});d.cnt++;d.js+=r.js;d.ksr+=r.ksr;d.ar+=r.arari;});
+  const kbRows=Object.entries(kbMap).sort((a,b)=>b[1].js-a[1].js).map(([n,d])=>`<tr><td>${n}</td><td style="text-align:center">${d.cnt}</td><td style="text-align:right">${fmt(d.js)}</td><td style="text-align:right">${fmt(d.ksr)}</td><td style="text-align:right">${fmt(d.ar)}</td></tr>`).join('');
+  const w=window.open('','_blank');
+  if(!w){alert('ポップアップがブロックされました。ブラウザで許可してください。');return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>決算サマリー ${fyLabel(dashFY)}</title>
+  <style>body{font-family:'Meiryo','メイリオ',sans-serif;padding:20px;color:#222}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;border-bottom:2px solid #1f4e79;padding-bottom:3px;margin:18px 0 4px}table{border-collapse:collapse;width:100%;font-size:11px;margin-top:4px}th,td{border:1px solid #999;padding:3px 5px}th{background:#1f4e79;color:#fff}.kp{display:inline-block;border:1px solid #999;padding:5px 12px;margin:3px;border-radius:6px;font-size:11px}.kp b{display:block;font-size:15px;color:#1f4e79}@media print{.np{display:none}}</style></head><body>
+  <h1>決算サマリー（2月決算）　${fyLabel(dashFY)}</h1>
+  <div style="font-size:12px;color:#555">${jisha?jisha+'　':''}件数 ${cs.length}件　出力日 ${new Date().toLocaleDateString('ja-JP')}</div>
+  <div style="margin:8px 0">
+    <span class="kp">発注金額<b>¥${fmt(tjh)}</b></span><span class="kp">請求金額<b>¥${fmt(tjs)}</b></span><span class="kp">入金額<b>¥${fmt(tny)}</b></span>
+    <span class="kp">未収金<b>¥${fmt(tmi)}</b></span><span class="kp">協力会社請求<b>¥${fmt(tky)}</b></span><span class="kp">粗利<b>¥${fmt(tar)}</b></span>
+  </div>
+  <h2>月次推移（3月〜翌2月）</h2>
+  <table><thead><tr><th>項目</th>${mhead}<th>累計</th></tr></thead><tbody>${mrows}</tbody></table>
+  <h2>発注者別</h2>
+  <table><thead><tr><th>発注者</th><th>件数</th><th>発注額</th><th>請求額</th><th>入金</th><th>未収金</th><th>粗利</th></tr></thead><tbody>${clRows||'<tr><td colspan=7>データなし</td></tr>'}</tbody></table>
+  <h2>工種・区分別</h2>
+  <table><thead><tr><th>区分</th><th>件数</th><th>請求額</th><th>協力原価</th><th>粗利</th></tr></thead><tbody>${kbRows||'<tr><td colspan=5>データなし</td></tr>'}</tbody></table>
+  <div class="np" style="margin-top:16px"><button onclick="window.print()" style="padding:8px 18px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
+  </body></html>`);
+  w.document.close();
 }
 
 // ── 場所→工事現場 自動都道府県付与 ──
