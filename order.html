@@ -2430,12 +2430,22 @@ function renderMstUI(){
     // 個別にDOM生成（エスケープ問題を回避）
     const listEl=el.querySelector('#mst_list_'+type);
     if(!S.masters[type].length){listEl.innerHTML='<div style="color:#aaa;font-size:12px;padding:8px 0">未登録</div>';return;}
-    S.masters[type].forEach(v=>{
+    S.masters[type].forEach((v,idx)=>{
       const t=terms[v]||{};
       const row=document.createElement('div');
-      row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0f0f0';
+      row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #f0f0f0;border-radius:5px';
+      // ドラッグ並び替え（グリップを掴んで移動）
+      row.ondragover=e=>{e.preventDefault();row.style.background='#e3f2fd';};
+      row.ondragleave=()=>{row.style.background='';};
+      row.ondrop=e=>{e.preventDefault();row.style.background='';if(mstDrag.type===type&&mstDrag.idx!==idx)moveMst(type,mstDrag.idx,idx);};
+      const leftDiv=document.createElement('div');leftDiv.style.cssText='display:flex;align-items:center;gap:6px';
+      const grip=document.createElement('span');grip.textContent='≡';grip.title='ドラッグで並び替え';grip.draggable=true;
+      grip.style.cssText='cursor:grab;color:#bbb;font-size:16px;user-select:none;padding:0 2px';
+      grip.ondragstart=e=>{mstDrag={type,idx};try{e.dataTransfer.setData('text/plain','');}catch(_){}e.dataTransfer.effectAllowed='move';};
+      leftDiv.appendChild(grip);
       const nameSpan=document.createElement('span');nameSpan.style.fontSize='13px';nameSpan.textContent=v;
-      row.appendChild(nameSpan);
+      leftDiv.appendChild(nameSpan);
+      row.appendChild(leftDiv);
       const rDiv=document.createElement('div');rDiv.style.cssText='display:flex;align-items:center;gap:4px';
       if(showTerms){
         const sel=document.createElement('select');
@@ -2483,6 +2493,17 @@ function addMstItem(type,inputId){
 }
 function delMstItem(type,v){S.masters[type]=S.masters[type].filter(x=>x!==v);sv();
   addLog('del',`${MST_LABELS_LOG[type]||type}から「${v}」を削除`);
+  renderMstUI();updateSels();
+}
+// ── 設定リストのドラッグ並び替え ──
+let mstDrag={type:null,idx:-1};
+function moveMst(type,from,to){
+  if(from===to||from<0||to<0)return;
+  const arr=S.masters[type];if(!arr||from>=arr.length||to>=arr.length)return;
+  const [it]=arr.splice(from,1);
+  arr.splice(to,0,it);
+  sv();addLog('edit',`${MST_LABELS_LOG[type]||type}の並び順を変更`);
+  mstDrag={type:null,idx:-1};
   renderMstUI();updateSels();
 }
 function setTerm(type,name,val){
