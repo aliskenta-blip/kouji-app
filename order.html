@@ -1698,6 +1698,16 @@ function togSub(id){
 }
 
 // ── 月別 ──
+// 折りたたみリマインド枠（ヘッダーを押すと開閉）
+function remindCard(bg,border,color,titleHtml,rightHtml,bodyHtml){
+  return `<div style="background:${bg};border:1px solid ${border};border-radius:8px;margin-bottom:10px;overflow:hidden">
+    <div style="padding:10px 14px;font-weight:700;color:${color};cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'':'none';this.querySelector('.rc-ar').textContent=b.style.display==='none'?'▶':'▼'">
+      <span style="display:flex;align-items:center;gap:6px"><span class="rc-ar">▶</span>${titleHtml}</span>
+      <span>${rightHtml||''}</span>
+    </div>
+    <div style="display:none;padding:2px 14px 10px">${bodyHtml}</div>
+  </div>`;
+}
 function renderMonthly(){
   const yr=getYr(),mo=getMo(),mk=getMK(yr,mo);
   const srch=(vg('srch_m')||'').toLowerCase();
@@ -1753,15 +1763,15 @@ function renderMonthly(){
   let remind='';
   if(prevMisu.length){
     const totalMisu=prevMisu.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=`<div style="background:#fff8e1;border:1px solid #f9a825;border-radius:8px;padding:10px 14px;margin-bottom:10px"><div style="font-weight:700;color:#e65100;margin-bottom:4px;display:flex;justify-content:space-between">⚠ 未収金繰越（前月以前）${prevMisu.length}件<span>合計 ¥${fmt(totalMisu)}</span></div>${prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join('')}</div>`;
+    remind+=remindCard('#fff8e1','#f9a825','#e65100',`⚠ 未収金繰越（前月以前）${prevMisu.length}件`,`合計 ¥${fmt(totalMisu)}`,prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join(''));
   }
   if(moreCases.length){
     const totalMore=moreCases.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=`<div style="background:#fce4ec;border:1px solid #e53935;border-radius:8px;padding:10px 14px;margin-bottom:10px"><div style="font-weight:700;color:#c62828;margin-bottom:4px;display:flex;justify-content:space-between">🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）<span>合計 ¥${fmt(totalMore)}</span></div>${moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join('')}</div>`;
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalMore)}`,moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join(''));
   }
   if(remainCases.length){
     const totalRemain=remainCases.reduce((a,c)=>a+calc(c).remaining,0);
-    remind+=`<div style="background:#e3f2fd;border:1px solid #1565c0;border-radius:8px;padding:10px 14px;margin-bottom:10px"><div style="font-weight:700;color:#1565c0;margin-bottom:4px;display:flex;justify-content:space-between">📋 未請求残 ${remainCases.length}件（下記一覧に含む）<span>合計 ¥${fmt(totalRemain)}</span></div>${remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join('')}</div>`;
+    remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''));
   }
 
   let remEl=document.getElementById('mRemind');
@@ -1772,10 +1782,10 @@ function renderMonthly(){
   const odClient=overdues.filter(o=>o.type==='client');
   const odKyousha=overdues.filter(o=>o.type==='kyousha');
   if(odClient.length){
-    remind+=`<div style="background:#fce4ec;border:1px solid #e53935;border-radius:8px;padding:10px 14px;margin-bottom:10px"><div style="font-weight:700;color:#c62828;margin-bottom:4px">⏰ 入金期限超過 ${odClient.length}件</div>${odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} ← ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join('')}</div>`;
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`⏰ 入金期限超過 ${odClient.length}件`,'',odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} ← ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join(''));
   }
   if(odKyousha.length){
-    remind+=`<div style="background:#fff3e0;border:1px solid #e65100;border-radius:8px;padding:10px 14px;margin-bottom:10px"><div style="font-weight:700;color:#e65100;margin-bottom:4px">⏰ 支払期限超過 ${odKyousha.length}件</div>${odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} → ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join('')}</div>`;
+    remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} → ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''));
   }
 
   remEl.innerHTML=remind;
