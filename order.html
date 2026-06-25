@@ -1359,11 +1359,20 @@ function calc(c){
   const costAmt=ksr>0?ksr:km;
   const misu=Math.max(0,js-ny);
   const miharai=Math.max(0,ksr-ksh);
-  const arari=ks.length>0?(baseAmt-costAmt):0;
-  const arariRate=baseAmt>0&&ks.length>0?arari/baseAmt*100:0;
+  // 外部発注の粗利：協力会社明細に「自社受注額(juchu)」がある場合は外注分のみで算出
+  const hasJuchu=ks.some(k=>fn(k.juchu)>0);
+  let arari,arariRate;
+  if(hasJuchu){
+    const juchuSum=ks.reduce((a,k)=>a+fn(k.juchu),0);
+    arari=ks.reduce((a,k)=>{const jv=fn(k.juchu);if(jv<=0)return a;const cost=fn(k.seikyuu)>0?fn(k.seikyuu):fn(k.mitsumori);return a+(jv-cost);},0);
+    arariRate=juchuSum>0?arari/juchuSum*100:0;
+  } else {
+    arari=ks.length>0?(baseAmt-costAmt):0;
+    arariRate=baseAmt>0&&ks.length>0?arari/baseAmt*100:0;
+  }
   const isEstimate=ksr===0&&km>0;
   const remaining=Math.max(0,jh-js);
-  return {js,jh,ny,km,ksr,ksh,misu,miharai,arari,arariRate,cnt:ks.length,isEstimate,remaining};
+  return {js,jh,ny,km,ksr,ksh,misu,miharai,arari,arariRate,cnt:ks.length,isEstimate,remaining,hasJuchu};
 }
 function getBilledMonth(c,ym){
   const bl=c.billings||[];
@@ -1872,7 +1881,7 @@ function renderMonthly(){
     else if(isSelf&&hasKyou){sekouType='合同';sekouCls='sk-joint';}
     else if(!isSelf&&hasKyou){sekouType='単独';sekouCls='sk-other';}
     else{sekouType='—';sekouCls='';}
-    const showArari=hasKyou&&!isSelf;
+    const showArari=r.cnt>0&&(r.hasJuchu||!isSelf);
     const ec=`style="cursor:pointer" title="クリックで編集"`;
     // 請済/入済は当月（最新の請求月）に対する状態。繰越表示された月では空欄にする
     const ckMonth=(c.seikyuu_t||c.date||'').slice(0,7);
@@ -2755,6 +2764,8 @@ function renderKE(){
           </div>
           <div class="fg"><label>工種・作業</label><input type="text" value="${k.type||''}" placeholder="掘削・舗装等" oninput="KD[${i}].type=this.value"></div>
           <div class="fg"><label>見積金額（万円）</label><input type="number" value="${fn(k.mitsumori)?parseFloat((fn(k.mitsumori)/10000).toFixed(4)):''}" placeholder="" inputmode="decimal" step="0.1" oninput="KD[${i}].mitsumori=String(Math.round(parseFloat(this.value||0)*10000))"></div>
+          <div class="fg"><label>自社受注額（万円）<span style="font-size:9px;color:#888">この外注分の自社売上→粗利計算に使用</span></label><input type="number" value="${fn(k.juchu)?parseFloat((fn(k.juchu)/10000).toFixed(4)):''}" placeholder="外注分の自社受注額" inputmode="decimal" step="0.1" oninput="KD[${i}].juchu=String(Math.round(parseFloat(this.value||0)*10000));renderKEArari(${i})"></div>
+          <div class="fg"><label>この外注の粗利</label><div id="ke_arari_${i}" style="padding:8px;font-weight:700;font-size:13px"></div></div>
           <div class="fg"><label>📋 出来高請求</label>
             <div id="kd_bl_${i}" style="font-size:11px;margin-bottom:6px"></div>
             <div style="display:flex;gap:4px">
@@ -2769,9 +2780,18 @@ function renderKE(){
       </div>
     </div>`).join('');
   // render billing lists
-  KD.forEach((k,i)=>setTimeout(()=>renderKdBillings(i),10));
+  KD.forEach((k,i)=>setTimeout(()=>{renderKdBillings(i);renderKEArari(i);},10));
 }
-function addKEntry(){KD.push({name:'',type:'',mitsumori:'',seikyuu:'',seikyuu_t:'',shiharai_t:'',shiharai:'',billings:[]});renderKE();}
+function renderKEArari(i){
+  const el=document.getElementById('ke_arari_'+i);if(!el)return;
+  const k=KD[i]||{};
+  const jv=fn(k.juchu);
+  if(jv<=0){el.innerHTML='<span style="color:#aaa;font-size:11px;font-weight:400">自社受注額を入力すると表示</span>';return;}
+  const cost=fn(k.seikyuu)>0?fn(k.seikyuu):fn(k.mitsumori);
+  const a=jv-cost;
+  el.innerHTML=`<span style="color:${a>=0?'#2e7d32':'#c62828'}">¥${fmt(a)}</span> <span style="font-size:10px;color:#888;font-weight:400">(受注${fmt(jv)}−原価${fmt(cost)})</span>`;
+}
+function addKEntry(){KD.push({name:'',type:'',mitsumori:'',juchu:'',seikyuu:'',seikyuu_t:'',shiharai_t:'',shiharai:'',billings:[]});renderKE();}
 function rmKE(i){KD.splice(i,1);renderKE();}
 
 // ── モーダル内Enterキーで次のフィールドへ移動 ──
