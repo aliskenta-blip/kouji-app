@@ -1199,13 +1199,16 @@ function editBillings(caseId,el){
     if(mo&&mo!=='未定')c.billings=[{month:mo.slice(0,7),amount:String(fn(c.jisha_s)),kouki_s:c.kouki_s||'',kouki_e:c.kouki_e||'',nyukin:c.nyukin||'',nyukin_d:c.nyukin_d||''}];
   }
   const pop=document.createElement('div');
-  pop.style.cssText='position:fixed;z-index:999;background:#fff;border:2px solid #1565c0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.25);padding:14px;width:380px;max-height:80vh;overflow-y:auto';
+  pop.style.cssText='position:fixed;z-index:999;background:#fff;border:2px solid #1565c0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.25);padding:0;width:380px;max-height:80vh;overflow-y:auto';
   function rp(){
     const bl=c.billings||[];
     const sum=bl.reduce((a,b)=>a+fn(b.amount),0);
     const nySum=bl.reduce((a,b)=>a+fn(b.nyukin),0);
     const rem=Math.max(0,fn(c.jisha_h)-sum);
-    let h=`<div style="font-weight:700;color:#1565c0;margin-bottom:8px">📋 出来高請求</div>`;
+    let h=`<div id="blPopHdr" style="position:sticky;top:0;z-index:2;padding:10px 14px;background:#1565c0;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none;touch-action:none">
+      <span style="font-weight:700;font-size:13px">📋 出来高請求 <span style="font-size:10px;opacity:.85;font-weight:400">✋ドラッグで移動</span></span>
+      <span onclick="this.closest('[style*=fixed]').remove();renderAll()" style="cursor:pointer;font-size:24px;line-height:1;padding:0 6px" title="閉じる">×</span>
+    </div><div style="padding:14px">`;
     h+=`<div style="font-size:12px;margin-bottom:8px;padding:8px;background:#f0f8ff;border-radius:6px">発注額: <b>¥${fmt(fn(c.jisha_h))}</b></div>`;
     bl.forEach((b,i)=>{
       h+=`<div style="border:1px solid #e0e0e0;border-radius:8px;padding:8px;margin-bottom:6px;background:#fafafa">
@@ -1234,14 +1237,31 @@ function editBillings(caseId,el){
     h+=`<div style="margin-top:8px;font-size:12px;padding:8px;background:${rem>0?'#fff3e0':'#e8f5e9'};border-radius:6px">
       請求計: <b>¥${fmt(sum)}</b>　残: <b style="color:${rem>0?'#e65100':'#2e7d32'}">¥${fmt(rem)}</b><br>入金計: <b>¥${fmt(nySum)}</b>
     </div>`;
-    h+=`<button class="btn bn btn-sm" style="width:100%;margin-top:8px" onclick="this.closest('[style*=fixed]').remove();renderAll()">閉じる</button>`;
+    h+=`<button class="btn bn btn-sm" style="width:100%;margin-top:8px" onclick="this.closest('[style*=fixed]').remove();renderAll()">閉じる</button></div>`;
     pop.innerHTML=h;
   }
   rp();
   const r=el.getBoundingClientRect();
-  pop.style.top=Math.min(r.bottom+2,window.innerHeight-460)+'px';
-  pop.style.left=Math.min(r.left,window.innerWidth-400)+'px';
+  pop.style.top=Math.max(8,Math.min(r.bottom+2,window.innerHeight-140))+'px';
+  pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-396))+'px';
   document.body.appendChild(pop);
+  makeDraggable(pop,pop.querySelector('#blPopHdr'));
+}
+// ポップアップをヘッダーでドラッグ移動（PC=マウス / タブレット=タッチ）
+function makeDraggable(box,handle){
+  if(!box||!handle)return;
+  const onDown=(cx,cy)=>{
+    const rr=box.getBoundingClientRect();const ox=rr.left,oy=rr.top;
+    box.style.right='auto';box.style.bottom='auto';box.style.left=ox+'px';box.style.top=oy+'px';
+    const onMove=(mx,my)=>{box.style.left=Math.max(0,ox+mx-cx)+'px';box.style.top=Math.max(0,oy+my-cy)+'px';};
+    const mm=e=>onMove(e.clientX,e.clientY);
+    const tm=e=>{if(e.touches[0]){onMove(e.touches[0].clientX,e.touches[0].clientY);e.preventDefault();}};
+    const up=()=>{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',up);document.removeEventListener('touchmove',tm);document.removeEventListener('touchend',up);};
+    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',up);
+    document.addEventListener('touchmove',tm,{passive:false});document.addEventListener('touchend',up);
+  };
+  handle.addEventListener('mousedown',e=>{onDown(e.clientX,e.clientY);e.preventDefault();});
+  handle.addEventListener('touchstart',e=>{if(e.touches[0])onDown(e.touches[0].clientX,e.touches[0].clientY);},{passive:true});
 }
 function syncBillings(caseId){
   const c=S.cases.find(x=>x.id===caseId);if(!c)return;
@@ -1557,12 +1577,15 @@ function editKyoBillings(caseId,ki,el){
     if(mo)k.billings=[{month:mo.slice(0,7),amount:String(fn(k.seikyuu))}];
   }
   const pop=document.createElement('div');
-  pop.style.cssText='position:fixed;z-index:999;background:#fff;border:2px solid #e65100;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.25);padding:14px;width:320px;max-height:450px;overflow-y:auto';
+  pop.style.cssText='position:fixed;z-index:999;background:#fff;border:2px solid #e65100;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.25);padding:0;width:320px;max-height:80vh;overflow-y:auto';
   function buildPop(){
     const bl=k.billings||[];
     const sum=bl.reduce((a,b)=>a+fn(b.amount),0);
     const rem=Math.max(0,fn(k.mitsumori)-sum);
-    let h=`<div style="font-weight:700;color:#e65100;margin-bottom:8px">📋 ${k.name} 出来高請求</div>`;
+    let h=`<div id="kbPopHdr" style="position:sticky;top:0;z-index:2;padding:10px 14px;background:#e65100;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none;touch-action:none">
+      <span style="font-weight:700;font-size:13px">📋 ${k.name} 出来高請求 <span style="font-size:10px;opacity:.85;font-weight:400">✋移動</span></span>
+      <span onclick="this.closest('[style*=fixed]').remove();renderAll()" style="cursor:pointer;font-size:24px;line-height:1;padding:0 6px" title="閉じる">×</span>
+    </div><div style="padding:14px">`;
     h+=`<div style="font-size:12px;margin-bottom:8px;padding:8px;background:#fff3e0;border-radius:6px">見積額: <b>¥${fmt(fn(k.mitsumori))}</b></div>`;
     bl.forEach((b,bi)=>{
       h+=`<div style="display:flex;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid #f0f0f0">
@@ -1581,14 +1604,15 @@ function editKyoBillings(caseId,ki,el){
     h+=`<div style="margin-top:8px;font-size:12px;padding:8px;background:${rem>0?'#fff3e0':'#e8f5e9'};border-radius:6px">
       請求計: <b>¥${fmt(sum)}</b>　未請求残: <b style="color:${rem>0?'#e65100':'#2e7d32'}">¥${fmt(rem)}</b>
     </div>`;
-    h+=`<button class="btn bo btn-sm" style="width:100%;margin-top:8px" onclick="this.closest('[style*=fixed]').remove();renderAll()">閉じる</button>`;
+    h+=`<button class="btn bo btn-sm" style="width:100%;margin-top:8px" onclick="this.closest('[style*=fixed]').remove();renderAll()">閉じる</button></div>`;
     pop.innerHTML=h;
   }
   buildPop();
   const r=el.getBoundingClientRect();
-  pop.style.top=Math.min(r.bottom+2,window.innerHeight-460)+'px';
-  pop.style.left=Math.min(r.left,window.innerWidth-340)+'px';
+  pop.style.top=Math.max(8,Math.min(r.bottom+2,window.innerHeight-140))+'px';
+  pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-336))+'px';
   document.body.appendChild(pop);
+  makeDraggable(pop,pop.querySelector('#kbPopHdr'));
 }
 function updKyoFromBl(caseId,ki){
   const c=S.cases.find(x=>x.id===caseId);if(!c)return;
