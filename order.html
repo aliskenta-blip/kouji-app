@@ -361,38 +361,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 
 <!-- ダッシュボード -->
 <div id="p-dash" class="panel on">
-  <div class="kpis" id="dKpi"></div>
-  <div class="card">
-    <div class="card-hdr ch-nav">📈 月次推移（年間）</div>
-    <div class="twrap"><table id="plTbl" style="min-width:700px"></table></div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-    <div class="card">
-      <div class="card-hdr ch-red">⚠️ 未収金・未払残</div>
-      <div class="twrap"><table style="min-width:380px">
-        <thead><tr><th>月</th><th>場所</th><th>発注者</th><th>未収金</th><th>未払残</th><th>完了</th></tr></thead>
-        <tbody id="alertB"></tbody>
-      </table></div>
-    </div>
-    <div class="card">
-      <div class="card-hdr ch-org">📷 現場チェック未完了</div>
-      <div class="twrap"><table style="min-width:380px">
-        <thead><tr><th>月</th><th>場所</th><th>写真</th><th>残土</th><th>確認</th><th>メール</th></tr></thead>
-        <tbody id="chkB"></tbody>
-      </table></div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-hdr ch-gry">🤝 協社別集計</div>
-    <div class="twrap"><table style="min-width:500px">
-      <thead><tr><th>協社名</th><th>件数</th><th>見積合計</th><th>請求合計</th><th>支払済</th><th>未払残</th></tr></thead>
-      <tbody id="kyoushaB"></tbody>
-    </table></div>
-  </div>
-  <div class="card">
-    <div class="card-hdr ch-nav">📝 最近の操作</div>
-    <div class="card-body" id="dashLog" style="max-height:240px;overflow-y:auto"></div>
-  </div>
+  <div id="dashRoot"></div>
 </div>
 
 <!-- 月別 -->
@@ -2184,92 +2153,129 @@ function applyBatch(){
 }
 
 // ── ダッシュボード ──
+let dashFY=null; // 事業年度の開始年（3月始まり・2月決算）。例: 2026 → 2026年3月〜2027年2月
+function curFYStart(){const d=new Date();const y=d.getFullYear(),m=d.getMonth()+1;return m>=3?y:y-1;}
+function fyStartOf(ym){if(!ym||ym.length<7)return null;const y=parseInt(ym.slice(0,4)),m=parseInt(ym.slice(5,7));return m>=3?y:y-1;}
+function fyMonthKeys(startY){const a=[];for(let i=0;i<12;i++){const mn=3+i;const y=mn<=12?startY:startY+1;const m=mn<=12?mn:mn-12;a.push(getMK(y,m));}return a;}
+function fyLabel(startY){return `${startY}年3月 〜 ${startY+1}年2月期`;}
+function dashFYShift(d){if(dashFY==null)dashFY=curFYStart();dashFY+=d;renderDash();}
+function dueMonthOf(baseDate,term){const due=calcDueDate(baseDate,term);if(!due)return null;return `${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,'0')}`;}
 function renderDash(){
-  const yr=getYr();
-  const MONTHS=[1,2,3,4,5,6,7,8,9,10,11,12];
-  const ML=['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+ try{
+  if(dashFY==null)dashFY=curFYStart();
+  const root=document.getElementById('dashRoot');if(!root)return;
+  const fyMonths=fyMonthKeys(dashFY),fySet=new Set(fyMonths);
+  const casesFY=S.cases.filter(c=>fySet.has(cMo(c)));
+  const pct=(a,b)=>b>0?(a/b*100):0;
 
-  let ts=0,tn=0,tmi=0,tky=0,tmp=0,tar=0;
-  S.cases.forEach(c=>{const r=calc(c);ts+=r.js;tn+=fn(c.nyukin);tmi+=r.misu;tky+=r.ksr;tmp+=r.miharai;tar+=r.arari;});
-  document.getElementById('dKpi').innerHTML=`
-    <div class="kpi"><div class="kl">年間請求合計（税込）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${S.cases.length}件</div></div>
-    <div class="kpi g"><div class="kl">年間入金済</div><div class="kv">¥${fmt(tn)}</div></div>
-    <div class="kpi r"><div class="kl">未収金合計</div><div class="kv">¥${fmt(tmi)}</div></div>
-    <div class="kpi o"><div class="kl">協社請求合計</div><div class="kv">¥${fmt(tky)}</div></div>
-    <div class="kpi r"><div class="kl">未払残合計</div><div class="kv">¥${fmt(tmp)}</div></div>
-    <div class="kpi g"><div class="kl">粗利合計</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(ts>0?tar/ts*100:0)}</div></div>`;
+  // ── 年度集計（請求月基準） ──
+  let tjh=0,tjs=0,tny=0,tky=0,tmp=0,tar=0;
+  casesFY.forEach(c=>{const r=calc(c);tjh+=fn(c.jisha_h);tjs+=r.js;tny+=r.ny;tky+=r.ksr;tmp+=r.miharai;tar+=r.arari;});
+  const tunbilled=Math.max(0,tjh-tjs); // 未請求残
+  const tmi=Math.max(0,tjs-tny);       // 未収金
+  const base=Math.max(tjh,tjs,tny,1);
 
+  // ── 年度切替＋見出し ──
+  const isNow=dashFY===curFYStart();
+  const head=`<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+    <button class="btn bn btn-sm" onclick="dashFYShift(-1)">◀ 前期</button>
+    <div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--nav)">${fyLabel(dashFY)}</div><div style="font-size:11px;color:#888">2月決算ベース・${casesFY.length}件${isNow?' <span style="color:#2e7d32;font-weight:700">（今期）</span>':''}</div></div>
+    <button class="btn bn btn-sm" onclick="dashFYShift(1)">次期 ▶</button>
+  </div>`;
+
+  // ── 6つの合計KPI ──
+  const kpi=`<div class="kpis">
+    <div class="kpi b"><div class="kl">発注金額 合計</div><div class="kv">¥${fmt(tjh)}</div><div class="ks">受注した工事の総額</div></div>
+    <div class="kpi"><div class="kl">請求金額 合計</div><div class="kv">¥${fmt(tjs)}</div><div class="ks">発注の ${fmtP(pct(tjs,tjh))}</div></div>
+    <div class="kpi g"><div class="kl">入金金額 合計</div><div class="kv">¥${fmt(tny)}</div><div class="ks">請求の ${fmtP(pct(tny,tjs))}</div></div>
+    <div class="kpi r"><div class="kl">未収金 合計</div><div class="kv">¥${fmt(tmi)}</div><div class="ks">請求 − 入金</div></div>
+    <div class="kpi o"><div class="kl">協力会社 請求合計</div><div class="kv">¥${fmt(tky)}</div><div class="ks">外注原価</div></div>
+    <div class="kpi p"><div class="kl">粗利 合計</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tar,tjs))}</div></div>
+  </div>`;
+
+  // ── 発注→請求→入金 の相関ファネル ──
+  const seg=s=>s.w>0.3?`<div title="${s.t||''}" style="width:${s.w}%;background:${s.c};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden">${s.l||''}</div>`:'';
+  const frow=(label,amount,sub,segs)=>`<div style="display:grid;grid-template-columns:104px 1fr;gap:10px;align-items:center;margin-bottom:9px">
+    <div><div style="font-size:12px;font-weight:700;color:#555">${label}</div><div style="font-size:16px;font-weight:800;color:var(--nav)">¥${fmt(amount)}</div>${sub?`<div style="font-size:10px;color:#888">${sub}</div>`:''}</div>
+    <div style="display:flex;height:30px;border-radius:6px;overflow:hidden;background:#eceff1">${segs.map(seg).join('')}</div>
+  </div>`;
+  const lg=(c,t)=>`<span style="white-space:nowrap"><span style="display:inline-block;width:11px;height:11px;background:${c};border-radius:2px;vertical-align:middle"></span> ${t}</span>`;
+  const funnel=`<div class="card"><div class="card-hdr ch-nav">🔗 発注 → 請求 → 入金 の流れ</div><div class="card-body">
+    ${frow('発注金額',tjh,'契約した総額（100%）',[{w:pct(tjh,base),c:'var(--nav)',l:'発注'}])}
+    ${frow('請求金額',tjs,`発注の ${fmtP(pct(tjs,tjh))} を請求`,[{w:pct(tjs,base),c:'#1565c0',l:'請求済'},{w:pct(tunbilled,base),c:'#cfd8dc',l:''}])}
+    ${frow('入金金額',tny,`請求の ${fmtP(pct(tny,tjs))} が入金`,[{w:pct(tny,base),c:'var(--green)',l:'入金済'},{w:pct(tmi,base),c:'#ef9a9a',l:''},{w:pct(tunbilled,base),c:'#eceff1',l:''}])}
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;margin-top:8px">${lg('var(--nav)','発注')}${lg('#1565c0','請求済')}${lg('var(--green)','入金済')}${lg('#ef9a9a','未収金 ¥'+fmt(tmi))}${lg('#cfd8dc','未請求残 ¥'+fmt(tunbilled))}</div>
+    <div style="margin-top:10px;padding:9px 11px;background:#f5f7fa;border-radius:8px;font-size:11px;color:#555;line-height:1.8">
+      📌 ルール：<b>発注金額 ＝ 請求金額 ＋ 未請求残</b>（まだ請求していない分）<br>
+      　　　　　<b>請求金額 ＝ 入金金額 ＋ 未収金</b>（請求済だがまだ入金されていない分）
+    </div>
+  </div></div>`;
+
+  // ── 月次推移（年度：3月〜翌2月） ──
   const items=[
-    {l:'自社請求(税込)',f:c=>fn(c.jisha_s),cls:''},
-    {l:'入金済',f:c=>fn(c.nyukin),cls:''},
+    {l:'発注金額',f:c=>fn(c.jisha_h),cls:'',hl:1},
+    {l:'請求金額',f:c=>calc(c).js,cls:''},
+    {l:'入金済',f:c=>calc(c).ny,cls:'ca'},
     {l:'未収金',f:c=>calc(c).misu,cls:'cl'},
-    {l:'協社請求計',f:c=>calc(c).ksr,cls:''},
-    {l:'未払残計',f:c=>calc(c).miharai,cls:'cw'},
-    {l:'粗利',f:c=>calc(c).arari,cls:'cp',b:true},
+    {l:'協社請求',f:c=>calc(c).ksr,cls:''},
+    {l:'粗利',f:c=>calc(c).arari,cls:'cp',hl:1},
   ];
-  const hdr=`<thead><tr><th>項目</th>${ML.map(m=>`<th>${m}</th>`).join('')}<th>累計</th></tr></thead>`;
-  const bod=items.map(item=>{
-    let cum=0;
-    const cells=MONTHS.map(m=>{
-      const my=yr,mk=getMK(my,m);
-      const v=S.cases.filter(c=>cMo(c)===mk).reduce((a,c)=>a+item.f(c),0);
-      cum+=v;
-      return `<td class="num ${item.cls}">${v?'¥'+fmt(v):''}</td>`;
-    }).join('');
-    return `<tr><td style="font-weight:${item.b?700:400};white-space:nowrap;padding:6px 8px">${item.l}</td>${cells}<td class="num" style="background:var(--nav);color:#fff;font-weight:700">¥${fmt(cum)}</td></tr>`;
-  }).join('');
-  document.getElementById('plTbl').innerHTML=hdr+`<tbody>${bod}</tbody>`;
+  const mlbl=fyMonths.map(mk=>parseInt(mk.slice(5,7))+'月');
+  const thd=`<thead><tr><th style="text-align:left">項目</th>${mlbl.map(m=>`<th>${m}</th>`).join('')}<th style="background:var(--nav2)">累計</th></tr></thead>`;
+  const tbd=items.map(it=>{let cum=0;const cells=fyMonths.map(mk=>{const v=casesFY.filter(c=>cMo(c)===mk).reduce((a,c)=>a+it.f(c),0);cum+=v;return `<td class="num ${it.cls}">${v?'¥'+fmt(v):''}</td>`;}).join('');return `<tr><td style="text-align:left;font-weight:${it.hl?800:600};white-space:nowrap;padding:6px 8px">${it.l}</td>${cells}<td class="num" style="background:var(--nav);color:#fff;font-weight:700">¥${fmt(cum)}</td></tr>`;}).join('');
+  const trend=`<div class="card"><div class="card-hdr ch-nav">📈 月次推移（${dashFY}年3月〜${dashFY+1}年2月）</div><div class="twrap"><table style="min-width:780px">${thd}<tbody>${tbd}</tbody></table></div></div>`;
 
-  const alerts=S.cases.filter(c=>calc(c).misu>0||calc(c).miharai>0).sort((a,b)=>calc(b).misu-calc(a).misu);
-  document.getElementById('alertB').innerHTML=alerts.length?alerts.map(c=>{
+  // ── 発注残高・進捗管理 ──
+  const prog=casesFY.filter(c=>calc(c).remaining>0).map(c=>({c,r:calc(c)})).sort((a,b)=>b.r.remaining-a.r.remaining);
+  const progBody=prog.length?prog.map(({c,r})=>{const p=pct(r.js,r.jh);return `<div style="padding:8px 0;border-bottom:1px solid #eee;cursor:pointer" onclick="editBillings('${c.id}',this)">
+    <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px"><span style="font-weight:700">${c.place||''} ${c.kouji||''} <span style="color:#999;font-weight:400">${c.client||''}</span></span><span style="font-weight:700;color:#1565c0;white-space:nowrap">残 ¥${fmt(r.remaining)}</span></div>
+    <div style="display:flex;height:14px;border-radius:5px;overflow:hidden;background:#e0e0e0"><div style="width:${p}%;background:#1565c0"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#888;margin-top:2px"><span>請求 ¥${fmt(r.js)} / 発注 ¥${fmt(r.jh)}</span><span>進捗 ${fmtP(p)}</span></div>
+  </div>`;}).join(''):'<div class="empty" style="padding:14px">未請求残なし ✓</div>';
+  const progCard=`<div class="card"><div class="card-hdr ch-grn">🏗️ 発注残高・進捗管理（${prog.length}件 / 残 ¥${fmt(prog.reduce((a,x)=>a+x.r.remaining,0))}）</div><div class="card-body" style="max-height:360px;overflow-y:auto">${progBody}</div></div>`;
+
+  // ── 業者別 集計・分析（協力会社） ──
+  const kyMap={};
+  casesFY.forEach(c=>(c.kyousha_list||[]).forEach(k=>{if(!k.name)return;if(!kyMap[k.name])kyMap[k.name]={cnt:0,km:0,ks:0,sh:0};kyMap[k.name].cnt++;kyMap[k.name].km+=fn(k.mitsumori);kyMap[k.name].ks+=fn(k.seikyuu);kyMap[k.name].sh+=fn(k.shiharai);}));
+  const kyArr=Object.entries(kyMap).sort((a,b)=>b[1].ks-a[1].ks);
+  const kyMax=Math.max(1,...kyArr.map(([,d])=>d.ks));
+  const kyBody=kyArr.length?kyArr.map(([n,d])=>{const mp=Math.max(0,d.ks-d.sh);return `<tr><td style="min-width:130px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.ks,kyMax)}%;height:100%;background:var(--orng)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.km)}</td><td class="num">¥${fmt(d.ks)}</td><td class="num">¥${fmt(d.sh)}</td><td class="${mp>0?'cw':'ca'}">¥${fmt(mp)}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">協力会社データなし</td></tr>';
+  const kyCard=`<div class="card"><div class="card-hdr ch-org">🤝 業者別 集計・分析（請求シェア順）</div><div class="twrap"><table style="min-width:560px"><thead><tr><th style="text-align:left">協力会社</th><th>件数</th><th>見積</th><th>請求</th><th>支払済</th><th>未払残</th></tr></thead><tbody>${kyBody}</tbody></table></div></div>`;
+
+  // ── 支払予定・資金繰り（全期間の未収/未払を支払条件で見込み） ──
+  const cf={};const noTerm={in:0,out:0};
+  S.cases.forEach(c=>{
     const r=calc(c);
-    return `<tr style="cursor:pointer" onclick="editCase('${c.id}')"><td class="ctr">${c.seikyuu_t||''}</td><td>${c.place||''}</td><td>${c.client||''}</td>
-      <td class="${r.misu>0?'cl':''}">¥${fmt(r.misu)}</td>
-      <td class="${r.miharai>0?'cw':''}">¥${fmt(r.miharai)}</td>
-      <td class="ctr">${c.kanryo==='✓'?'<span class="badge bd-g">完了</span>':'<span class="badge bd-r">未完了</span>'}</td>
-    </tr>`;
-  }).join(''):`<tr><td colspan="6" class="empty">未収金・未払残なし ✓</td></tr>`;
+    if(r.misu>0){const term=S.masters.client_terms&&S.masters.client_terms[c.client];const bd=c.seikyuu_c_date||(cMo(c)?cMo(c)+'-01':c.date);const dm=(term&&bd)?dueMonthOf(bd,term):null;if(dm){(cf[dm]=cf[dm]||{in:0,out:0}).in+=r.misu;}else noTerm.in+=r.misu;}
+    (c.kyousha_list||[]).forEach(k=>{const mp=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));if(mp<=0)return;const term=S.masters.kyousha_terms&&S.masters.kyousha_terms[k.name];const bd=c.seikyuu_c_date||c.date||(cMo(c)?cMo(c)+'-01':'');const dm=(term&&bd)?dueMonthOf(bd,term):null;if(dm){(cf[dm]=cf[dm]||{in:0,out:0}).out+=mp;}else noTerm.out+=mp;});
+  });
+  const cfKeys=Object.keys(cf).sort();let run=0;
+  const cfRows=cfKeys.map(mk=>{const d=cf[mk];const net=d.in-d.out;run+=net;return `<tr><td class="ctr">${mk}</td><td class="num ca">${d.in?'¥'+fmt(d.in):''}</td><td class="num cl">${d.out?'¥'+fmt(d.out):''}</td><td class="num ${net>=0?'cp':'cl'}">${net>=0?'+':'−'}¥${fmt(Math.abs(net))}</td><td class="num" style="font-weight:700">${run>=0?'+':'−'}¥${fmt(Math.abs(run))}</td></tr>`;}).join('');
+  const cfNote=(noTerm.in||noTerm.out)?`<tr style="background:#fafafa"><td class="ctr" style="color:#888">期日未設定</td><td class="num ca">${noTerm.in?'¥'+fmt(noTerm.in):''}</td><td class="num cl">${noTerm.out?'¥'+fmt(noTerm.out):''}</td><td colspan="2" style="font-size:10px;color:#888;padding:4px 8px">※発注者/協力会社の支払条件が未登録、または請求日未入力</td></tr>`:'';
+  const cfCard=`<div class="card"><div class="card-hdr ch-grn">💰 支払予定・資金繰り（見込み）</div><div class="twrap"><table style="min-width:540px"><thead><tr><th>月</th><th>入金予定</th><th>支払予定</th><th>差引</th><th>累計</th></tr></thead><tbody>${cfRows}${cfNote||(cfRows?'':'<tr><td colspan="5" class="empty">予定なし</td></tr>')}</tbody></table></div><div class="card-body" style="padding:8px 14px;font-size:11px;color:#888">入金予定＝未収金を発注者の入金条件で、支払予定＝協力会社の未払残を支払条件で見込み計上。条件は「設定」タブで登録できます。</div></div>`;
 
+  // ── 未収金・未払残 / 現場チェック（全期間） ──
+  const alerts=S.cases.filter(c=>calc(c).misu>0||calc(c).miharai>0).sort((a,b)=>calc(b).misu-calc(a).misu);
+  const alertBody=alerts.length?alerts.map(c=>{const r=calc(c);return `<tr style="cursor:pointer" onclick="editCase('${c.id}')"><td class="ctr">${c.seikyuu_t||''}</td><td>${c.place||''}</td><td>${c.client||''}</td><td class="${r.misu>0?'cl':''}">¥${fmt(r.misu)}</td><td class="${r.miharai>0?'cw':''}">¥${fmt(r.miharai)}</td><td class="ctr">${c.kanryo==='✓'?'<span class="badge bd-g">完了</span>':'<span class="badge bd-r">未完了</span>'}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">未収金・未払残なし ✓</td></tr>';
   const unchk=S.cases.filter(c=>c.shashin!=='✓'||c.zando!=='✓'||c.kakunin!=='✓'||c.mail!=='✓');
   const ck2=v=>v==='✓'?'<span class="badge bd-g">✓</span>':'<span class="badge bd-r">未</span>';
-  document.getElementById('chkB').innerHTML=unchk.length?unchk.slice(0,20).map(c=>`<tr>
-    <td class="ctr">${c.seikyuu_t||''}</td><td>${c.place||''}</td>
-    <td class="ctr">${ck2(c.shashin)}</td><td class="ctr">${ck2(c.zando)}</td>
-    <td class="ctr">${ck2(c.kakunin)}</td><td class="ctr">${ck2(c.mail)}</td>
-  </tr>`).join(''):`<tr><td colspan="6" class="empty">全件チェック済 ✓</td></tr>`;
+  const chkBody=unchk.length?unchk.slice(0,20).map(c=>`<tr><td class="ctr">${c.seikyuu_t||''}</td><td>${c.place||''}</td><td class="ctr">${ck2(c.shashin)}</td><td class="ctr">${ck2(c.zando)}</td><td class="ctr">${ck2(c.kakunin)}</td><td class="ctr">${ck2(c.mail)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">全件チェック済 ✓</td></tr>';
+  const bottom=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px">
+    <div class="card"><div class="card-hdr ch-red">⚠️ 未収金・未払残（全期間）</div><div class="twrap"><table style="min-width:340px"><thead><tr><th>請求月</th><th>場所</th><th>発注者</th><th>未収金</th><th>未払残</th><th>完了</th></tr></thead><tbody>${alertBody}</tbody></table></div></div>
+    <div class="card"><div class="card-hdr ch-org">📷 現場チェック未完了</div><div class="twrap"><table style="min-width:340px"><thead><tr><th>請求月</th><th>場所</th><th>写真</th><th>残土</th><th>確認</th><th>メール</th></tr></thead><tbody>${chkBody}</tbody></table></div></div>
+  </div>`;
 
-  const kyMap={};
-  S.cases.forEach(c=>(c.kyousha_list||[]).forEach(k=>{
-    if(!k.name)return;
-    if(!kyMap[k.name])kyMap[k.name]={cnt:0,km:0,ks:0,sh:0};
-    kyMap[k.name].cnt++;kyMap[k.name].km+=fn(k.mitsumori);kyMap[k.name].ks+=fn(k.seikyuu);kyMap[k.name].sh+=fn(k.shiharai);
-  }));
-  document.getElementById('kyoushaB').innerHTML=Object.entries(kyMap).sort((a,b)=>b[1].ks-a[1].ks).map(([n,d])=>{
-    const mp=Math.max(0,d.ks-d.sh);
-    return `<tr><td><b>${n}</b></td><td class="ctr">${d.cnt}件</td>
-      <td class="num">¥${fmt(d.km)}</td><td class="num">¥${fmt(d.ks)}</td>
-      <td class="num">¥${fmt(d.sh)}</td><td class="${mp>0?'cw':'ca'}">¥${fmt(mp)}</td>
-    </tr>`;
-  }).join('')||`<tr><td colspan="6" class="empty">協社データなし</td></tr>`;
+  // ── 最近の操作 ──
+  const recent=actLog.slice(0,8);
+  const logBody=recent.length?recent.map(l=>{const badgeCls={add:'add',edit:'edit',del:'del',check:'check'}[l.action]||'edit';const badgeLbl={add:'追加',edit:'編集',del:'削除',check:'チェック'}[l.action]||l.action;const t=new Date(l.time);const tss=`${(t.getMonth()+1)}/${t.getDate()} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;return `<div class="log-item"><div class="avatar sm" style="background:${l.avColor||'#2e75b6'}">${l.avIcon||l.userName.charAt(0)}</div><div class="log-body"><div style="display:flex;align-items:center;gap:6px"><span class="log-user">${l.userName}</span><span class="log-time">${tss}</span></div><div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${l.detail||''}</div></div></div>`;}).join(''):'<div class="empty">操作ログなし</div>';
+  const logCard=`<div class="card"><div class="card-hdr ch-nav">📝 最近の操作</div><div class="card-body" style="max-height:240px;overflow-y:auto">${logBody}</div></div>`;
 
-  // 最近の操作ログ（ダッシュボード）
-  const dl=document.getElementById('dashLog');
-  if(dl){
-    const recent=actLog.slice(0,8);
-    dl.innerHTML=recent.length?recent.map(l=>{
-      const badgeCls={add:'add',edit:'edit',del:'del',check:'check'}[l.action]||'edit';
-      const badgeLbl={add:'追加',edit:'編集',del:'削除',check:'チェック'}[l.action]||l.action;
-      const t=new Date(l.time);
-      const ts=`${(t.getMonth()+1)}/${t.getDate()} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;
-      return `<div class="log-item">
-        <div class="avatar sm" style="background:${l.avColor||'#2e75b6'}">${l.avIcon||l.userName.charAt(0)}</div>
-        <div class="log-body">
-          <div style="display:flex;align-items:center;gap:6px"><span class="log-user">${l.userName}</span><span class="log-time">${ts}</span></div>
-          <div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${l.detail||''}</div>
-        </div>
-      </div>`;
-    }).join(''):'<div class="empty">操作ログなし</div>';
-  }
+  root.innerHTML=head+kpi+funnel+trend+progCard+kyCard+cfCard+bottom+logCard;
+ }catch(e){
+  const root=document.getElementById('dashRoot');
+  if(root)root.innerHTML='<div class="card"><div class="card-body" style="color:#c62828">ダッシュボードの表示でエラーが発生しました（データには影響ありません）。<br><small>'+(e&&e.message||e)+'</small></div></div>';
+  console.error('renderDash error',e);
+ }
 }
 
 // ── 場所→工事現場 自動都道府県付与 ──
