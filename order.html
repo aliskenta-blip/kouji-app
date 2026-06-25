@@ -735,7 +735,8 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
       <span style="font-size:13px;color:#c62828;font-weight:600">🚨 請求漏れとしてフラグ</span>
     </label>
   </div>
-  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+  <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+    <button class="btn bp" onclick="printSeikyuuForm()" style="margin-right:auto" title="この案件の請求書を発行">🖨️請求書</button>
     <button class="btn bx" onclick="closeMov()">キャンセル</button>
     <button class="btn bg" id="btnSaveCont" onclick="saveCase(true)" style="min-width:88px">保存して続けて追加</button>
     <button class="btn bn" onclick="saveCase()" style="min-width:88px">保　存</button>
@@ -2354,6 +2355,17 @@ function renderDash(){
   const kbBody=kbArr.length?kbArr.map(([n,d])=>`<tr><td style="min-width:120px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,kbMaxV)}%;height:100%;background:var(--purp)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.js)}</td><td class="num">¥${fmt(d.ksr)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
   const kbCard=`<div class="card"><div class="card-hdr ch-gry">🧱 工種・区分別 集計</div><div class="twrap"><table style="min-width:520px"><thead><tr><th style="text-align:left">区分</th><th>件数</th><th>請求額</th><th>協力原価</th><th>粗利</th><th>率</th></tr></thead><tbody>${kbBody}</tbody></table></div></div>`;
 
+  // ── 担当者別・支店別 集計 ──
+  const groupCard=(icon,thLabel,color,keyFn)=>{
+    const mp={};
+    casesFY.forEach(c=>{const k=keyFn(c)||'（未設定）';const r=calc(c);const d=(mp[k]=mp[k]||{cnt:0,jh:0,js:0,ny:0,ar:0});d.cnt++;d.jh+=fn(c.jisha_h);d.js+=r.js;d.ny+=r.ny;d.ar+=r.arari;});
+    const arr=Object.entries(mp).sort((a,b)=>b[1].js-a[1].js);const mx=Math.max(1,...arr.map(([,d])=>d.js));
+    const body=arr.length?arr.map(([n,d])=>`<tr><td style="min-width:110px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,mx)}%;height:100%;background:${color}"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="num cp">¥${fmt(d.ar)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
+    return `<div class="card"><div class="card-hdr ch-nav">${icon}</div><div class="twrap"><table style="min-width:520px"><thead><tr><th style="text-align:left">${thLabel}</th><th>件数</th><th>発注額</th><th>請求額</th><th>入金</th><th>粗利</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
+  };
+  const taCard=groupCard('👷 担当者別 集計','担当者','#2e75b6',c=>c.tantou);
+  const brCard=groupCard('🏬 支店別 集計','支店','#7b1fa2',c=>c.branch);
+
   // ── 発注残高・進捗管理 ──
   const prog=casesFY.filter(c=>calc(c).remaining>0).map(c=>({c,r:calc(c)})).sort((a,b)=>b.r.remaining-a.r.remaining);
   const progBody=prog.length?prog.map(({c,r})=>{const p=pct(r.js,r.jh);return `<div style="padding:8px 0;border-bottom:1px solid #eee;cursor:pointer" onclick="editBillings('${c.id}',this)">
@@ -2425,7 +2437,14 @@ function renderDash(){
   const logBody=recent.length?recent.map(l=>{const badgeCls={add:'add',edit:'edit',del:'del',check:'check'}[l.action]||'edit';const badgeLbl={add:'追加',edit:'編集',del:'削除',check:'チェック'}[l.action]||l.action;const t=new Date(l.time);const tss=`${(t.getMonth()+1)}/${t.getDate()} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;return `<div class="log-item"><div class="avatar sm" style="background:${l.avColor||'#2e75b6'}">${l.avIcon||l.userName.charAt(0)}</div><div class="log-body"><div style="display:flex;align-items:center;gap:6px"><span class="log-user">${l.userName}</span><span class="log-time">${tss}</span></div><div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${l.detail||''}</div></div></div>`;}).join(''):'<div class="empty">操作ログなし</div>';
   const logCard=`<div class="card"><div class="card-hdr ch-nav">📝 最近の操作</div><div class="card-body" style="max-height:240px;overflow-y:auto">${logBody}</div></div>`;
 
-  root.innerHTML=head+kpi+funnel+nyCard+lpCard+trend+clCard+kbCard+progCard+kyCard+cfCard+bottom+logCard;
+  // ── バックアップ未実施の警告（データはブラウザ内のため消失リスク） ──
+  const bkd=bkDaysSince();
+  const bkWarn=(bkd===null||bkd>=7)?`<div style="background:#fff3e0;border:2px solid #e65100;border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="font-size:12px;color:#bf360c;font-weight:700">⚠ ${bkd===null?'まだ一度もバックアップしていません':bkd+'日間バックアップしていません'}<br><span style="font-weight:400;color:#666">データはこのブラウザ内に保存されています。消えると元に戻せません。定期的に保存し、Googleドライブ等に置いてください。</span></div>
+    <button class="btn bo btn-sm" onclick="exportBackup()" style="white-space:nowrap">💾 今すぐバックアップ</button>
+  </div>`:'';
+
+  root.innerHTML=bkWarn+head+kpi+funnel+nyCard+lpCard+trend+clCard+kbCard+taCard+brCard+progCard+kyCard+cfCard+bottom+logCard;
  }catch(e){
   const root=document.getElementById('dashRoot');
   if(root)root.innerHTML='<div class="card"><div class="card-body" style="color:#c62828">ダッシュボードの表示でエラーが発生しました（データには影響ありません）。<br><small>'+(e&&e.message||e)+'</small></div></div>';
@@ -2512,6 +2531,59 @@ function printShiharaiList(){
   <div class="np" style="margin-top:14px;text-align:center"><button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
   </body></html>`);
   w.document.close();
+}
+
+// ── 書類PDF発行（注文書・請求書）──
+function koukiStr(s,e){const f=v=>(v&&v!=='未定')?v.replace('-','/'):(v==='未定'?'未定':'');return (s||e)?`${f(s)} 〜 ${f(e)}`:'';}
+function printDoc(o){
+  const jisha=S.masters.jisha_name||'（自社名を設定で登録してください）';
+  const incl=Math.round(fn(o.amountInclTax));const excl=Math.round(incl/1.1);const tax=incl-excl;
+  const t=new Date();const td=`${t.getFullYear()}年${t.getMonth()+1}月${t.getDate()}日`;
+  const isChu=o.docType==='注文書';
+  const w=window.open('','_blank','width=860,height=900');
+  if(!w){alert('ポップアップがブロックされました。ブラウザで許可してください。');return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${o.docType}</title>
+  <style>@page{size:A4;margin:18mm}body{font-family:'Meiryo','メイリオ',serif;padding:16mm;color:#000;font-size:13px}
+  h1{text-align:center;font-size:26px;letter-spacing:10px;margin:0 0 18px}
+  .row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+  .to{font-size:18px;font-weight:700;border-bottom:1px solid #000;padding-bottom:2px;min-width:240px}
+  .from{text-align:right;font-size:12px;line-height:1.7}
+  .amt{font-size:20px;font-weight:700;border:2px solid #000;display:inline-block;padding:6px 18px;margin:10px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px}
+  th,td{border:1px solid #333;padding:7px 10px}th{background:#f0f0f0;width:120px;text-align:left}
+  .note{margin-top:14px;font-size:11px;color:#555}@media print{.np{display:none}}</style></head><body>
+  <h1>${o.docType}</h1>
+  <div class="row"><div><div class="to">${o.to}　御中</div></div><div class="from"><div>発行日：${td}</div><div style="font-size:15px;font-weight:700;margin-top:6px">${jisha}</div></div></div>
+  <div>下記の通り${isChu?'ご注文':'ご請求'}申し上げます。</div>
+  <div class="amt">${isChu?'ご注文金額':'ご請求金額'}　¥${fmt(incl)}（税込）</div>
+  <table>
+  <tr><th>件名</th><td>${o.subject||''}</td></tr>
+  <tr><th>工事場所</th><td>${o.place||''}</td></tr>
+  ${o.koushu?`<tr><th>工種・作業</th><td>${o.koushu}</td></tr>`:''}
+  ${o.kouki?`<tr><th>工期</th><td>${o.kouki}</td></tr>`:''}
+  <tr><th>税抜金額</th><td>¥${fmt(excl)}</td></tr>
+  <tr><th>消費税(10%)</th><td>¥${fmt(tax)}</td></tr>
+  <tr><th>合計（税込）</th><td style="font-weight:700">¥${fmt(incl)}</td></tr>
+  ${isChu?'':'<tr><th>お振込先</th><td style="height:34px"></td></tr>'}
+  </table>
+  <div class="note">※ この${o.docType}はアプリのデータから自動作成しています。社判・押印・振込先などは印刷後に追記してください。</div>
+  <div class="np" style="margin-top:18px;text-align:center"><button onclick="window.print()" style="padding:8px 22px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
+  </body></html>`);
+  w.document.close();
+}
+function printChumonKE(i){
+  const k=(typeof KD!=='undefined'&&KD[i])?KD[i]:null;if(!k){alert('協力会社の行が見つかりません');return;}
+  if(!k.name){alert('協力会社名を選択してください');return;}
+  const amt=fn(k.mitsumori)||fn(k.juchu)||fn(k.seikyuu);
+  if(!amt){alert('見積金額（または金額）を入力してください');return;}
+  printDoc({docType:'注文書',to:k.name,subject:vg('f_kj')||vg('f_pl'),place:vg('f_genba')||vg('f_pl'),koushu:k.type,amountInclTax:amt,kouki:koukiStr(vg('f_kouki_s'),vg('f_kouki_e'))});
+}
+function printSeikyuuForm(){
+  const cl=vg('f_cl');if(!cl){alert('発注者を選択してください');return;}
+  let amt=0;try{amt=(formBillings||[]).reduce((a,b)=>a+fn(b.amount),0);}catch(e){}
+  if(!amt)amt=Math.round(parseFloat(vg('f_jh')||0)*10000);
+  if(!amt){alert('請求金額（出来高）を入力してください');return;}
+  printDoc({docType:'請求書',to:cl,subject:vg('f_kj')||vg('f_pl'),place:vg('f_genba')||vg('f_pl'),koushu:'',amountInclTax:amt,kouki:koukiStr(vg('f_kouki_s'),vg('f_kouki_e'))});
 }
 
 // ── 場所→工事現場 自動都道府県付与 ──
@@ -2935,7 +3007,7 @@ function renderKE(){
   const el=document.getElementById('kEntries');if(!el)return;
   el.innerHTML=KD.map((k,i)=>`
     <div class="ki">
-      <div class="ki-hdr"><b>協社 ${i+1}</b><button class="btn br btn-sm" onclick="rmKE(${i})">削除</button></div>
+      <div class="ki-hdr"><b>協社 ${i+1}</b><div style="display:flex;gap:4px"><button class="btn bp btn-sm" onclick="printChumonKE(${i})" title="この協力会社への注文書を発行">🖨️注文書</button><button class="btn br btn-sm" onclick="rmKE(${i})">削除</button></div></div>
       <div class="ki-body">
         <div class="grid g2" style="gap:8px">
           <div class="fg"><label>協社名</label>
@@ -3353,7 +3425,7 @@ function doExcelBackup(){
   addLog('edit','Excelバックアップをエクスポート');
 
   lastBkTime=`${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-  try{safeLS("set",'hpro3_lastbk',lastBkTime);}catch(e){}
+  try{safeLS("set",'hpro3_lastbk',lastBkTime);safeLS("set",'hpro3_lastbk_iso',now.toISOString());}catch(e){}
   renderBkStatus();
 }
 
@@ -3365,7 +3437,12 @@ function exportBackup(){
   a.download=`発注管理バックアップ_${new Date().toISOString().slice(0,10)}.json`;
   a.click();URL.revokeObjectURL(a.href);
   addLog('edit','JSONバックアップをエクスポート');
+  const now=new Date();
+  lastBkTime=`${now.getMonth()+1}/${now.getDate()} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  try{safeLS("set",'hpro3_lastbk',lastBkTime);safeLS("set",'hpro3_lastbk_iso',now.toISOString());}catch(e){}
+  try{renderBkStatus();renderDash();}catch(e){}
 }
+function bkDaysSince(){try{const iso=safeLS("get",'hpro3_lastbk_iso');if(!iso)return null;return Math.floor((new Date()-new Date(iso))/86400000);}catch(e){return null;}}
 function importBackup(){
   const file=document.getElementById('bkFile').files[0];
   if(!file){alert('ファイルを選択してください');return;}
