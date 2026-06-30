@@ -2404,6 +2404,7 @@ function maApplyBatch(){ doBatchApply('maBatch','ma-ck',maClearSel); }
 let dashFY=null; // 事業年度の開始年（3月始まり・2月決算）。例: 2026 → 2026年3月〜2027年2月
 function curFYStart(){const d=new Date();const y=d.getFullYear(),m=d.getMonth()+1;return m>=3?y:y-1;}
 function fyStartOf(ym){if(!ym||ym.length<7)return null;const y=parseInt(ym.slice(0,4)),m=parseInt(ym.slice(5,7));return m>=3?y:y-1;}
+function caseCompletionMonth(c){const ke=(c.kouki_e&&c.kouki_e!=='未定')?c.kouki_e:'';return (ke||cMo(c)||c.date||'').slice(0,7);}
 function fyMonthKeys(startY){const a=[];for(let i=0;i<12;i++){const mn=3+i;const y=mn<=12?startY:startY+1;const m=mn<=12?mn:mn-12;a.push(getMK(y,m));}return a;}
 function fyLabel(startY){return `${startY}年3月 〜 ${startY+1}年2月期`;}
 function dashFYShift(d){if(dashFY==null)dashFY=curFYStart();dashFY+=d;renderDash();}
@@ -2416,11 +2417,21 @@ function renderDash(){
   const casesFY=S.cases.filter(c=>fySet.has(cMo(c)));
   const pct=(a,b)=>b>0?(a/b*100):0;
 
-  // ── 年度集計（請求月基準） ──
-  let tjh=0,tjs=0,tny=0,tky=0,tmp=0,tar=0;
-  casesFY.forEach(c=>{const r=calc(c);tjh+=fn(c.jisha_h);tjs+=r.js;tny+=r.ny;tky+=r.ksr;tmp+=r.miharai;tar+=r.arari;});
-  const tunbilled=Math.max(0,tjh-tjs); // 未請求残
-  const tmi=Math.max(0,tjs-tny);       // 未収金
+  // ── 年度集計（出来高は「請求月の事業年度」で按分。開発等の複数年度案件を月で分割計上） ──
+  const billByMonth={};fyMonths.forEach(mk=>billByMonth[mk]={js:0,ny:0,ksr:0});
+  let tjs=0,tny=0,tky=0,tunbilled=0;
+  S.cases.forEach(c=>{
+    const bl=(c.billings&&c.billings.length)?c.billings:(fn(c.jisha_s)>0?[{month:(c.seikyuu_t||c.date||'').slice(0,7),amount:c.jisha_s,nyukin:c.nyukin}]:[]);
+    let billed=0;
+    bl.forEach(b=>{const mk=(b.month||'').slice(0,7);const amt=fn(b.amount);billed+=amt;if(billByMonth[mk]){billByMonth[mk].js+=amt;billByMonth[mk].ny+=fn(b.nyukin);tjs+=amt;tny+=fn(b.nyukin);}});
+    (c.kyousha_list||[]).forEach(k=>{const kbl=(k.billings&&k.billings.length)?k.billings:(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);kbl.forEach(b=>{const mk=(b.month||'').slice(0,7);if(billByMonth[mk]){billByMonth[mk].ksr+=fn(b.amount);tky+=fn(b.amount);}});});
+    const remaining=Math.max(0,fn(c.jisha_h)-billed);   // まだ請求していない残り
+    if(remaining>0&&fySet.has(caseCompletionMonth(c)))tunbilled+=remaining;  // 完成する事業年度に未請求残を計上
+  });
+  let tmp=0;casesFY.forEach(c=>{tmp+=calc(c).miharai;});
+  const tjh=tjs+tunbilled;          // 発注金額(当期) ＝ 当期の請求 ＋ 当期に完成する案件の未請求残
+  const tmi=Math.max(0,tjs-tny);    // 未収金 ＝ 請求 − 入金
+  const tar=tjs-tky;                // 粗利(簡易) ＝ 請求 − 協社請求
   const base=Math.max(tjh,tjs,tny,1);
 
   // ── 年度切替＋見出し ──
@@ -2460,19 +2471,18 @@ function renderDash(){
     </div>
   </div></div>`;
 
-  // ── 月次推移（年度：3月〜翌2月） ──
+  // ── 月次推移（年度：3月〜翌2月・出来高は請求月で計上） ──
   const items=[
-    {l:'発注金額',f:c=>fn(c.jisha_h),cls:'',hl:1},
-    {l:'請求金額',f:c=>calc(c).js,cls:''},
-    {l:'入金済',f:c=>calc(c).ny,cls:'ca'},
-    {l:'未収金',f:c=>calc(c).misu,cls:'cl'},
-    {l:'協社請求',f:c=>calc(c).ksr,cls:''},
-    {l:'粗利',f:c=>calc(c).arari,cls:'cp',hl:1},
+    {l:'請求金額(出来高)',f:d=>d.js,cls:'',hl:1},
+    {l:'入金済',f:d=>d.ny,cls:'ca'},
+    {l:'未収金',f:d=>Math.max(0,d.js-d.ny),cls:'cl'},
+    {l:'協社請求',f:d=>d.ksr,cls:''},
+    {l:'粗利',f:d=>d.js-d.ksr,cls:'cp',hl:1},
   ];
   const mlbl=fyMonths.map(mk=>parseInt(mk.slice(5,7))+'月');
   const thd=`<thead><tr><th style="text-align:left">項目</th>${mlbl.map(m=>`<th>${m}</th>`).join('')}<th style="background:var(--nav2)">累計</th></tr></thead>`;
-  const tbd=items.map(it=>{let cum=0;const cells=fyMonths.map(mk=>{const v=casesFY.filter(c=>cMo(c)===mk).reduce((a,c)=>a+it.f(c),0);cum+=v;return `<td class="num ${it.cls}">${v?'¥'+fmt(v):''}</td>`;}).join('');return `<tr><td style="text-align:left;font-weight:${it.hl?800:600};white-space:nowrap;padding:6px 8px">${it.l}</td>${cells}<td class="num" style="background:var(--nav);color:#fff;font-weight:700">¥${fmt(cum)}</td></tr>`;}).join('');
-  const trend=`<div class="card"><div class="card-hdr ch-nav">📈 月次推移（${dashFY}年3月〜${dashFY+1}年2月）</div><div class="twrap"><table style="min-width:780px">${thd}<tbody>${tbd}</tbody></table></div></div>`;
+  const tbd=items.map(it=>{let cum=0;const cells=fyMonths.map(mk=>{const v=it.f(billByMonth[mk]);cum+=v;return `<td class="num ${it.cls}">${v?'¥'+fmt(v):''}</td>`;}).join('');return `<tr><td style="text-align:left;font-weight:${it.hl?800:600};white-space:nowrap;padding:6px 8px">${it.l}</td>${cells}<td class="num" style="background:var(--nav);color:#fff;font-weight:700">¥${fmt(cum)}</td></tr>`;}).join('');
+  const trend=`<div class="card"><div class="card-hdr ch-nav">📈 月次推移（${dashFY}年3月〜${dashFY+1}年2月・出来高は請求月で計上）</div><div class="twrap"><table style="min-width:780px">${thd}<tbody>${tbd}</tbody></table></div></div>`;
 
   // ── 発注者別 年間分析 ──
   const clMap={};
@@ -2591,13 +2601,22 @@ function renderDash(){
 function printDashSummary(){
   if(dashFY==null)dashFY=curFYStart();
   const fyMonths=fyMonthKeys(dashFY),fySet=new Set(fyMonths);
-  const cs=S.cases.filter(c=>fySet.has(cMo(c)));
-  let tjh=0,tjs=0,tny=0,tky=0,tar=0;cs.forEach(c=>{const r=calc(c);tjh+=fn(c.jisha_h);tjs+=r.js;tny+=r.ny;tky+=r.ksr;tar+=r.arari;});
-  const tmi=Math.max(0,tjs-tny);
+  const cs=S.cases.filter(c=>fySet.has(cMo(c)));   // 発注者別/区分別/件数は完成年度ベース
+  // KPI・月次推移は出来高（請求月の事業年度）で按分
+  const billByMonth={};fyMonths.forEach(mk=>billByMonth[mk]={js:0,ny:0,ksr:0});
+  let tjs=0,tny=0,tky=0,tunbilled=0;
+  S.cases.forEach(c=>{
+    const bl=(c.billings&&c.billings.length)?c.billings:(fn(c.jisha_s)>0?[{month:(c.seikyuu_t||c.date||'').slice(0,7),amount:c.jisha_s,nyukin:c.nyukin}]:[]);
+    let billed=0;
+    bl.forEach(b=>{const mk=(b.month||'').slice(0,7);const amt=fn(b.amount);billed+=amt;if(billByMonth[mk]){billByMonth[mk].js+=amt;billByMonth[mk].ny+=fn(b.nyukin);tjs+=amt;tny+=fn(b.nyukin);}});
+    (c.kyousha_list||[]).forEach(k=>{const kbl=(k.billings&&k.billings.length)?k.billings:(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);kbl.forEach(b=>{const mk=(b.month||'').slice(0,7);if(billByMonth[mk]){billByMonth[mk].ksr+=fn(b.amount);tky+=fn(b.amount);}});});
+    const remaining=Math.max(0,fn(c.jisha_h)-billed);if(remaining>0&&fySet.has(caseCompletionMonth(c)))tunbilled+=remaining;
+  });
+  const tjh=tjs+tunbilled,tmi=Math.max(0,tjs-tny),tar=tjs-tky;
   const jisha=S.masters.jisha_name||'';
-  const items=[['発注金額',c=>fn(c.jisha_h)],['請求金額',c=>calc(c).js],['入金額',c=>calc(c).ny],['未収金',c=>calc(c).misu],['協力会社請求',c=>calc(c).ksr],['粗利',c=>calc(c).arari]];
+  const items=[['請求金額(出来高)',d=>d.js],['入金額',d=>d.ny],['未収金',d=>Math.max(0,d.js-d.ny)],['協力会社請求',d=>d.ksr],['粗利',d=>d.js-d.ksr]];
   const mhead=fyMonths.map(mk=>`<th>${parseInt(mk.slice(5,7))}月</th>`).join('');
-  const mrows=items.map(([l,f])=>{let cum=0;const tds=fyMonths.map(mk=>{const v=cs.filter(c=>cMo(c)===mk).reduce((a,c)=>a+f(c),0);cum+=v;return `<td style="text-align:right">${v?fmt(v):''}</td>`;}).join('');return `<tr><td>${l}</td>${tds}<td style="text-align:right;font-weight:700">${fmt(cum)}</td></tr>`;}).join('');
+  const mrows=items.map(([l,f])=>{let cum=0;const tds=fyMonths.map(mk=>{const v=f(billByMonth[mk]);cum+=v;return `<td style="text-align:right">${v?fmt(v):''}</td>`;}).join('');return `<tr><td>${l}</td>${tds}<td style="text-align:right;font-weight:700">${fmt(cum)}</td></tr>`;}).join('');
   const clMap={};cs.forEach(c=>{const cl=c.client||'（未設定）';const r=calc(c);const d=(clMap[cl]=clMap[cl]||{cnt:0,jh:0,js:0,ny:0,ar:0});d.cnt++;d.jh+=fn(c.jisha_h);d.js+=r.js;d.ny+=r.ny;d.ar+=r.arari;});
   const clRows=Object.entries(clMap).sort((a,b)=>b[1].js-a[1].js).map(([n,d])=>`<tr><td>${n}</td><td style="text-align:center">${d.cnt}</td><td style="text-align:right">${fmt(d.jh)}</td><td style="text-align:right">${fmt(d.js)}</td><td style="text-align:right">${fmt(d.ny)}</td><td style="text-align:right">${fmt(Math.max(0,d.js-d.ny))}</td><td style="text-align:right">${fmt(d.ar)}</td></tr>`).join('');
   const kbMap={};cs.forEach(c=>{const kb=c.kubun||'（未分類）';const r=calc(c);const d=(kbMap[kb]=kbMap[kb]||{cnt:0,js:0,ksr:0,ar:0});d.cnt++;d.js+=r.js;d.ksr+=r.ksr;d.ar+=r.arari;});
