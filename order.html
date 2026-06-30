@@ -501,6 +501,15 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
         <option value="koshin">許可更新用</option>
       </select>
     </div>
+    <div class="fg" id="krc_ratio" style="flex:0 0 auto;min-width:150px">
+      <label style="font-size:11px;font-weight:700;color:#555">記載割合</label>
+      <select id="kr_ratio" onchange="renderKeireki()" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px">
+        <option value="0.5">5割超まで</option>
+        <option value="0.6" selected>6割超まで</option>
+        <option value="0.7">7割超まで</option>
+        <option value="1">10割（全件記載）</option>
+      </select>
+    </div>
     <div class="fg" id="krc_type" style="flex:0 0 auto;min-width:180px">
       <label style="font-size:11px;font-weight:700;color:#555">建設工事の種類</label>
       <select id="kr_type" onchange="renderKeireki()" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"></select>
@@ -1581,7 +1590,11 @@ function tgCk(id,field,el){
   }
   c[field]=newVal;
   // 請求済チェック日を記録
-  if(field==='seikyuu_c'){c.seikyuu_c_date=c[field]==='✓'?new Date().toISOString().slice(0,10):'';}
+  if(field==='seikyuu_c'){
+    c.seikyuu_c_date=c[field]==='✓'?new Date().toISOString().slice(0,10):'';
+    // 請求を出した段階＝工期終了（完成月）を自動入力。空欄のときだけ（手入力は尊重）
+    if(c[field]==='✓'&&!c.kouki_e){c.kouki_e=getMK(getYr(),getMo());}
+  }
   // 完工（完了）＝累計請求が発注金額に達したかで自動判定
   if(isDone(c)){const autoMonth=c.date||'';if(!c.kouki_s)c.kouki_s=autoMonth;if(!c.kouki_e)c.kouki_e=autoMonth;}
   c.kanryo=isDone(c)?'✓':'';
@@ -1959,6 +1972,7 @@ function renderMonthly(){
     <th class="pg sortable" title="請求書を出したらチェック（請求済）" onclick="doSort('seikyuu_c','monthly')">請済</th>
     <th class="pg sortable" title="入金を確認したらチェック（入金済）" onclick="doSort('nyukin_c','monthly')">入済</th>
     <th class="pg" title="現場写真を撮ったらチェック">写</th><th class="pg" title="残土伝票を受け取ったらチェック">伝票</th>
+    <th class="pg" title="その月に着工したらチェック→工期開始に自動入力（再クリックで解除）。手入力も可">着工</th>
     <th class="gg sortable" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します" onclick="doSort('kanryo','monthly')">完了</th>
     <th>備考</th><th>操作</th>
   </tr>`;
@@ -2014,6 +2028,8 @@ function renderMonthly(){
     const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk&&!hasCurAct;
     const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
     const doneCk=isDone(c)?`<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します">完</span>`;
+    const chakkouOn=(c.kouki_s||'').slice(0,7)===mk;
+    const chakkouCk=`<span class="ck pk${chakkouOn?' on':''}" style="cursor:pointer" title="${chakkouOn?'この月を工期開始に設定済み（再クリックで解除）':'この月（'+mk+'）に着工→工期開始に自動入力'}" onclick="togChakkou('${c.id}')">${chakkouOn?'✓':'着'}</span>`;
     const mainRow=`<tr class="${i%2?'alt':''}${isMorei?' style="background:#fff8e1"':''}">
       <td class="ctr" style="cursor:pointer;font-size:11px" id="exp-${c.id}" onclick="togSub('${c.id}')">${r.cnt>0?'▶':''}</td>
       <td class="ctr">${i+1}</td><td class="ctr" ${ec} onclick="editCell('${c.id}','date',this,'month')">${carryMark}${(c.date||'').slice(5)}</td>
@@ -2043,6 +2059,7 @@ function renderMonthly(){
       <td class="ctr">${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
       <td class="ctr">${mkCk2(c.shashin,c.id,'shashin','p','写')}</td>
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
+      <td class="ctr">${chakkouCk}</td>
       <td class="ctr">${doneCk}</td>
       <td style="cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${(c.biko||'').replace(/"/g,'&quot;')}　クリックでメモ編集" onclick="editMemo('${c.id}',this)">${c.biko?'📝':'＋'}${isMorei?'<span style="color:#c62828;font-size:9px;font-weight:700"> ⚠'+daysSinceSeikyuu+'日</span>':''}</td>
       <td class="ctr" style="white-space:nowrap">
@@ -2055,7 +2072,7 @@ function renderMonthly(){
     </tr>`;
     return mainRow+subRows;
   });
-  document.getElementById('mBody').innerHTML=rows.join('')||`<tr><td colspan="29" class="empty">この月のデータなし<br><small>「＋ 案件追加」から入力してください</small></td></tr>`;
+  document.getElementById('mBody').innerHTML=rows.join('')||`<tr><td colspan="30" class="empty">この月のデータなし<br><small>「＋ 案件追加」から入力してください</small></td></tr>`;
 
   const tr2=tot.js>0?tot.ar/tot.js*100:0;
   document.getElementById('mFoot').innerHTML=`<tr class="tot">
@@ -2066,7 +2083,7 @@ function renderMonthly(){
     <td class="num">¥${fmt(tot.mp)}</td>
     <td class="num">¥${fmt(tot.ny)}</td><td class="num" style="font-size:10px;color:#888">¥${fmt(tot.nyPrev)}</td>
     <td class="num big">¥${fmt(tot.ar)}</td><td class="ctr">${fmtP(tr2)}</td>
-    <td class="num">${tot.m3||''}</td><td colspan="7"></td>
+    <td class="num">${tot.m3||''}</td><td colspan="8"></td>
   </tr>`;
 
   // SP カード
@@ -2097,6 +2114,7 @@ function renderMonthly(){
           ${mkCk2(c.kakunin,c.id,'kakunin','p','確認')}
           ${mkCk2(c.mail,c.id,'mail','p','メール')}
           ${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入金')}
+          ${(c.kouki_s||'').slice(0,7)===mk?`<span class="ck pk on" style="cursor:pointer" title="この月を工期開始に設定済（再クリックで解除）" onclick="togChakkou('${c.id}')">✓着工</span>`:`<span class="ck pk" style="cursor:pointer" title="この月に着工→工期開始に自動入力" onclick="togChakkou('${c.id}')">着工</span>`}
           ${isDone(c)?'<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓完了</span>':'<span class="ck gk" style="opacity:.5;cursor:default" title="発注額まで請求し未収金ゼロで完了">完了</span>'}
           ${mkCk2(c.zan_s,c.id,'zan_s','g','残請求')}
           ${mkCk2(c.mi_s,c.id,'mi_s','g','未請求')}
@@ -3354,6 +3372,15 @@ function delCase(id){
   S.cases=S.cases.filter(c=>c.id!==id);sv();renderAll();
 }
 function updField(id,field,val){const c=S.cases.find(x=>x.id===id);if(!c)return;c[field]=val;sv();}
+// 着工チェック：表示中の月を工期開始に自動入力（再クリックで解除）。手入力の工期はそのまま使える
+function togChakkou(id){
+  if(!canEdit())return;
+  const c=S.cases.find(x=>x.id===id);if(!c)return;
+  const mk=getMK(getYr(),getMo());
+  if((c.kouki_s||'').slice(0,7)===mk){ c.kouki_s=''; addLog('check',`${c.place||''}の「着工（工期開始）」を解除`); }
+  else { c.kouki_s=mk; addLog('check',`${c.place||''}の「着工（工期開始）」を${mk}に設定`); }
+  sv();renderMonthly();
+}
 // 月（YYYY-MM）を delta か月ずらす
 function shiftYM(ym,delta){
   if(!ym||ym.length<7)return ym;
@@ -3811,6 +3838,7 @@ function setKrDoc(d){
   });
   const show=(id,on)=>{const e=document.getElementById(id);if(e)e.style.display=on?'':'none';};
   show('krc_mode',d==='keireki');      // 出力モードは経歴書のみ
+  show('krc_ratio',d==='keireki');     // 記載割合は経歴書のみ
   show('krc_type',d==='keireki');      // 工事種類は経歴書のみ
   show('krc_year',d!=='jyuchu');        // 受注表は現時点スナップなので年度不要
   show('krc_word',d==='keireki');       // Wordは経歴書(様式第二号)のみ
@@ -4094,18 +4122,22 @@ function keirekiBuild(mode,gyoshu,yr,isTaxExcl){
   const allTotal=rowsAll.reduce((s,r)=>s+r.amt,0);
   const motoRows=rowsAll.filter(r=>r.isMoto);
   const motoTotal=motoRows.reduce((s,r)=>s+r.amt,0);
+  const ratio=parseFloat(vg('kr_ratio'))||TH.ratioKessan;   // 記載割合（5/6/7割 or 10割=全件）
   let listed,steps=null;
-  if(mode==='keishin'){
-    const r1=keishinPick(motoRows,TH.ratioMoto*motoTotal,0,0);          // ステップ1：元請7割
+  if(ratio>=1){
+    listed=rowsAll.slice();                                  // 10割：全件記載（その他なし）
+  }else if(mode==='keishin'){
+    const r1=keishinPick(motoRows,TH.ratioMoto*motoTotal,0,0);          // ステップ1：元請7割（法令）
     const ids=new Set(r1.sel.map(x=>x.c.id));
     const remain=rowsAll.filter(x=>!ids.has(x.c.id));
-    const r2=keishinPick(remain,TH.ratioAll*allTotal,r1.cum,r1.keibiCount); // ステップ2：全体7割（通算）
+    const allRatio=Math.max(TH.ratioAll,ratio);                          // 経審の全体は最低7割
+    const r2=keishinPick(remain,allRatio*allTotal,r1.cum,r1.keibiCount);  // ステップ2：全体（通算）
     listed=r1.sel.concat(r2.sel);
     steps={step1:r1.sel.length,step2:r2.sel.length,keibi:r2.keibiCount,reached:r2.reached};
   }else{
-    // 決算/更新：金額の大きい順に「完成工事高の閾値超」まで個別記載、残りは「その他」に一括
+    // 決算/更新：金額の大きい順に「完成工事高の選択割合超」まで個別記載、残りは「その他」に一括
     const sel=[];let cum=0;
-    for(const r of rowsAll){ if(cum>TH.ratioKessan*allTotal)break; sel.push(r); cum+=r.amt; }
+    for(const r of rowsAll){ if(cum>ratio*allTotal)break; sel.push(r); cum+=r.amt; }
     listed=sel;
   }
   // 上位3件 裏付けフラグ（記載分の金額上位）
@@ -4129,10 +4161,12 @@ function krGyoshuListFor(mode,type,yr,isTaxExcl){
 }
 function krModeNote(mode,yr,tax){
   const lbl=(KEIREKI_MODES[mode]||{}).label||mode;
+  const ratio=parseFloat(vg('kr_ratio'))||TH.ratioKessan;
+  const wari=ratio>=1?'10割（全件記載・その他なし）':(Math.round(ratio*10)+'割超まで個別記載→残りは「その他 ○件 一括」');
   let body='';
-  if(mode==='keishin')body='元請の完成工事高7割超→全体の完成工事高7割超まで2段階で記載。軽微（税込500万未満）は通算10件まで。残りは「その他 ○件 一括」にまとめ。<b>★</b>印の上位3件は契約書・注文書・請求書等の裏付けが必要（行政庁により5件のことも）。受審対象業種は実績ゼロでも「工事実績なし」で1枚出力。';
-  else if(mode==='kessan')body='元請下請の区別なく金額の大きい順に、完成工事高の概ね6割超まで個別記載し、残りは「その他 ○件 一括」にまとめて記載。未成工事は別掲。記載割合は許可行政庁（千葉県）の運用により異なります（定数で変更可）。';
-  else body='許可更新では既提出の決算変更届で足りる場合があります（作り直し不要のことも）。千葉県の運用を要確認。出力内容は事業年度終了届と同じです。';
+  if(mode==='keishin')body=`元請の完成工事高7割超→全体の完成工事高（${ratio>=1?'10割＝全件':'7割以上'}）まで2段階で記載。軽微（税込500万未満）は通算10件まで。${ratio>=1?'':'残りは「その他 ○件 一括」にまとめ。'}<b>★</b>印の上位3件は契約書・注文書・請求書等の裏付けが必要（行政庁により5件のことも）。受審対象業種は実績ゼロでも「工事実績なし」で1枚出力。`;
+  else if(mode==='kessan')body=`元請下請の区別なく金額の大きい順に、完成工事高の ${wari}。未成工事は別掲。記載割合は上の「記載割合」で変更できます（許可行政庁＝千葉県の運用により異なります）。`;
+  else body=`許可更新では既提出の決算変更届で足りる場合があります（作り直し不要のことも）。出力内容は事業年度終了届と同じ（記載割合 ${wari}）。千葉県の運用を要確認。`;
   return `<div class="card" style="margin-bottom:12px;border-left:4px solid #1f4e79"><div class="card-body" style="font-size:11px;color:#444;line-height:1.6"><b>${lbl}</b>／対象事業年度：<b>${fyLabel(yr)}</b>／税区分：<b>${tax}</b><br>${body}<br><span style="color:#c62828">※制度・千葉県運用で変わりえます。最終確認は手引き・行政書士等によること。</span></div></div>`;
 }
 function krMiseiHtml(yr,isTaxExcl){
