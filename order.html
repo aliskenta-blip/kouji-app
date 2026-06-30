@@ -1404,7 +1404,7 @@ const TH={
   keibiKenchiku:15000000,// 建築一式の軽微：税込1500万円未満
   ratioMoto:0.70,       // 経審ステップ1：元請完成工事高の7割超
   ratioAll:0.70,        // 経審ステップ2：全体完成工事高の7割超
-  ratioKessan:0.50,     // 事業年度終了届：全体の5割目安
+  ratioKessan:0.60,     // 事業年度終了届/更新：全体の6割超まで個別記載→残りはその他にまとめ
   keibiMaxCount:10,     // 軽微の通算記載上限（経審）
   cap:100000000000,     // 1件1,000億円で打切り
   topUragaki:3,         // 上位3件は裏付け対象（行政庁により5件も）
@@ -1425,7 +1425,28 @@ const GYOSHU_HELP={
   'しゅんせつ':'河川・港湾等の水底をさらう工事。',
   '水道施設':'上下水道の「施設」（浄水場・配水管・下水本管等の公共インフラ）。建物給排水や各戸の給水装置・水道取り出しは「管工事」で別業種。混同注意。',
   '管':'⚠無許可業種。建物給排水・空調・ガス配管、給水装置、水道取り出し、仮設水道等。アイルは無許可のため税込500万円未満の軽微のみ可（500万以上は建設業法違反）。軽微なら適法・経歴書にも計上。独立発注なら管で単独計上、土木等に付随する仮設給水は親工事に含めてよい。',
-  '建築一式':'元請で総合的に企画・調整して建築物を造る一式工事（軽微は税込1,500万円未満）。'
+  '建築一式':'元請で総合的に企画・調整して建築物を造る一式工事（軽微は税込1,500万円未満）。',
+  '大工':'木材の加工・取付けで工作物を造る/取付ける（型枠大工・造作・木工事）。',
+  '左官':'壁・床にモルタル・しっくい・プラスター・繊維等を塗る。吹付け・ラス張りも。',
+  '屋根':'瓦・スレート・金属板等で屋根をふく（屋根断熱・屋根ふき）。',
+  '電気':'発電・送配電・引込線・構内電気・照明・避雷針等の電気設備工事。',
+  'タイル・れんが・ブロック':'れんが・コンクリートブロック・タイルで工作物を築造、または張付け。※構造のブロック積み（擁壁・土留め）はとび・土工。',
+  '鉄筋':'棒鋼等の鋼材を加工・組立て・接合（鉄筋加工組立・ガス圧接）。',
+  '板金':'金属薄板の加工取付け・建築板金（雨どい・ダクト板金等）。',
+  'ガラス':'ガラスの加工・取付け（ガラス工事・サッシへのガラスはめ込み）。',
+  '塗装':'塗料・塗材を吹付け・塗付け・張付け（外壁/鉄骨塗装・ライン引き・布張り）。',
+  '防水':'アスファルト・モルタル・シーリング・塗膜等で防水（屋上・地下・外壁）。',
+  '内装仕上':'木材・石膏ボード・吸音板・壁紙・床仕上・畳・ふすま等で内装仕上げ。',
+  '機械器具設置':'機械器具の組立て等で設置（プラント・運搬機器・内燃力発電・公害防止装置等）。',
+  '熱絶縁':'工作物・設備の熱絶縁（断熱・保温保冷・冷凍冷蔵の断熱）。',
+  '電気通信':'有線・無線通信、データ通信、ネットワーク、放送機械等の電気通信設備。',
+  '造園':'整地・植栽・植樹・景石・園路・水景等で庭園・公園・緑地を築造。',
+  'さく井':'さく井機械等で井戸の掘削・揚水設備の設置（温泉・地下水・ボーリング）。',
+  '建具':'工作物に木製・金属製の建具を取付け（サッシ・シャッター・ドア・襖等）。',
+  '消防施設':'火災警報・消火・避難・消火活動に必要な設備の設置（スプリンクラー・消火栓等）。',
+  '清掃施設':'し尿処理施設・ごみ処理施設の設置。',
+  '解体':'工作物の解体（とび・土工と区別。建物等の取り壊し）。',
+  'その他':'上記いずれにも当てはまらない／判定保留。'
 };
 // 工事経歴書 出力モード
 const KEIREKI_MODES={
@@ -2930,7 +2951,7 @@ function updateSels(){
     const s=document.getElementById(sid);if(!s)return;
     const cur=s.value;
     const kt=S.masters.kouji_type||[];
-    const opt=(v,mark)=>`<option value="${v}"${v===cur?' selected':''}>${mark}${v}</option>`;
+    const opt=(v,mark)=>`<option value="${v}"${v===cur?' selected':''}${GYOSHU_HELP[v]?` title="${GYOSHU_HELP[v].replace(/"/g,'&quot;')}"`:''}>${mark}${v}</option>`;
     const kyoka=AILE_KYOKA.filter(v=>kt.includes(v));
     const others=kt.filter(v=>!AILE_KYOKA_SET.has(v)&&v!==GYOSHU_NOPERMIT);
     const blankLabel=sid==='kr_type'?'すべての業種':'— 選択 —';
@@ -4082,13 +4103,20 @@ function keirekiBuild(mode,gyoshu,yr,isTaxExcl){
     listed=r1.sel.concat(r2.sel);
     steps={step1:r1.sel.length,step2:r2.sel.length,keibi:r2.keibiCount,reached:r2.reached};
   }else{
-    listed=rowsAll.slice();                                              // 決算/更新：区別なし金額降順・全件
+    // 決算/更新：金額の大きい順に「完成工事高の閾値超」まで個別記載、残りは「その他」に一括
+    const sel=[];let cum=0;
+    for(const r of rowsAll){ if(cum>TH.ratioKessan*allTotal)break; sel.push(r); cum+=r.amt; }
+    listed=sel;
   }
   // 上位3件 裏付けフラグ（記載分の金額上位）
   const top3ids=new Set(listed.slice().sort((a,b)=>b.amt-a.amt).slice(0,TH.topUragaki).map(r=>r.c.id));
   listed.forEach(r=>{r.uragaki=top3ids.has(r.c.id);});
-  return {gyoshu,empty:false,mode,rows:listed,steps,allCount:all.length,
-    total:{all:allTotal,moto:motoTotal,shita:allTotal-motoTotal},half:TH.ratioKessan*allTotal};
+  // 記載しなかった残り＝「その他 ○件」に一括（件数・請負代金合計・うち元請）
+  const listedIds=new Set(listed.map(r=>r.c.id));
+  const rest=rowsAll.filter(r=>!listedIds.has(r.c.id));
+  const other=rest.length?{count:rest.length,sum:rest.reduce((s,r)=>s+r.amt,0),moto:rest.filter(r=>r.isMoto).reduce((s,r)=>s+r.amt,0)}:null;
+  return {gyoshu,empty:false,mode,rows:listed,other,steps,allCount:all.length,
+    total:{all:allTotal,moto:motoTotal,shita:allTotal-motoTotal}};
 }
 // 出力対象の業種リスト（type指定時はその1業種、未指定=モード別）
 function krGyoshuListFor(mode,type,yr,isTaxExcl){
@@ -4102,8 +4130,8 @@ function krGyoshuListFor(mode,type,yr,isTaxExcl){
 function krModeNote(mode,yr,tax){
   const lbl=(KEIREKI_MODES[mode]||{}).label||mode;
   let body='';
-  if(mode==='keishin')body='元請の完成工事高7割超→全体の完成工事高7割超まで2段階で記載。軽微（税込500万未満）は通算10件まで。<b>★</b>印の上位3件は契約書・注文書・請求書等の裏付けが必要（行政庁により5件のことも）。受審対象業種は実績ゼロでも「工事実績なし」で1枚出力。';
-  else if(mode==='kessan')body='元請下請の区別なく金額の大きい順。完成工事高の概ね5割超（青線）まで記載が目安（軽微が少なければ全件でも可）。未成工事は別掲。記載量は許可行政庁（千葉県）の運用により異なります。';
+  if(mode==='keishin')body='元請の完成工事高7割超→全体の完成工事高7割超まで2段階で記載。軽微（税込500万未満）は通算10件まで。残りは「その他 ○件 一括」にまとめ。<b>★</b>印の上位3件は契約書・注文書・請求書等の裏付けが必要（行政庁により5件のことも）。受審対象業種は実績ゼロでも「工事実績なし」で1枚出力。';
+  else if(mode==='kessan')body='元請下請の区別なく金額の大きい順に、完成工事高の概ね6割超まで個別記載し、残りは「その他 ○件 一括」にまとめて記載。未成工事は別掲。記載割合は許可行政庁（千葉県）の運用により異なります（定数で変更可）。';
   else body='許可更新では既提出の決算変更届で足りる場合があります（作り直し不要のことも）。千葉県の運用を要確認。出力内容は事業年度終了届と同じです。';
   return `<div class="card" style="margin-bottom:12px;border-left:4px solid #1f4e79"><div class="card-body" style="font-size:11px;color:#444;line-height:1.6"><b>${lbl}</b>／対象事業年度：<b>${fyLabel(yr)}</b>／税区分：<b>${tax}</b><br>${body}<br><span style="color:#c62828">※制度・千葉県運用で変わりえます。最終確認は手引き・行政書士等によること。</span></div></div>`;
 }
@@ -4139,14 +4167,10 @@ function krSheetHtml(b,mode,tax){
   if(b.empty){
     return `<div class="card" style="margin-bottom:12px"><div class="card-hdr ch-nav"><span>${b.gyoshu}　工事経歴書（様式第二号）</span><span style="font-size:11px;opacity:.75">${mode==='keishin'?'受審対象':''}</span></div><div style="padding:18px;text-align:center;color:#999">工事実績なし</div></div>`;
   }
-  let cum=0;const half=b.half||0;let halfMarked=false;
   const rows=b.rows.map(r=>{
     const amt=sen(r.amt);const motoAmt=r.isMoto?amt:'';
-    cum+=r.amt;
     const star=(mode==='keishin'&&r.uragaki)?'<span title="裏付け要" style="color:#c62828">★</span>':'';
-    let mark='';
-    if(mode!=='keishin'&&!halfMarked&&cum>half){halfMarked=true;mark=' style="border-bottom:2px solid #1f4e79"';}
-    return `<tr${mark}>
+    return `<tr>
       <td>${star}${r.c.client||''}</td>
       <td>${r.c.kouji||''}</td>
       <td style="text-align:center">${r.c.moto_shita||''}</td>
@@ -4160,9 +4184,14 @@ function krSheetHtml(b,mode,tax){
       <td style="text-align:center">${toReiwa(r.c.kouki_e)}</td>
     </tr>`;
   }).join('');
+  // 「その他 ○件 一括」行（閾値を超えた残りの工事をまとめて記載）
+  const otherRow=b.other?`<tr style="background:#fffbe6">
+      <td style="font-weight:700">その他</td><td>（${b.other.count}件 一括）</td><td colspan="5" style="text-align:center;color:#888;font-size:10px">金額の小さい工事をまとめて記載</td>
+      <td style="text-align:right;font-weight:700">${fmt(sen(b.other.sum))}</td>
+      <td style="text-align:right">${b.other.moto?fmt(sen(b.other.moto)):''}</td><td colspan="2"></td></tr>`:'';
   const lsAll=sen(b.rows.reduce((s,r)=>s+r.amt,0));
   const lsMoto=sen(b.rows.filter(r=>r.isMoto).reduce((s,r)=>s+r.amt,0));
-  const extraNote=(mode!=='keishin'&&half>0)?`<div style="padding:4px 10px;font-size:10px;color:#1f4e79">— 青線まで＝完成工事高の約5割（${fmt(sen(half))}千円）—</div>`:'';
+  const extraNote='';
   return `<div class="card" style="margin-bottom:14px">
     <div class="card-hdr ch-nav"><span>${b.gyoshu}　工事経歴書（様式第二号）</span><span style="font-size:11px;opacity:.75">記載 ${b.rows.length}件 / 全${b.allCount}件　（ ${tax} ）</span></div>
     <div class="twrap"><table class="sample-kr" style="width:100%;border-collapse:collapse;font-size:11px;min-width:900px">
@@ -4173,7 +4202,7 @@ function krSheetHtml(b,mode,tax){
         <th style="padding:6px 8px;width:45px">主任/<br>監理</th><th style="padding:6px 8px;width:80px">請負代金<br>（千円）</th>
         <th style="padding:6px 8px;width:80px">うち元請<br>（千円）</th><th style="padding:6px 8px;width:55px">着工</th><th style="padding:6px 8px;width:55px">完成</th>
       </tr></thead>
-      <tbody>${rows||`<tr><td colspan="11" style="text-align:center;padding:18px;color:#aaa">該当工事なし</td></tr>`}</tbody>
+      <tbody>${(rows+otherRow)||`<tr><td colspan="11" style="text-align:center;padding:18px;color:#aaa">該当工事なし</td></tr>`}</tbody>
       <tfoot>
         <tr style="background:#eef;font-weight:700"><td colspan="7" style="padding:6px 8px;text-align:right">記載 ${b.rows.length}件 小計</td>
           <td style="padding:6px 8px;text-align:right">${fmt(lsAll)}</td><td style="padding:6px 8px;text-align:right">${fmt(lsMoto)}</td><td colspan="2"></td></tr>
@@ -4206,14 +4235,12 @@ function printKeireki(){
       <th rowspan="2" style="width:10%">工　期<br><span style="font-size:7px">着工年月<br>完成又は完成予定年月</span></th></tr>
     <tr class="hdr2"><th style="width:8%">氏　名</th><th style="width:6%">主任技術者<br>又は監理技術者<br>の別</th><th style="width:8%"></th><th style="width:7%">うち<br>元請工事</th><th style="width:7%">うち<br>PC・法面処理<br>・鋼橋上部</th></tr>`;
   function pageRows(b){
-    const n=Math.max(13,b.rows.length);let html='';
-    for(let i=0;i<n;i++){
-      const r=b.rows[i];
-      if(r){
-        const c=r.c;const amt=Math.round(r.amt/1000);const motoAmt=r.isMoto?amt:0;
-        const ks=toR(c.kouki_s),ke=toR(c.kouki_e);const gishi=c.gishi_type||'';
-        const star=(b.mode==='keishin'&&r.uragaki)?'★':'';
-        html+=`<tr>
+    const ent=[];
+    b.rows.forEach(r=>{
+      const c=r.c;const amt=Math.round(r.amt/1000);const motoAmt=r.isMoto?amt:0;
+      const ks=toR(c.kouki_s),ke=toR(c.kouki_e);const gishi=c.gishi_type||'';
+      const star=(b.mode==='keishin'&&r.uragaki)?'★':'';
+      ent.push(`<tr>
         <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:70px">${star}${c.client||''}</td>
         <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:100px">${c.kouji||''}</td>
         <td rowspan="2" class="c ed" contenteditable="true">${c.moto_shita||''}</td>
@@ -4228,19 +4255,38 @@ function printKeireki(){
       </tr><tr>
         <td class="c sub">千円</td><td class="c sub">千円</td><td class="c sub"></td>
         <td class="c ed" contenteditable="true" style="font-size:8px">令和 ${ke.y} 年 ${ke.m} 月</td>
-      </tr>`;
-      } else {
-        html+=`<tr>
+      </tr>`);
+    });
+    if(b.other){
+      const s=v=>Math.round(v/1000);
+      ent.push(`<tr>
+        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:70px">その他</td>
+        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:100px">（${b.other.count}件 一括）</td>
+        <td rowspan="2" class="c ed" contenteditable="true"></td>
+        <td rowspan="2" class="c ed" contenteditable="true"></td>
+        <td rowspan="2" class="vt ed" contenteditable="true"></td>
+        <td rowspan="2" class="vt ed" contenteditable="true"></td>
+        <td rowspan="2" class="c ed" contenteditable="true"></td>
+        <td class="r ed" contenteditable="true">${s(b.other.sum).toLocaleString()}</td>
+        <td class="r ed" contenteditable="true">${b.other.moto?s(b.other.moto).toLocaleString():''}</td>
+        <td class="r ed" contenteditable="true"></td>
+        <td class="c ed" contenteditable="true" style="font-size:8px"></td>
+      </tr><tr>
+        <td class="c sub">千円</td><td class="c sub">千円</td><td class="c sub"></td>
+        <td class="c ed" contenteditable="true" style="font-size:8px"></td>
+      </tr>`);
+    }
+    while(ent.length<11){
+      ent.push(`<tr>
         <td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td>
         <td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td>
         <td class="ed" contenteditable="true"></td><td class="ed" contenteditable="true"></td><td class="ed" contenteditable="true"></td><td class="c ed" contenteditable="true" style="font-size:8px;color:#ccc">令和　年　月</td>
       </tr><tr>
         <td class="c sub">千円</td><td class="c sub">千円</td><td class="c sub"></td>
         <td class="c ed" contenteditable="true" style="font-size:8px;color:#ccc">令和　年　月</td>
-      </tr>`;
-      }
+      </tr>`);
     }
-    return html;
+    return ent.join('');
   }
   function pageHtml(b,idx){
     const sen=v=>Math.round(v/1000);
@@ -4249,13 +4295,11 @@ function printKeireki(){
     if(b.empty){
       return `<div${brk}>${typeLine}<div style="padding:30px;text-align:center;border:1px solid #000">工事実績なし</div></div>`;
     }
-    const lsAll=sen(b.rows.reduce((s,r)=>s+r.amt,0));
-    const lsMoto=sen(b.rows.filter(r=>r.isMoto).reduce((s,r)=>s+r.amt,0));
     const tAll=sen((b.total||{}).all||0),tMoto=sen((b.total||{}).moto||0);
     return `<div${brk}>${typeLine}
     <table><thead>${THEAD}</thead><tbody>${pageRows(b)}</tbody>
     <tfoot>
-      <tr class="totrow"><td colspan="7" class="c">小　計（記載 ${b.rows.length}件）</td><td class="r">${lsAll?lsAll.toLocaleString():''}</td><td class="r">${lsMoto?lsMoto.toLocaleString():''}</td><td></td><td></td></tr>
+      <tr class="totrow"><td colspan="7" class="c">小　計</td><td class="r">${tAll?tAll.toLocaleString():''}</td><td class="r">${tMoto?tMoto.toLocaleString():''}</td><td></td><td></td></tr>
       <tr class="totrow"><td colspan="2" class="c">合　計（全${b.allCount}件）</td><td colspan="2" class="c" style="font-size:7px">うち 元請工事</td><td colspan="3"></td><td class="r">${tAll?tAll.toLocaleString():''}</td><td class="r">${tMoto?tMoto.toLocaleString():''}</td><td></td><td></td></tr>
     </tfoot></table></div>`;
   }
@@ -4265,9 +4309,9 @@ function printKeireki(){
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>工事経歴書 様式第二号</title>
 <style>
-@page{size:A4 landscape;margin:8mm 10mm}
+@page{size:A4 landscape;margin:12mm}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'MS Mincho','Hiragino Mincho ProN','Yu Mincho',serif;font-size:9px;padding:8mm 10mm;color:#000}
+body{font-family:'MS Mincho','Hiragino Mincho ProN','Yu Mincho',serif;font-size:9px;padding:12mm;color:#000}
 .header-note{font-size:8px;text-align:left;margin-bottom:2px}
 .header-note2{font-size:8px;text-align:right;margin-bottom:4px}
 h1{font-size:16px;text-align:center;letter-spacing:12px;margin-bottom:6px;font-weight:400}
@@ -4353,12 +4397,17 @@ function exportKerekiExcel(){
         sc('L'+r,toReiwa(c.kouki_e));
       }
     }
+    // 「その他 ○件 一括」行（記載枠に空きがあれば追加）
+    if(b.other&&b.rows.length<13){
+      const r=12+b.rows.length;
+      sc('A'+r,'その他');sc('D'+r,'（'+b.other.count+'件 一括）');
+      sc('I'+r,sen(b.other.sum),'n');if(b.other.moto)sc('J'+r,sen(b.other.moto),'n');
+    }
     const tAll=sen((b.total||{}).all||0),tMoto=sen((b.total||{}).moto||0);
-    // 小計（記載分）
-    sc('H26',b.rows.length,'n');sc('I26',lsAll,'n');sc('J26',lsMoto,'n');sc('K27',lsMoto,'n');
-    // 合計（業種全体の完成工事高）
+    // 小計・合計（個別記載＋その他＝当業種の完成工事高合計）
+    sc('H26',b.allCount,'n');sc('I26',tAll,'n');sc('J26',tMoto,'n');sc('K27',tMoto,'n');
     sc('H30',b.allCount,'n');sc('I30',tAll,'n');sc('J30',tMoto,'n');sc('K31',tMoto,'n');
-    if(b.rows.length>13)sc('A33','※記載13件超：別紙に続けてください（全'+b.rows.length+'件中13件表示）');
+    if((b.rows.length+(b.other?1:0))>13)sc('A33','※記載が13行を超えています。別紙に続けてください');
     ws['!cols']=[{wch:14},{wch:6},{wch:5},{wch:22},{wch:14},{wch:14},{wch:11},{wch:14},{wch:13},{wch:14},{wch:14},{wch:14}];
     let nm=(g||'種類').replace(/[\\/?*\[\]:]/g,'').slice(0,28)||'種類';
     const base=nm;let k=2;while(used[nm]){nm=base.slice(0,26)+'_'+k;k++;}used[nm]=1;
@@ -4380,21 +4429,20 @@ function exportKerekiWord(){
     const brk=idx?' style="page-break-before:always"':'';
     const typeLine=`<p class="info">（建設工事の種類）<u>　${b.gyoshu}　</u>工事　　（ ${tax==='税込'?'<u>税込</u>・税抜':'税込・<u>税抜</u>'} ）</p>`;
     if(b.empty)return `<div${brk}>${typeLine}<p style="text-align:center;border:1pt solid #000;padding:20pt">工事実績なし</p></div>`;
-    const n=Math.max(13,b.rows.length);let rows='';
-    for(let i=0;i<n;i++){
-      const row=b.rows[i];
-      if(row){
-        const c=row.c;const amt=sen(row.amt);const motoAmt=row.isMoto?amt:0;const g=c.gishi_type||'';
-        const star=(mode==='keishin'&&row.uragaki)?'★':'';
-        rows+=`<tr><td>${star}${c.client||''}</td><td>${c.kouji||''}</td><td>${c.moto_shita||''}</td><td>${c.jv||''}</td><td>${c.genba||c.place||''}</td><td>${c.haichi_gishi||''}</td><td>${g==='主任'?'☑主任□監理':g==='監理'?'□主任☑監理':''}</td><td style="text-align:right">${amt?amt.toLocaleString():''} 千円</td><td style="text-align:right">${motoAmt?motoAmt.toLocaleString():''} 千円</td><td></td><td>${toR(c.kouki_s)}</td><td>${toR(c.kouki_e)}</td></tr>`;
-      } else {
-        rows+=`<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>千円</td><td>千円</td><td></td><td></td><td></td></tr>`;
-      }
+    let rows='';
+    b.rows.forEach(row=>{
+      const c=row.c;const amt=sen(row.amt);const motoAmt=row.isMoto?amt:0;const g=c.gishi_type||'';
+      const star=(mode==='keishin'&&row.uragaki)?'★':'';
+      rows+=`<tr><td>${star}${c.client||''}</td><td>${c.kouji||''}</td><td>${c.moto_shita||''}</td><td>${c.jv||''}</td><td>${c.genba||c.place||''}</td><td>${c.haichi_gishi||''}</td><td>${g==='主任'?'☑主任□監理':g==='監理'?'□主任☑監理':''}</td><td style="text-align:right">${amt?amt.toLocaleString():''} 千円</td><td style="text-align:right">${motoAmt?motoAmt.toLocaleString():''} 千円</td><td></td><td>${toR(c.kouki_s)}</td><td>${toR(c.kouki_e)}</td></tr>`;
+    });
+    if(b.other){
+      rows+=`<tr><td>その他</td><td>（${b.other.count}件 一括）</td><td></td><td></td><td></td><td></td><td></td><td style="text-align:right">${sen(b.other.sum).toLocaleString()} 千円</td><td style="text-align:right">${b.other.moto?sen(b.other.moto).toLocaleString()+' 千円':''}</td><td></td><td></td><td></td></tr>`;
     }
-    const lsAll=sen(b.rows.reduce((s,r)=>s+r.amt,0)),lsMoto=sen(b.rows.filter(r=>r.isMoto).reduce((s,r)=>s+r.amt,0));
+    const pad=11-(b.rows.length+(b.other?1:0));
+    for(let i=0;i<pad;i++){ rows+=`<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>千円</td><td>千円</td><td></td><td></td><td></td></tr>`; }
     const tAll=sen((b.total||{}).all||0),tMoto=sen((b.total||{}).moto||0);
     return `<div${brk}>${typeLine}<table>${HEAD}${rows}
-    <tr class="totrow"><td colspan="7" style="text-align:center">小計（記載 ${b.rows.length}件）</td><td style="text-align:right">${lsAll?lsAll.toLocaleString()+' 千円':''}</td><td style="text-align:right">${lsMoto?lsMoto.toLocaleString()+' 千円':''}</td><td></td><td colspan="2"></td></tr>
+    <tr class="totrow"><td colspan="7" style="text-align:center">小計</td><td style="text-align:right">${tAll?tAll.toLocaleString()+' 千円':''}</td><td style="text-align:right">${tMoto?tMoto.toLocaleString()+' 千円':''}</td><td></td><td colspan="2"></td></tr>
     <tr class="totrow"><td colspan="7" style="text-align:center">合計（全${b.allCount}件）</td><td style="text-align:right">${tAll?tAll.toLocaleString()+' 千円':''}</td><td style="text-align:right">${tMoto?tMoto.toLocaleString()+' 千円':''}</td><td></td><td colspan="2"></td></tr>
     </table></div>`;
   }
