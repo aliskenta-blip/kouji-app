@@ -412,15 +412,23 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   </div>
   <div id="maBatchBar" class="no-print" style="display:none;background:#e3f2fd;border-radius:8px;padding:10px 14px;margin-bottom:10px;flex-wrap:wrap;gap:8px;align-items:center">
     <span style="font-weight:700;color:#1565c0" id="maBatchCount">0件選択</span>
-    <select id="maBatchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px" onchange="maBatchFieldChg()">
+    <select id="maBatchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px" onchange="batchFieldChg('maBatch')">
       <option value="date">記入月</option>
       <option value="seikyuu_t">請求月</option>
       <option value="kubun">区分</option>
       <option value="tantou">担当</option>
       <option value="branch">支店</option>
+      <optgroup label="── 工事経歴書 ──">
+        <option value="moto_shita">元請/下請</option>
+        <option value="jv">JVの別</option>
+        <option value="haichi_gishi">配置技術者(氏名)</option>
+        <option value="gishi_type">主任/監理</option>
+        <option value="kouji_type">建設工事の種類</option>
+      </optgroup>
     </select>
     <input type="month" id="maBatchMonthVal" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px">
     <input type="text" id="maBatchTextVal" placeholder="値を入力" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;display:none;width:120px">
+    <select id="maBatchSelVal" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;display:none"></select>
     <button class="btn bn btn-sm" onclick="maApplyBatch()">✅ 一括変更</button>
     <button class="btn bx btn-sm" onclick="maClearSel()">選択解除</button>
   </div>
@@ -460,15 +468,23 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   </div>
   <div id="batchBar" class="no-print" style="display:none;background:#e3f2fd;border-radius:8px;padding:10px 14px;margin-bottom:10px;flex-wrap:wrap;gap:8px;align-items:center">
     <span style="font-weight:700;color:#1565c0" id="batchCount">0件選択</span>
-    <select id="batchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px">
+    <select id="batchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px" onchange="batchFieldChg('batch')">
       <option value="date">記入月</option>
       <option value="seikyuu_t">請求月</option>
       <option value="kubun">区分</option>
       <option value="tantou">担当</option>
       <option value="branch">支店</option>
+      <optgroup label="── 工事経歴書 ──">
+        <option value="moto_shita">元請/下請</option>
+        <option value="jv">JVの別</option>
+        <option value="haichi_gishi">配置技術者(氏名)</option>
+        <option value="gishi_type">主任/監理</option>
+        <option value="kouji_type">建設工事の種類</option>
+      </optgroup>
     </select>
     <input type="month" id="batchMonthVal" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px">
     <input type="text" id="batchTextVal" placeholder="値を入力" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;display:none;width:120px">
+    <select id="batchSelVal" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;display:none"></select>
     <button class="btn bn btn-sm" onclick="applyBatch()">✅ 一括変更</button>
     <button class="btn bx btn-sm" onclick="clearBatchSel()">選択解除</button>
   </div>
@@ -2335,36 +2351,53 @@ function clearBatchSel(){
   document.getElementById('prAllCk').checked=false;
   updateBatchBar();
 }
-function applyBatch(){
-  const ids=[...document.querySelectorAll('.pr-ck:checked')].map(cb=>cb.dataset.id);
-  if(!ids.length){alert('案件を選択してください');return;}
-  const field=vg('batchField');
-  const isMonth=['date','seikyuu_t'].includes(field);
-  const val=isMonth?vg('batchMonthVal'):vg('batchTextVal');
-  if(!val){alert('値を入力してください');return;}
-  const labels={date:'記入月',seikyuu_t:'請求月',kubun:'区分',tantou:'担当',branch:'支店'};
-  if(!confirm(`${ids.length}件の「${labels[field]}」を「${val}」に変更しますか？`))return;
-  ids.forEach(id=>{const c=S.cases.find(c=>c.id===id);if(c)c[field]=val;});
-  sv();addLog('edit',`一括変更: ${labels[field]}→${val}（${ids.length}件）`);
-  renderAll();clearBatchSel();
+// ── 一括変更 共通ヘルパー ──
+// 月入力＝記入月/請求月、選択＝元請下請/JV/主任監理/業種、テキスト＝区分/担当/支店/配置技術者名
+const BATCH_LABELS={date:'記入月',seikyuu_t:'請求月',kubun:'区分',tantou:'担当',branch:'支店',moto_shita:'元請/下請',jv:'JVの別',haichi_gishi:'配置技術者',gishi_type:'主任/監理',kouji_type:'建設工事の種類'};
+const BATCH_MONTH=['date','seikyuu_t'];
+const BATCH_CHOICES={moto_shita:[['元請','元請'],['下請','下請']],jv:[['','なし（JV削除）'],['JV','JV']],gishi_type:[['主任','主任技術者'],['監理','監理技術者']]};
+function batchIsChoice(field){return !!BATCH_CHOICES[field]||field==='kouji_type';}
+function batchFieldChg(idp){
+  const field=vg(idp+'Field');
+  const isMonth=BATCH_MONTH.includes(field);
+  const isChoice=batchIsChoice(field);
+  const mEl=document.getElementById(idp+'MonthVal');if(mEl)mEl.style.display=isMonth?'':'none';
+  const tEl=document.getElementById(idp+'TextVal');if(tEl)tEl.style.display=(!isMonth&&!isChoice)?'':'none';
+  const sEl=document.getElementById(idp+'SelVal');
+  if(sEl){
+    sEl.style.display=isChoice?'':'none';
+    if(isChoice){
+      const opts=field==='kouji_type'?(S.masters.kouji_type||[]).map(v=>[v,v]):BATCH_CHOICES[field];
+      sEl.innerHTML=opts.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('');
+    }
+  }
 }
+function batchGetVal(idp){
+  const field=vg(idp+'Field');
+  if(BATCH_MONTH.includes(field))return vg(idp+'MonthVal');
+  if(batchIsChoice(field))return vg(idp+'SelVal');
+  return vg(idp+'TextVal');
+}
+function batchAllowEmpty(field){return field==='jv'||field==='haichi_gishi';}  // JV削除・技術者名クリアは空でも可
+function doBatchApply(idp,ckClass,clearFn){
+  const ids=[...document.querySelectorAll('.'+ckClass+':checked')].map(cb=>cb.dataset.id);
+  if(!ids.length){alert('案件を選択してください');return;}
+  const field=vg(idp+'Field');
+  const val=batchGetVal(idp);
+  if(!val&&!batchAllowEmpty(field)){alert('値を入力（選択）してください');return;}
+  const disp=val||'（空欄＝削除）';
+  if(!confirm(`選択した ${ids.length}件 の「${BATCH_LABELS[field]||field}」を「${disp}」に一括変更しますか？`))return;
+  ids.forEach(id=>{const c=S.cases.find(c=>c.id===id);if(c)c[field]=val;});
+  sv();addLog('edit',`一括変更: ${BATCH_LABELS[field]||field}→${disp}（${ids.length}件）`);
+  renderAll();clearFn();
+}
+function applyBatch(){ doBatchApply('batch','pr-ck',clearBatchSel); }
 // ── マスター画面の一括変更 ──
-function maBatchFieldChg(){const isMonth=['date','seikyuu_t'].includes(vg('maBatchField'));document.getElementById('maBatchMonthVal').style.display=isMonth?'':'none';document.getElementById('maBatchTextVal').style.display=isMonth?'none':'';}
+function maBatchFieldChg(){batchFieldChg('maBatch');}
 function maUpdateBatch(){const sel=document.querySelectorAll('.ma-ck:checked');const bar=document.getElementById('maBatchBar');if(!bar)return;bar.style.display=sel.length>0?'flex':'none';const c=document.getElementById('maBatchCount');if(c)c.textContent=sel.length+'件選択';}
 function maToggleAll(ck){document.querySelectorAll('.ma-ck').forEach(cb=>{cb.checked=ck;});maUpdateBatch();}
 function maClearSel(){document.querySelectorAll('.ma-ck').forEach(cb=>{cb.checked=false;});const a=document.getElementById('maAllCk');if(a)a.checked=false;maUpdateBatch();}
-function maApplyBatch(){
-  const ids=[...document.querySelectorAll('.ma-ck:checked')].map(cb=>cb.dataset.id);
-  if(!ids.length){alert('案件を選択してください');return;}
-  const field=vg('maBatchField');const isMonth=['date','seikyuu_t'].includes(field);
-  const val=isMonth?vg('maBatchMonthVal'):vg('maBatchTextVal');
-  if(!val){alert('値を入力してください');return;}
-  const labels={date:'記入月',seikyuu_t:'請求月',kubun:'区分',tantou:'担当',branch:'支店'};
-  if(!confirm(`${ids.length}件の「${labels[field]}」を「${val}」に変更しますか？`))return;
-  ids.forEach(id=>{const c=S.cases.find(c=>c.id===id);if(c)c[field]=val;});
-  sv();addLog('edit',`一括変更: ${labels[field]}→${val}（${ids.length}件）`);
-  renderAll();maClearSel();
-}
+function maApplyBatch(){ doBatchApply('maBatch','ma-ck',maClearSel); }
 
 // ── ダッシュボード ──
 let dashFY=null; // 事業年度の開始年（3月始まり・2月決算）。例: 2026 → 2026年3月〜2027年2月
