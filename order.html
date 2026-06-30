@@ -3255,7 +3255,7 @@ function openAdd(){
   document.getElementById('f_jisha_sekou').checked=false;
   document.getElementById('f_more_flag').checked=false;
   const jw=document.getElementById('f_jisha_sekou_wrap');jw.style.background='#f8fff8';jw.style.borderColor='#e0e0e0';
-  vs('f_cl','');vs('f_br','');vs('f_ta','');vs('f_kb','');vs('f_moto','');vs('f_jv','');vs('f_gishi','');vs('f_kouji_type','');
+  vs('f_cl','');vs('f_br','');vs('f_ta','');vs('f_kb','');vs('f_moto','元請');vs('f_jv','');vs('f_gishi','');vs('f_kouji_type','');
   vs('f_dt',new Date().toISOString().slice(0,7));
   document.getElementById('f_bl_month').value=getMK(getYr(),getMo());
   document.getElementById('f_bl_amount').value='';
@@ -3264,7 +3264,7 @@ function openAdd(){
   document.getElementById('f_pdf_s').value='';
   renderPdfTags();renderKE();updateSels();
   // 工事経歴書テンプレート復元（updateSels後）
-  setTimeout(()=>{try{const tpl=JSON.parse(safeLS("get",'keireki_tpl')||'null');if(tpl){vs('f_moto',tpl.moto||'');vs('f_jv',tpl.jv||'');vs('f_haichi',tpl.haichi||'');vs('f_gishi',tpl.gishi||'');vs('f_kouji_type',tpl.kouji_type||'');}}catch(e){}onGyoshuChange();},50);
+  setTimeout(()=>{try{const tpl=JSON.parse(safeLS("get",'keireki_tpl')||'null');if(tpl){vs('f_jv',tpl.jv||'');vs('f_haichi',tpl.haichi||'');vs('f_gishi',tpl.gishi||'');vs('f_kouji_type',tpl.kouji_type||'');}}catch(e){}vs('f_moto',vg('f_moto')||'元請');onGyoshuChange();},50);
   onGyoshuChange();
   document.getElementById('btnSaveCont').style.display='';
   document.getElementById('addMov').classList.add('open');
