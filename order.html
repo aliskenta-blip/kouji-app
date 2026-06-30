@@ -2044,8 +2044,9 @@ function renderMonthly(){
     const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk&&!hasCurAct;
     const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
     const doneCk=isDone(c)?`<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します">完</span>`;
-    const chakkouOn=(c.kouki_s||'').slice(0,7)===mk;
-    const chakkouCk=`<span class="ck pk${chakkouOn?' on':''}" style="cursor:pointer" title="${chakkouOn?'この月を工期開始に設定済み（再クリックで解除）':'この月（'+mk+'）に着工→工期開始に自動入力'}" onclick="togChakkou('${c.id}')">${chakkouOn?'✓':'着'}</span>`;
+    const chakKs=(c.kouki_s||'').slice(0,7);
+    const chakkouOn=!!chakKs&&chakKs!=='未定'&&chakKs<=mk;   // 工期開始が当月以前＝着工済み（以降の月も自動でチェック表示）
+    const chakkouCk=`<span class="ck pk${chakkouOn?' on':''}" style="cursor:pointer" title="${chakkouOn?('着工済み（工期開始 '+chakKs+'）。クリックで解除'):('この月（'+mk+'）に着工→工期開始に自動入力')}" onclick="togChakkou('${c.id}')">${chakkouOn?'✓':'着'}</span>`;
     const mainRow=`<tr class="${i%2?'alt':''}${isMorei?' style="background:#fff8e1"':''}">
       <td class="ctr" style="cursor:pointer;font-size:11px" id="exp-${c.id}" onclick="togSub('${c.id}')">${r.cnt>0?'▶':''}</td>
       <td class="ctr">${i+1}</td><td class="ctr" ${ec} onclick="editCell('${c.id}','date',this,'month')">${carryMark}${(c.date||'').slice(5)}</td>
@@ -2130,7 +2131,7 @@ function renderMonthly(){
           ${mkCk2(c.kakunin,c.id,'kakunin','p','確認')}
           ${mkCk2(c.mail,c.id,'mail','p','メール')}
           ${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入金')}
-          ${(c.kouki_s||'').slice(0,7)===mk?`<span class="ck pk on" style="cursor:pointer" title="この月を工期開始に設定済（再クリックで解除）" onclick="togChakkou('${c.id}')">✓着工</span>`:`<span class="ck pk" style="cursor:pointer" title="この月に着工→工期開始に自動入力" onclick="togChakkou('${c.id}')">着工</span>`}
+          ${(()=>{const k=(c.kouki_s||'').slice(0,7);const on=!!k&&k!=='未定'&&k<=mk;return on?`<span class="ck pk on" style="cursor:pointer" title="着工済み（工期開始 ${k}）。クリックで解除" onclick="togChakkou('${c.id}')">✓着工</span>`:`<span class="ck pk" style="cursor:pointer" title="この月に着工→工期開始に自動入力" onclick="togChakkou('${c.id}')">着工</span>`;})()}
           ${isDone(c)?'<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓完了</span>':'<span class="ck gk" style="opacity:.5;cursor:default" title="発注額まで請求し未収金ゼロで完了">完了</span>'}
           ${mkCk2(c.zan_s,c.id,'zan_s','g','残請求')}
           ${mkCk2(c.mi_s,c.id,'mi_s','g','未請求')}
@@ -3410,7 +3411,9 @@ function togChakkou(id){
   if(!canEdit())return;
   const c=S.cases.find(x=>x.id===id);if(!c)return;
   const mk=getMK(getYr(),getMo());
-  if((c.kouki_s||'').slice(0,7)===mk){ c.kouki_s=''; addLog('check',`${c.place||''}の「着工（工期開始）」を解除`); }
+  const ks=(c.kouki_s||'').slice(0,7);
+  const on=!!ks&&ks!=='未定'&&ks<=mk;   // すでに着工済み（当月以前）か
+  if(on){ c.kouki_s=''; addLog('check',`${c.place||''}の「着工（工期開始）」を解除`); }
   else { c.kouki_s=mk; addLog('check',`${c.place||''}の「着工（工期開始）」を${mk}に設定`); }
   sv();renderMonthly();
 }
