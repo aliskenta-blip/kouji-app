@@ -1371,7 +1371,7 @@ const COL_TIPS={
   m3:'数量（㎥）。工事経歴書に使用',
   seikyuu_c:'請求書を出したらチェック（請求済）',
   nyukin_c:'入金を確認したらチェック（入金済）',
-  kanryo:'累計の請求が発注金額に達すると自動で完工になります',
+  kanryo:'発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します',
   branch:'支店・営業所',
   kyousha:'外注先（協力会社）の名前',
   nyStatus:'入金の状況（入金済／一部入金／未入金）'
@@ -1483,8 +1483,8 @@ function getNyukinPrev(c,ym){
   const bl=c.billings||[];
   return bl.filter(b=>(b.month||'')<ym).reduce((a,b)=>a+fn(b.nyukin),0);
 }
-// 完工（全て完了）＝累計請求が発注金額に到達したか
-function isDone(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0;}
+// 完工（全て完了）＝発注額まで請求済 かつ 未収金なし（全額入金済）
+function isDone(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0&&r.misu<=0;}
 
 // ── PDF ──
 function handlePdf(type){
@@ -1532,7 +1532,7 @@ function mkCk(val,id,field,type,lbl){
 function tgCk(id,field,el){
   if(!canEdit()){return;}
   const c=S.cases.find(c=>c.id===id);if(!c)return;
-  if(field==='kanryo'){alert('「完了（完工）」は累計の請求金額が発注金額に達すると自動でつきます。手動操作は不要です。');return;}
+  if(field==='kanryo'){alert('「完了（完工）」は、発注額まで請求し未収金がゼロ（全額入金）になると自動でつきます。手動操作は不要です。');return;}
   const newVal=c[field]==='✓'?'':'✓';
   // バリデーション
   if(newVal==='✓'){
@@ -1902,12 +1902,16 @@ function renderMonthly(){
 
   remEl.innerHTML=remind;
 
-  // 請求漏れ・未請求残・未収金を発注一覧テーブルに追加（前月以前のみ、重複排除）
-  // ※未収金（請求済だが未入金）も残高があるうちは毎月くり越して表示・操作できるようにする
+  // 当月より前に記入した案件で、まだ残高（未請求残 or 未収金）がある／請求漏れフラグのものを
+  // 毎月くり越して一覧に表示・操作できるようにする（記入月ベース・重複排除）
   const caseIds=new Set(cases.map(c=>c.id));
-  moreCases.forEach(c=>{if(!caseIds.has(c.id)){cases.push(c);caseIds.add(c.id);}});
-  remainCases.forEach(c=>{if(!caseIds.has(c.id)){cases.push(c);caseIds.add(c.id);}});
-  prevMisu.forEach(c=>{if(!caseIds.has(c.id)){cases.push(c);caseIds.add(c.id);}});
+  S.cases.forEach(c=>{
+    if(caseIds.has(c.id))return;
+    const dm=(c.date||'').slice(0,7);
+    if(!dm||dm>=mk)return;                       // 当月・未来は対象外（当月は記入月で表示済み）
+    const r=calc(c);
+    if(r.remaining>0||r.misu>0||c.more_flag==='✓'){cases.push(c);caseIds.add(c.id);}
+  });
 
   // ソート適用
   cases=sortCases(cases,'monthly');
@@ -1933,7 +1937,7 @@ function renderMonthly(){
     <th class="pg sortable" title="請求書を出したらチェック（請求済）" onclick="doSort('seikyuu_c','monthly')">請済</th>
     <th class="pg sortable" title="入金を確認したらチェック（入金済）" onclick="doSort('nyukin_c','monthly')">入済</th>
     <th class="pg" title="現場写真を撮ったらチェック">写</th><th class="pg" title="残土伝票を受け取ったらチェック">伝票</th>
-    <th class="gg sortable" title="累計請求が発注額に達すると自動で完工になります" onclick="doSort('kanryo','monthly')">完了</th>
+    <th class="gg sortable" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します" onclick="doSort('kanryo','monthly')">完了</th>
     <th>備考</th><th>操作</th>
   </tr>`;
 
@@ -1986,7 +1990,7 @@ function renderMonthly(){
     // （請済/入済は案件全体のフラグ。どの月から押しても同じ案件の状態を更新する）
     const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk;
     const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
-    const doneCk=isDone(c)?`<span class="ck gk on" title="累計請求が発注額に到達＝完工">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="累計請求が発注額に達すると自動で完工になります">完</span>`;
+    const doneCk=isDone(c)?`<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します">完</span>`;
     const mainRow=`<tr class="${i%2?'alt':''}${isMorei?' style="background:#fff8e1"':''}">
       <td class="ctr" style="cursor:pointer;font-size:11px" id="exp-${c.id}" onclick="togSub('${c.id}')">${r.cnt>0?'▶':''}</td>
       <td class="ctr">${i+1}</td><td class="ctr" ${ec} onclick="editCell('${c.id}','date',this,'month')">${carryMark}${(c.date||'').slice(5)}</td>
@@ -2070,7 +2074,7 @@ function renderMonthly(){
           ${mkCk2(c.kakunin,c.id,'kakunin','p','確認')}
           ${mkCk2(c.mail,c.id,'mail','p','メール')}
           ${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入金')}
-          ${isDone(c)?'<span class="ck gk on" title="累計＝発注額で完工">✓完了</span>':'<span class="ck gk" style="opacity:.5;cursor:default" title="累計請求が発注額に達すると自動で完工">完了</span>'}
+          ${isDone(c)?'<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓完了</span>':'<span class="ck gk" style="opacity:.5;cursor:default" title="発注額まで請求し未収金ゼロで完了">完了</span>'}
           ${mkCk2(c.zan_s,c.id,'zan_s','g','残請求')}
           ${mkCk2(c.mi_s,c.id,'mi_s','g','未請求')}
         </div>
