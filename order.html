@@ -488,10 +488,19 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 <div id="p-keireki" class="panel">
   <div class="no-print" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button class="btn krdoc-btn bn" id="krd_keireki" onclick="setKrDoc('keireki')">📄 工事経歴書</button>
+    <button class="btn krdoc-btn bx" id="krd_gyoshu" onclick="setKrDoc('gyoshu')">📊 業種別集計</button>
     <button class="btn krdoc-btn bx" id="krd_jyuchu" onclick="setKrDoc('jyuchu')">🏗️ 受注表（着工前）</button>
     <button class="btn krdoc-btn bx" id="krd_kanryo" onclick="setKrDoc('kanryo')">✅ 完了工事表</button>
   </div>
   <div class="no-print" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
+    <div class="fg" id="krc_mode" style="flex:0 0 auto;min-width:170px">
+      <label style="font-size:11px;font-weight:700;color:#555">出力モード</label>
+      <select id="kr_mode" onchange="onKrModeChange()" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px">
+        <option value="keishin">経審用（厳格）</option>
+        <option value="kessan">事業年度終了届用</option>
+        <option value="koshin">許可更新用</option>
+      </select>
+    </div>
     <div class="fg" id="krc_type" style="flex:0 0 auto;min-width:180px">
       <label style="font-size:11px;font-weight:700;color:#555">建設工事の種類</label>
       <select id="kr_type" onchange="renderKeireki()" style="padding:8px 10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px"></select>
@@ -677,8 +686,9 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <div class="fg"><label>主任/監理の別</label>
       <select id="f_gishi"><option value="">— 選択 —</option><option value="主任">主任技術者</option><option value="監理">監理技術者</option></select>
     </div>
-    <div class="fg"><label>建設工事の種類</label><select id="f_kouji_type"></select></div>
+    <div class="fg"><label>建設工事の種類 <span style="color:#c62828">*</span></label><select id="f_kouji_type" onchange="onGyoshuChange()"></select></div>
     <div class="fg"><label>工事現場（都道府県+市区町村）</label><input type="text" id="f_genba" lang="ja" style="ime-mode:active" placeholder="例: 東京都新宿区" autocomplete="off"></div>
+    <div class="fg" style="grid-column:span 2"><div id="gyoshuHelp"></div></div>
   </div>
   <div class="st">🔧 施工形態</div>
   <div class="fg">
@@ -695,7 +705,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   </div>
   <div class="st">💰 自社金額（万円入力）</div>
   <div class="grid g2">
-    <div class="fg"><label>発注金額（万円）</label><input type="number" id="f_jh" placeholder="" inputmode="decimal" step="0.1"></div>
+    <div class="fg"><label>発注金額（万円）</label><input type="number" id="f_jh" placeholder="" inputmode="decimal" step="0.1" oninput="onGyoshuChange()"></div>
     <div class="fg"><label>入金済（万円）</label><input type="number" id="f_ny" placeholder="" inputmode="decimal" step="0.1"></div>
     <div class="fg"><label>入金日</label><input type="date" id="f_nd"></div>
     <div class="fg"><label>㎥</label><input type="number" id="f_m3" placeholder="" step="0.01" inputmode="decimal"></div>
@@ -1379,6 +1389,50 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const getYr=()=>parseInt(vg('yrSel'));
 const getMo=()=>parseInt(vg('moSel'));
 const getMK=(y,m)=>`${y}-${String(m).padStart(2,'0')}`;
+
+// ───────────────────────────────────────────────
+// 建設業 業種区分 ＋ 工事経歴書モード 関連の定数
+// （制度・千葉県運用で変わりうる。最終確認は手引き/行政書士）
+// ───────────────────────────────────────────────
+// アイル(千葉県知事 一般)の保有許可7業種。表示名は kouji_type マスタと一致させること
+const AILE_KYOKA=['土木一式','とび・土工・コンクリート','石','鋼構造物','舗装','しゅんせつ','水道施設'];
+const AILE_KYOKA_SET=new Set(AILE_KYOKA);
+const GYOSHU_NOPERMIT='管';            // 無許可（軽微のみ可）
+// 閾値（すべて定数化。改正時はここだけ直す）
+const TH={
+  keibi:5000000,        // 軽微：税込500万円未満
+  keibiKenchiku:15000000,// 建築一式の軽微：税込1500万円未満
+  ratioMoto:0.70,       // 経審ステップ1：元請完成工事高の7割超
+  ratioAll:0.70,        // 経審ステップ2：全体完成工事高の7割超
+  ratioKessan:0.50,     // 事業年度終了届：全体の5割目安
+  keibiMaxCount:10,     // 軽微の通算記載上限（経審）
+  cap:100000000000,     // 1件1,000億円で打切り
+  topUragaki:3,         // 上位3件は裏付け対象（行政庁により5件も）
+  taxRate:0.10,         // 消費税率（税抜換算用）
+  fyStartMonth:3        // 会計(事業)年度の開始月：3月（決算期 3月〜2月）
+};
+// 建築一式（軽微1500万判定に使用）
+const GYOSHU_KENCHIKU='建築一式';
+// 大原則（フォーム上部に常時表示）
+const GYOSHU_GENSOKU='【大原則】一式工事（土木一式）は「作業の多さ」ではなく、元請として複数の専門工事を総合的に企画・調整し開発全体など大きな工作物を造る場合のみ。掘削・残土・ブロック積み等の一連の土工作業は、作業が複数でも「とび・土工・コンクリート工事」です。';
+// 各業種の判定ヘルプ（選択時に表示）
+const GYOSHU_HELP={
+  '土木一式':'元請で複数の専門工事を総合的に企画・調整し、宅地造成・開発全体等を造る大規模・複合工事のみ。例:開発工事一式を1契約で受注し統括→6,000万なら6,000万まるごと土木一式に1本計上（内訳分割しない）。作業が複数あるだけでは該当しません。',
+  'とび・土工・コンクリート':'掘削・根切り、残土搬出、地盤改良、土留め、擁壁単体、ブロック積み等。アイルの日常案件の多く（掘って→残土→ブロック積み）はここ。一連作業はまとめて1業種で計上。',
+  '石':'石材の加工・積み・張り（石垣、間知石積み等）。階段改修も石材主体ならここ（コンクリ主体ならとび・土工）。',
+  '鋼構造物':'鋼材を加工・組立して構造物を造る（鉄骨等）。',
+  '舗装':'アスファルト・コンクリート舗装。独立発注なら20〜100万でも必ず舗装に計上（とび・土工等に混ぜない）。例外:造成・外構主体の付随的舗装のみ親工事に含める。',
+  'しゅんせつ':'河川・港湾等の水底をさらう工事。',
+  '水道施設':'上下水道の「施設」（浄水場・配水管・下水本管等の公共インフラ）。建物給排水や各戸の給水装置・水道取り出しは「管工事」で別業種。混同注意。',
+  '管':'⚠無許可業種。建物給排水・空調・ガス配管、給水装置、水道取り出し、仮設水道等。アイルは無許可のため税込500万円未満の軽微のみ可（500万以上は建設業法違反）。軽微なら適法・経歴書にも計上。独立発注なら管で単独計上、土木等に付随する仮設給水は親工事に含めてよい。',
+  '建築一式':'元請で総合的に企画・調整して建築物を造る一式工事（軽微は税込1,500万円未満）。'
+};
+// 工事経歴書 出力モード
+const KEIREKI_MODES={
+  keishin:{label:'経営事項審査用（経審）',tax:'税抜'},
+  kessan:{label:'事業年度終了届用（決算変更届）',tax:'税込'},
+  koshin:{label:'許可更新用',tax:'税込'}
+};
 // 月別入力の前月/次月移動（年またぎ対応）
 function shiftMonthSel(d){
   let y=getYr(),m=getMo()+d;
@@ -1848,10 +1902,12 @@ function renderMonthly(){
 
   remEl.innerHTML=remind;
 
-  // 請求漏れ・未請求残を発注一覧テーブルに追加（前月以前のみ、重複排除）
+  // 請求漏れ・未請求残・未収金を発注一覧テーブルに追加（前月以前のみ、重複排除）
+  // ※未収金（請求済だが未入金）も残高があるうちは毎月くり越して表示・操作できるようにする
   const caseIds=new Set(cases.map(c=>c.id));
   moreCases.forEach(c=>{if(!caseIds.has(c.id)){cases.push(c);caseIds.add(c.id);}});
   remainCases.forEach(c=>{if(!caseIds.has(c.id)){cases.push(c);caseIds.add(c.id);}});
+  prevMisu.forEach(c=>{if(!caseIds.has(c.id)){cases.push(c);caseIds.add(c.id);}});
 
   // ソート適用
   cases=sortCases(cases,'monthly');
@@ -1926,14 +1982,14 @@ function renderMonthly(){
     else{sekouType='—';sekouCls='';}
     const showArari=r.cnt>0&&(r.hasJuchu||!isSelf);
     const ec=`style="cursor:pointer" title="クリックで編集"`;
-    // 請済/入済は当月（最新の請求月）に対する状態。繰越表示された月では空欄にする
-    // 請済/入済は「その現場の本来の月（記入月）」で操作可。繰越先＝記入月が動くので押せる。前月以前のエコー再掲行のみ空欄ロック
-    const ckPrimary=mk===(c.date||'').slice(0,7);
-    const blankCk=lbl=>`<span class="ck gk" style="opacity:.3;cursor:default" title="これは前月以前からの再掲です。チェックは元の（記入）月で操作してください">${lbl}</span>`;
+    // 前月以前から残高ありで繰越（再掲）された行も、請済/入済・写真などをそのまま操作可能にする
+    // （請済/入済は案件全体のフラグ。どの月から押しても同じ案件の状態を更新する）
+    const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk;
+    const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
     const doneCk=isDone(c)?`<span class="ck gk on" title="累計請求が発注額に到達＝完工">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="累計請求が発注額に達すると自動で完工になります">完</span>`;
     const mainRow=`<tr class="${i%2?'alt':''}${isMorei?' style="background:#fff8e1"':''}">
       <td class="ctr" style="cursor:pointer;font-size:11px" id="exp-${c.id}" onclick="togSub('${c.id}')">${r.cnt>0?'▶':''}</td>
-      <td class="ctr">${i+1}</td><td class="ctr" ${ec} onclick="editCell('${c.id}','date',this,'month')">${(c.date||'').slice(5)}</td>
+      <td class="ctr">${i+1}</td><td class="ctr" ${ec} onclick="editCell('${c.id}','date',this,'month')">${carryMark}${(c.date||'').slice(5)}</td>
       <td style="white-space:nowrap;font-size:10px;padding:2px">
         <input type="month" value="${c.kouki_s||''}" onchange="updField('${c.id}','kouki_s',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">〜<input type="month" value="${c.kouki_e||''}" onchange="updField('${c.id}','kouki_e',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">
       </td>
@@ -1956,8 +2012,8 @@ function renderMonthly(){
       <td class="num big ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?'¥'+fmt(r.arari):'—'}</td>
       <td class="ctr ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?fmtP(r.arariRate)+(r.isEstimate?' 予':''):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
-      <td class="ctr">${ckPrimary?mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請'):blankCk('請')}</td>
-      <td class="ctr">${ckPrimary?mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入'):blankCk('入')}</td>
+      <td class="ctr">${mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請')}</td>
+      <td class="ctr">${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
       <td class="ctr">${mkCk2(c.shashin,c.id,'shashin','p','写')}</td>
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
       <td class="ctr">${doneCk}</td>
@@ -2868,7 +2924,15 @@ function updateSels(){
     const s=document.getElementById(sid);if(!s)return;
     const cur=s.value;
     const kt=S.masters.kouji_type||[];
-    s.innerHTML='<option value="">— 選択 —</option>'+kt.map(v=>`<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
+    const opt=(v,mark)=>`<option value="${v}"${v===cur?' selected':''}>${mark}${v}</option>`;
+    const kyoka=AILE_KYOKA.filter(v=>kt.includes(v));
+    const others=kt.filter(v=>!AILE_KYOKA_SET.has(v)&&v!==GYOSHU_NOPERMIT);
+    const blankLabel=sid==='kr_type'?'すべての業種':'— 選択 —';
+    let html=`<option value="">${blankLabel}</option>`;
+    if(kyoka.length)html+=`<optgroup label="◎ アイル許可業種">`+kyoka.map(v=>opt(v,'◎ ')).join('')+`</optgroup>`;
+    if(kt.includes(GYOSHU_NOPERMIT))html+=`<optgroup label="✕ 無許可（軽微のみ）">`+opt(GYOSHU_NOPERMIT,'✕ ')+`</optgroup>`;
+    if(others.length)html+=`<optgroup label="その他の業種">`+others.map(v=>opt(v,'')).join('')+`</optgroup>`;
+    s.innerHTML=html;
     if(cur)s.value=cur;
   });
   document.querySelectorAll('.ky-sel').forEach(s=>{
@@ -3088,6 +3152,20 @@ document.addEventListener('keydown',function(e){
 },true);
 
 // ── モーダル ──
+// 業種選択時：大原則＋業種別ヘルプ＋管工事500万警告を表示
+function onGyoshuChange(){
+  const el=document.getElementById('gyoshuHelp');if(!el)return;
+  const g=vg('f_kouji_type');
+  let html=`<div style="font-size:11px;color:#555;background:#f0f8ff;border-radius:6px;padding:8px 10px;line-height:1.5">${GYOSHU_GENSOKU}</div>`;
+  if(g&&GYOSHU_HELP[g]){
+    html+=`<div style="font-size:11px;color:#333;margin-top:6px;padding:6px 10px;border-left:3px solid #1f4e79;line-height:1.5"><b>${g}</b>：${GYOSHU_HELP[g]}</div>`;
+  }
+  const amt=Math.round(parseFloat(vg('f_jh')||0)*10000);
+  if(g===GYOSHU_NOPERMIT&&amt>=TH.keibi){
+    html+=`<div style="font-size:12px;font-weight:700;color:#c62828;margin-top:6px;padding:8px 10px;background:#ffebee;border:1.5px solid #c62828;border-radius:6px">🚨 管工事は許可がありません。税込500万円以上は受注できません（建設業法違反）。業種区分・契約内容を確認してください。</div>`;
+  }
+  el.innerHTML=html;
+}
 function openAdd(){
   if(!canEdit()){alert('入力権限がありません');return;}
   editId=null;KD=[];pdfH=null;pdfS=null;formBillings=[];
@@ -3107,7 +3185,8 @@ function openAdd(){
   document.getElementById('f_pdf_s').value='';
   renderPdfTags();renderKE();updateSels();
   // 工事経歴書テンプレート復元（updateSels後）
-  setTimeout(()=>{try{const tpl=JSON.parse(safeLS("get",'keireki_tpl')||'null');if(tpl){vs('f_moto',tpl.moto||'');vs('f_jv',tpl.jv||'');vs('f_haichi',tpl.haichi||'');vs('f_gishi',tpl.gishi||'');vs('f_kouji_type',tpl.kouji_type||'');}}catch(e){}},50);
+  setTimeout(()=>{try{const tpl=JSON.parse(safeLS("get",'keireki_tpl')||'null');if(tpl){vs('f_moto',tpl.moto||'');vs('f_jv',tpl.jv||'');vs('f_haichi',tpl.haichi||'');vs('f_gishi',tpl.gishi||'');vs('f_kouji_type',tpl.kouji_type||'');}}catch(e){}onGyoshuChange();},50);
+  onGyoshuChange();
   document.getElementById('btnSaveCont').style.display='';
   document.getElementById('addMov').classList.add('open');
   // 場所欄へ確実にフォーカス（最初からすぐ入力できるように）
@@ -3172,13 +3251,28 @@ function editCase(id){
     ensureOption('f_kb',c.kubun);vs('f_kb',c.kubun);
     vs('f_moto',c.moto_shita||'');vs('f_jv',c.jv||'');vs('f_gishi',c.gishi_type||'');
     ensureOption('f_kouji_type',c.kouji_type||'');vs('f_kouji_type',c.kouji_type||'');
+    onGyoshuChange();
   },50);
+  onGyoshuChange();
   document.getElementById('addMov').classList.add('open');
 }
 function closeMov(){document.getElementById('addMov').classList.remove('open');}
 
 function saveCase(cont){
   if(!vg('f_pl')&&!vg('f_cl')){alert('場所または発注者を入力してください');return;}
+  // 建設工事の種類（業種）は必須（工事経歴書・完成工事高集計の集計キー）
+  const _gy=vg('f_kouji_type');
+  if(!_gy){
+    alert('「建設工事の種類（業種）」を選択してください。\n発注の業種区分は工事経歴書・完成工事高の集計に必須です。');
+    const _kt=document.getElementById('f_kouji_type');if(_kt){try{_kt.focus();}catch(e){}}
+    onGyoshuChange();
+    return;
+  }
+  // 管工事（無許可）は税込500万円以上 受注不可
+  const _amt=Math.round(parseFloat(vg('f_jh')||0)*10000);
+  if(_gy===GYOSHU_NOPERMIT&&_amt>=TH.keibi){
+    if(!confirm('🚨 管工事は許可がありません（無許可）。\n税込500万円以上は受注できません（建設業法違反の恐れ）。\n\n業種区分が正しいか確認してください。\nこのまま記録だけ残しますか？（集計で無許可営業として警告表示されます）')){return;}
+  }
   const CK=['shashin','zando','nyukin_c','kanryo','seikyuu_c'];
   const base={
     id:editId||uid(),month:getMK(getYr(),getMo()),
@@ -3685,20 +3779,56 @@ function toSenYen(val,isTaxExcl){
 let krDoc='keireki';
 function setKrDoc(d){
   krDoc=d;
-  [['keireki','krd_keireki'],['jyuchu','krd_jyuchu'],['kanryo','krd_kanryo']].forEach(([k,id])=>{
+  [['keireki','krd_keireki'],['gyoshu','krd_gyoshu'],['jyuchu','krd_jyuchu'],['kanryo','krd_kanryo']].forEach(([k,id])=>{
     const b=document.getElementById(id);if(b){b.classList.toggle('bn',k===d);b.classList.toggle('bx',k!==d);}
   });
   const show=(id,on)=>{const e=document.getElementById(id);if(e)e.style.display=on?'':'none';};
+  show('krc_mode',d==='keireki');      // 出力モードは経歴書のみ
   show('krc_type',d==='keireki');      // 工事種類は経歴書のみ
   show('krc_year',d!=='jyuchu');        // 受注表は現時点スナップなので年度不要
   show('krc_word',d==='keireki');       // Wordは経歴書(様式第二号)のみ
   renderKeireki();
 }
+// 出力モード変更時：税区分を既定値に合わせる（ユーザー上書き可）
+function onKrModeChange(){
+  const m=vg('kr_mode')||'keishin';
+  const tax=(KEIREKI_MODES[m]&&KEIREKI_MODES[m].tax)||'税込';
+  const t=document.getElementById('kr_tax');if(t)t.value=tax;
+  renderKeireki();
+}
 function renderKeireki(){
+  if(krDoc==='gyoshu')return renderGyoshuShukei();
   if(krDoc==='jyuchu')return renderJyuchu();
   if(krDoc==='kanryo')return renderKanryo();
   return renderKeirekiSheet();
 }
+// ── 会計年度(3月〜2月)・完成工事高 ヘルパー ──
+// 完成年月：kouki_e優先→最終請求月→記入月（'YYYY-MM'）
+function krCompletYM(c){
+  const ke=(c.kouki_e&&c.kouki_e!=='未定')?c.kouki_e:'';
+  const ym=ke||cMo(c)||c.date||'';
+  return (ym&&ym!=='未定')?ym.slice(0,7):'';
+}
+// ymが属する事業年度の開始年（3月始まり：1〜2月は前年度）
+function fyOf(ym){
+  if(!ym)return null;
+  const y=parseInt(ym.slice(0,4)),m=parseInt(ym.slice(5,7));
+  if(!y||!m)return null;
+  return m>=TH.fyStartMonth?y:y-1;
+}
+function krFiscalYear(c){return fyOf(krCompletYM(c));}
+function fyLabel(y){return `${y}年度（${y}/${TH.fyStartMonth}〜${y+1}/${TH.fyStartMonth-1}）`;}
+// 軽微工事か（税込保存額で判定。建築一式は1,500万、他は500万）
+function isKeibi(c){
+  const th=(c.kouji_type===GYOSHU_KENCHIKU)?TH.keibiKenchiku:TH.keibi;
+  return fn(c.jisha_h)<th;
+}
+// 指定事業年度に完成した請負額>0の工事（経歴書・集計の母集団）
+function krCasesForFY(yr){
+  return S.cases.filter(c=>fn(c.jisha_h)>0&&krFiscalYear(c)===yr);
+}
+// 円換算（税込/税抜）。stored jisha_h は税込
+function krYen(c,isTaxExcl){const v=fn(c.jisha_h);return isTaxExcl?Math.round(v/(1+TH.taxRate)):v;}
 // 着工前＝未完了 かつ 工期開始がまだ先（または未定/未設定）
 function nowYM(){return `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;}
 function isChakkouMae(c){
@@ -3751,11 +3881,13 @@ function renderKanryo(){
   <tfoot><tr class="tot"><td colspan="6" style="text-align:center">合計　${cases.length}件</td><td class="num">¥${fmt(tot)}</td></tr></tfoot></table></div></div>`;
 }
 function printKrDoc(){
+  if(krDoc==='gyoshu')return printGyoshuShukei();
   if(krDoc==='jyuchu')return printSimpleReport('jyuchu');
   if(krDoc==='kanryo')return printSimpleReport('kanryo');
   return printKeireki();
 }
 function exportKrExcel(){
+  if(krDoc==='gyoshu')return exportGyoshuExcel();
   if(krDoc==='jyuchu')return exportSimpleExcel('jyuchu');
   if(krDoc==='kanryo')return exportSimpleExcel('kanryo');
   return exportKerekiExcel();
@@ -3809,125 +3941,274 @@ function exportSimpleExcel(kind){
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,kind==='jyuchu'?'受注表':'完了工事表');
   XLSX.writeFile(wb,fname);
 }
+// 業種ごとにグルーピング（許可業種→管→その他→未分類の順）
+function krGroupByGyoshu(cases,isTaxExcl){
+  const groups={};
+  cases.forEach(c=>{
+    const key=c.kouji_type||'未分類';
+    if(!groups[key])groups[key]={list:[],sum:0,moto:0,shita:0,cnt:0};
+    const g=groups[key];const amt=krYen(c,isTaxExcl);
+    g.list.push(c);g.sum+=amt;g.cnt++;
+    if(c.moto_shita==='元請')g.moto+=amt;else g.shita+=amt;
+  });
+  const order=[...AILE_KYOKA,GYOSHU_NOPERMIT];
+  const keys=Object.keys(groups);
+  const sortedKeys=[
+    ...order.filter(k=>groups[k]),
+    ...keys.filter(k=>!order.includes(k)&&k!=='未分類').sort((a,b)=>groups[b].sum-groups[a].sum),
+    ...(groups['未分類']?['未分類']:[])
+  ];
+  const grandTotal=cases.reduce((a,c)=>a+krYen(c,isTaxExcl),0);
+  return {groups,sortedKeys,grandTotal};
+}
+function renderGyoshuShukei(){
+  const el=document.getElementById('kerekiOut');if(!el)return;
+  const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
+  const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
+  const cases=krCasesForFY(yr);
+  const {groups,sortedKeys,grandTotal}=krGroupByGyoshu(cases,isTaxExcl);
+  // 管工事チェック（出力3）
+  const kan=groups[GYOSHU_NOPERMIT];let kanAlert='';
+  if(kan){
+    const over=kan.list.filter(c=>fn(c.jisha_h)>=TH.keibi);
+    const maxAmt=Math.max.apply(null,kan.list.map(c=>fn(c.jisha_h)));
+    kanAlert=`<div class="card" style="border:2px solid ${over.length?'#c62828':'#e0a800'};margin-bottom:14px">
+      <div class="card-hdr" style="background:${over.length?'#c62828':'#e0a800'};color:#fff">⚠ 管工事（無許可）チェック</div>
+      <div class="card-body" style="font-size:12px">
+        年間合計 <b>¥${fmt(kan.sum)}</b>（${kan.cnt}件）／ 最高単価 <b>¥${fmt(maxAmt)}</b>（税込）
+        ${over.length?`<div style="color:#c62828;font-weight:700;margin-top:6px">🚨 税込500万円以上が ${over.length}件（無許可営業の恐れ）：<br>${over.map(c=>`・${c.client||''} ${c.kouji||''}（¥${fmt(fn(c.jisha_h))}）`).join('<br>')}</div>`:`<div style="color:#2e7d32;margin-top:6px">✓ 税込500万円以上の管工事はありません（軽微の範囲内）。</div>`}
+      </div></div>`;
+  }
+  const sumRows=sortedKeys.map(k=>{
+    const g=groups[k];const mark=AILE_KYOKA_SET.has(k)?'◎':(k===GYOSHU_NOPERMIT?'✕':(k==='未分類'?'？':''));
+    return `<tr${k==='未分類'?' style="color:#c62828"':''}><td>${mark} ${k}</td><td style="text-align:center">${g.cnt}</td><td style="text-align:right">¥${fmt(g.moto)}</td><td style="text-align:right">¥${fmt(g.shita)}</td><td style="text-align:right;font-weight:700">¥${fmt(g.sum)}</td></tr>`;
+  }).join('');
+  const detail=sortedKeys.map(k=>{
+    const g=groups[k];
+    const rows=g.list.slice().sort((a,b)=>krYen(b,isTaxExcl)-krYen(a,isTaxExcl)).map((c,i)=>{
+      const amt=krYen(c,isTaxExcl);
+      return `<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td style="text-align:right">¥${fmt(amt)}</td><td class="ctr">${c.moto_shita||''}</td><td class="ctr">${toReiwa(c.kouki_s)}</td><td class="ctr">${toReiwa(c.kouki_e)}</td></tr>`;
+    }).join('');
+    return `<div class="card" style="margin-bottom:10px"><div class="card-hdr ch-nav"><span>${k}</span><span style="font-size:11px;opacity:.85">${g.cnt}件・¥${fmt(g.sum)}</span></div>
+      <div class="twrap"><table style="min-width:680px;font-size:11px"><thead><tr style="background:#eef"><th>No</th><th style="text-align:left">注文者</th><th style="text-align:left">工事名</th><th style="text-align:left">現場所在地</th><th>請負金額</th><th>元/下</th><th>着工</th><th>完成</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-hdr ch-grn"><span>📊 業種別 完成工事高 集計</span><span style="font-size:11px;opacity:.85">${fyLabel(yr)}・${isTaxExcl?'税抜':'税込'}・全${cases.length}件</span></div>
+      <div style="padding:8px 14px;font-size:11px;color:#666">※完成年月（工期終了）が事業年度（${yr}/3〜${yr+1}/2）に入る工事を集計。業種別合計が決算の完成工事高と概ね一致するか確認に使えます。</div>
+      <div class="twrap"><table style="min-width:560px"><thead><tr style="background:var(--nav);color:#fff"><th style="text-align:left">業種</th><th>件数</th><th>元請</th><th>下請</th><th>完成工事高 計</th></tr></thead>
+      <tbody>${sumRows||'<tr><td colspan="5" style="text-align:center;padding:16px;color:#aaa">対象工事なし（年度を変えてお試しください）</td></tr>'}</tbody>
+      <tfoot><tr style="background:#f0f0f0;font-weight:700"><td>合計</td><td style="text-align:center">${cases.length}</td><td colspan="2"></td><td style="text-align:right">¥${fmt(grandTotal)}</td></tr></tfoot></table></div>
+    </div>
+    ${kanAlert}
+    ${detail}`;
+}
+function exportGyoshuExcel(){
+  if(typeof XLSX==='undefined'){alert('Excelライブラリ未読込。ネット接続を確認してください');return;}
+  const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
+  const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
+  const cases=krCasesForFY(yr);
+  const {groups,sortedKeys,grandTotal}=krGroupByGyoshu(cases,isTaxExcl);
+  const aoa=[['業種別 完成工事高 集計　'+fyLabel(yr)+(isTaxExcl?'（税抜）':'（税込）')],[],['業種','件数','元請','下請','完成工事高計']];
+  sortedKeys.forEach(k=>{const g=groups[k];aoa.push([k,g.cnt,g.moto,g.shita,g.sum]);});
+  aoa.push(['合計',cases.length,'','',grandTotal],[]);
+  sortedKeys.forEach(k=>{
+    const g=groups[k];aoa.push(['【'+k+'】 '+g.cnt+'件 計 '+g.sum]);
+    aoa.push(['No','注文者','工事名','現場所在地','請負金額','元請/下請','着工','完成']);
+    g.list.slice().sort((a,b)=>krYen(b,isTaxExcl)-krYen(a,isTaxExcl)).forEach((c,i)=>aoa.push([i+1,c.client||'',c.kouji||'',c.genba||c.place||'',krYen(c,isTaxExcl),c.moto_shita||'',toReiwa(c.kouki_s),toReiwa(c.kouki_e)]));
+    aoa.push([]);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(aoa);const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'業種別集計');
+  XLSX.writeFile(wb,'業種別集計_'+yr+'年度.xlsx');
+}
+function printGyoshuShukei(){
+  const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
+  const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
+  const cases=krCasesForFY(yr);
+  const {groups,sortedKeys,grandTotal}=krGroupByGyoshu(cases,isTaxExcl);
+  const jisha=S.masters.jisha_name||'';const today=new Date().toLocaleDateString('ja-JP');
+  let sum=sortedKeys.map(k=>{const g=groups[k];return `<tr><td>${k}</td><td class="c">${g.cnt}</td><td class="r">${fmt(g.moto)}</td><td class="r">${fmt(g.shita)}</td><td class="r">${fmt(g.sum)}</td></tr>`;}).join('');
+  let detail=sortedKeys.map(k=>{const g=groups[k];
+    const rows=g.list.slice().sort((a,b)=>krYen(b,isTaxExcl)-krYen(a,isTaxExcl)).map((c,i)=>`<tr><td class="c">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="r">${fmt(krYen(c,isTaxExcl))}</td><td class="c">${c.moto_shita||''}</td><td class="c">${toReiwa(c.kouki_s)}</td><td class="c">${toReiwa(c.kouki_e)}</td></tr>`).join('');
+    return `<h3>${k}（${g.cnt}件・計 ${fmt(g.sum)}）</h3><table><thead><tr><th>No</th><th>注文者</th><th>工事名</th><th>現場所在地</th><th>請負金額</th><th>元/下</th><th>着工</th><th>完成</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }).join('');
+  const w=window.open('','_blank','width=1000,height=800');
+  if(!w){alert('ポップアップがブロックされました。ブラウザで許可してください。');return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>業種別集計</title>
+  <style>@page{size:A4 portrait;margin:10mm}body{font-family:'Meiryo',sans-serif;padding:8mm;color:#000}h1{font-size:18px;text-align:center;margin:0 0 4px}h3{font-size:13px;margin:12px 0 4px;border-left:4px solid #1f4e79;padding-left:6px}.sub{text-align:center;font-size:12px;margin-bottom:6px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;font-size:11px;margin-bottom:8px}th,td{border:1px solid #333;padding:3px 5px}th{background:#1f4e79;color:#fff}.c{text-align:center}.r{text-align:right}@media print{.np{display:none}}</style></head><body>
+  <h1>業種別 完成工事高 集計</h1><div class="sub">${fyLabel(yr)}　（${isTaxExcl?'税抜':'税込'}）</div>
+  <div class="meta"><span>${jisha}</span><span>作成日：${today}　全${cases.length}件</span></div>
+  <table><thead><tr><th>業種</th><th>件数</th><th>元請</th><th>下請</th><th>完成工事高 計</th></tr></thead><tbody>${sum}</tbody>
+  <tfoot><tr><td class="c">合計</td><td class="c">${cases.length}</td><td colspan="2"></td><td class="r">${fmt(grandTotal)}</td></tr></tfoot></table>
+  ${detail}
+  <div class="np" style="margin-top:14px;text-align:center"><button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
+  </body></html>`);
+  w.document.close();
+}
+// ── 工事経歴書 選択エンジン（経審2段階7割 / 決算 区別なし） ──
+function keishinPick(rows,target,startCum,keibiCount){
+  // rows: 金額降順 [{c,amt,isMoto,keibi}]。targetを超える まで記載
+  const sel=[];let cum=startCum;let reached=cum>target;
+  for(const r of rows){
+    if(cum>target){reached=true;break;}              // 7割超 達成→打切
+    if(cum>=TH.cap)break;                             // 1,000億到達→打切
+    if(r.keibi&&keibiCount>=TH.keibiMaxCount)break;   // 軽微 通算10件→打切
+    sel.push(r);cum+=r.amt;if(r.keibi)keibiCount++;
+  }
+  if(cum>target)reached=true;
+  return {sel,cum,keibiCount,reached};
+}
+function keirekiBuild(mode,gyoshu,yr,isTaxExcl){
+  const all=krCasesForFY(yr).filter(c=>(c.kouji_type||'未分類')===gyoshu);
+  if(!all.length)return {gyoshu,empty:true,rows:[],total:{all:0,moto:0,shita:0},allCount:0,mode};
+  const rowsAll=all.map(c=>({c,amt:krYen(c,isTaxExcl),isMoto:c.moto_shita==='元請',keibi:isKeibi(c)}))
+                   .sort((a,b)=>b.amt-a.amt);
+  const allTotal=rowsAll.reduce((s,r)=>s+r.amt,0);
+  const motoRows=rowsAll.filter(r=>r.isMoto);
+  const motoTotal=motoRows.reduce((s,r)=>s+r.amt,0);
+  let listed,steps=null;
+  if(mode==='keishin'){
+    const r1=keishinPick(motoRows,TH.ratioMoto*motoTotal,0,0);          // ステップ1：元請7割
+    const ids=new Set(r1.sel.map(x=>x.c.id));
+    const remain=rowsAll.filter(x=>!ids.has(x.c.id));
+    const r2=keishinPick(remain,TH.ratioAll*allTotal,r1.cum,r1.keibiCount); // ステップ2：全体7割（通算）
+    listed=r1.sel.concat(r2.sel);
+    steps={step1:r1.sel.length,step2:r2.sel.length,keibi:r2.keibiCount,reached:r2.reached};
+  }else{
+    listed=rowsAll.slice();                                              // 決算/更新：区別なし金額降順・全件
+  }
+  // 上位3件 裏付けフラグ（記載分の金額上位）
+  const top3ids=new Set(listed.slice().sort((a,b)=>b.amt-a.amt).slice(0,TH.topUragaki).map(r=>r.c.id));
+  listed.forEach(r=>{r.uragaki=top3ids.has(r.c.id);});
+  return {gyoshu,empty:false,mode,rows:listed,steps,allCount:all.length,
+    total:{all:allTotal,moto:motoTotal,shita:allTotal-motoTotal},half:TH.ratioKessan*allTotal};
+}
+// 出力対象の業種リスト（type指定時はその1業種、未指定=モード別）
+function krGyoshuListFor(mode,type,yr,isTaxExcl){
+  if(type)return [type];
+  if(mode==='kessan'){
+    const {sortedKeys}=krGroupByGyoshu(krCasesForFY(yr),isTaxExcl);
+    return sortedKeys.length?sortedKeys:AILE_KYOKA.slice();
+  }
+  return AILE_KYOKA.slice();   // 経審/更新：受審対象=許可7業種（実績ゼロでも1枚）
+}
+function krModeNote(mode,yr,tax){
+  const lbl=(KEIREKI_MODES[mode]||{}).label||mode;
+  let body='';
+  if(mode==='keishin')body='元請の完成工事高7割超→全体の完成工事高7割超まで2段階で記載。軽微（税込500万未満）は通算10件まで。<b>★</b>印の上位3件は契約書・注文書・請求書等の裏付けが必要（行政庁により5件のことも）。受審対象業種は実績ゼロでも「工事実績なし」で1枚出力。';
+  else if(mode==='kessan')body='元請下請の区別なく金額の大きい順。完成工事高の概ね5割超（青線）まで記載が目安（軽微が少なければ全件でも可）。未成工事は別掲。記載量は許可行政庁（千葉県）の運用により異なります。';
+  else body='許可更新では既提出の決算変更届で足りる場合があります（作り直し不要のことも）。千葉県の運用を要確認。出力内容は事業年度終了届と同じです。';
+  return `<div class="card" style="margin-bottom:12px;border-left:4px solid #1f4e79"><div class="card-body" style="font-size:11px;color:#444;line-height:1.6"><b>${lbl}</b>／対象事業年度：<b>${fyLabel(yr)}</b>／税区分：<b>${tax}</b><br>${body}<br><span style="color:#c62828">※制度・千葉県運用で変わりえます。最終確認は手引き・行政書士等によること。</span></div></div>`;
+}
+function krMiseiHtml(yr,isTaxExcl){
+  const end=`${yr+1}-${String(TH.fyStartMonth-1).padStart(2,'0')}`; // 年度末月 例 2027-02
+  const list=S.cases.filter(c=>{
+    if(fn(c.jisha_h)<=0)return false;
+    if(isDone(c))return false;
+    const ke=(c.kouki_e&&c.kouki_e!=='未定')?c.kouki_e.slice(0,7):'';
+    return !ke||ke>end;   // 年度末時点で未完成
+  }).sort((a,b)=>fn(b.jisha_h)-fn(a.jisha_h));
+  if(!list.length)return '';
+  const rows=list.map((c,i)=>`<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.kouji_type||''}</td><td>${c.genba||c.place||''}</td><td style="text-align:right">¥${fmt(krYen(c,isTaxExcl))}</td><td class="ctr">${toReiwa(c.kouki_s)}</td><td class="ctr">${(c.kouki_e==='未定'||!c.kouki_e)?'未定':toReiwa(c.kouki_e)}</td></tr>`).join('');
+  return `<div class="card" style="margin-bottom:14px;border:1.5px dashed #888"><div class="card-hdr" style="background:#777;color:#fff">未成工事（完成工事高には合算しない・別掲）</div>
+    <div style="padding:6px 12px;font-size:10px;color:#666">※年度末時点で未完成の工事。決算届では完成工事高と分けて記載します。</div>
+    <div class="twrap"><table style="min-width:760px;font-size:11px"><thead><tr style="background:#eee"><th>No</th><th style="text-align:left">注文者</th><th style="text-align:left">工事名</th><th>業種</th><th style="text-align:left">現場</th><th>請負金額</th><th>着工</th><th>完成予定</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
 function renderKeirekiSheet(){
   const el=document.getElementById('kerekiOut');if(!el)return;
   const type=vg('kr_type');
   const tax=vg('kr_tax')||'税込';
-  const yr=parseInt(vg('kr_year'))||getYr();
   const isTaxExcl=tax==='税抜';
-
-  let cases=S.cases.filter(c=>{
-    if(type&&c.kouji_type!==type)return false;
-    const cm=c.seikyuu_t||'';
-    return cm.startsWith(yr+'');
-  }).sort((a,b)=>{
-    // 元請 first, then by amount desc
-    const am=a.moto_shita==='元請'?0:1;
-    const bm=b.moto_shita==='元請'?0:1;
-    if(am!==bm)return am-bm;
-    return fn(b.jisha_h)-fn(a.jisha_h);
-  });
-
-  let totAmt=0,totMoto=0,cnt=0;
-  const rows=cases.map((c,i)=>{
-    const amt=toSenYen(c.jisha_h,isTaxExcl);
-    const motoAmt=c.moto_shita==='元請'?amt:'';
-    totAmt+=fn(amt);
-    if(c.moto_shita==='元請')totMoto+=fn(amt);
-    cnt++;
-    return `<tr>
-      <td>${c.client||''}</td>
-      <td>${c.kouji||''}</td>
-      <td style="text-align:center">${c.moto_shita||''}</td>
-      <td style="text-align:center">${c.jv||''}</td>
-      <td>${c.genba||c.place||''}</td>
-      <td>${c.haichi_gishi||''}</td>
-      <td style="text-align:center">${c.gishi_type||''}</td>
+  const mode=vg('kr_mode')||'keishin';
+  const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
+  const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
+  const sheets=gyoshuList.map(g=>krSheetHtml(keirekiBuild(mode,g,yr,isTaxExcl),mode,tax)).join('');
+  const misei=(mode!=='keishin')?krMiseiHtml(yr,isTaxExcl):'';
+  el.innerHTML=krModeNote(mode,yr,tax)+sheets+misei;
+}
+function krSheetHtml(b,mode,tax){
+  const sen=v=>Math.round(v/1000);
+  const total=b.total||{all:0,moto:0,shita:0};
+  if(b.empty){
+    return `<div class="card" style="margin-bottom:12px"><div class="card-hdr ch-nav"><span>${b.gyoshu}　工事経歴書（様式第二号）</span><span style="font-size:11px;opacity:.75">${mode==='keishin'?'受審対象':''}</span></div><div style="padding:18px;text-align:center;color:#999">工事実績なし</div></div>`;
+  }
+  let cum=0;const half=b.half||0;let halfMarked=false;
+  const rows=b.rows.map(r=>{
+    const amt=sen(r.amt);const motoAmt=r.isMoto?amt:'';
+    cum+=r.amt;
+    const star=(mode==='keishin'&&r.uragaki)?'<span title="裏付け要" style="color:#c62828">★</span>':'';
+    let mark='';
+    if(mode!=='keishin'&&!halfMarked&&cum>half){halfMarked=true;mark=' style="border-bottom:2px solid #1f4e79"';}
+    return `<tr${mark}>
+      <td>${star}${r.c.client||''}</td>
+      <td>${r.c.kouji||''}</td>
+      <td style="text-align:center">${r.c.moto_shita||''}</td>
+      <td style="text-align:center">${r.c.jv||''}</td>
+      <td>${r.c.genba||r.c.place||''}</td>
+      <td>${r.c.haichi_gishi||''}</td>
+      <td style="text-align:center">${r.c.gishi_type||''}</td>
       <td style="text-align:right">${amt?fmt(amt):''}</td>
       <td style="text-align:right">${motoAmt?fmt(motoAmt):''}</td>
-      <td style="text-align:center">${toReiwa(c.kouki_s)}</td>
-      <td style="text-align:center">${toReiwa(c.kouki_e)}</td>
+      <td style="text-align:center">${toReiwa(r.c.kouki_s)}</td>
+      <td style="text-align:center">${toReiwa(r.c.kouki_e)}</td>
     </tr>`;
-  });
-
-  el.innerHTML=`
-    <div class="card">
-      <div class="card-hdr ch-nav">
-        <span>工事経歴書　様式第二号</span>
-        <span style="font-size:11px;opacity:.75">（${type||'全種類'}）工事　（ ${tax} ）</span>
-      </div>
-      <div class="twrap">
-        <table class="sample-kr" style="width:100%;border-collapse:collapse;font-size:11px;min-width:900px">
-          <thead>
-            <tr style="background:var(--nav);color:#fff">
-              <th style="padding:6px 8px;min-width:80px">注文者</th>
-              <th style="padding:6px 8px;min-width:120px">工事名</th>
-              <th style="padding:6px 8px;width:50px">元請/<br>下請</th>
-              <th style="padding:6px 8px;width:35px">JV</th>
-              <th style="padding:6px 8px;min-width:100px">工事現場</th>
-              <th style="padding:6px 8px;min-width:80px">配置技術者</th>
-              <th style="padding:6px 8px;width:45px">主任/<br>監理</th>
-              <th style="padding:6px 8px;width:80px">請負代金<br>（千円）</th>
-              <th style="padding:6px 8px;width:80px">うち元請<br>（千円）</th>
-              <th style="padding:6px 8px;width:55px">着工</th>
-              <th style="padding:6px 8px;width:55px">完成</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.join('')||`<tr><td colspan="11" style="text-align:center;padding:20px;color:#aaa">該当工事なし</td></tr>`}
-          </tbody>
-          <tfoot>
-            <tr style="background:var(--nav);color:#fff;font-weight:700">
-              <td colspan="7" style="padding:6px 8px;text-align:center">合計　${cnt}件</td>
-              <td style="padding:6px 8px;text-align:right">${fmt(totAmt)}</td>
-              <td style="padding:6px 8px;text-align:right">${fmt(totMoto)}</td>
-              <td colspan="2"></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>`;
+  }).join('');
+  const lsAll=sen(b.rows.reduce((s,r)=>s+r.amt,0));
+  const lsMoto=sen(b.rows.filter(r=>r.isMoto).reduce((s,r)=>s+r.amt,0));
+  const extraNote=(mode!=='keishin'&&half>0)?`<div style="padding:4px 10px;font-size:10px;color:#1f4e79">— 青線まで＝完成工事高の約5割（${fmt(sen(half))}千円）—</div>`:'';
+  return `<div class="card" style="margin-bottom:14px">
+    <div class="card-hdr ch-nav"><span>${b.gyoshu}　工事経歴書（様式第二号）</span><span style="font-size:11px;opacity:.75">記載 ${b.rows.length}件 / 全${b.allCount}件　（ ${tax} ）</span></div>
+    <div class="twrap"><table class="sample-kr" style="width:100%;border-collapse:collapse;font-size:11px;min-width:900px">
+      <thead><tr style="background:var(--nav);color:#fff">
+        <th style="padding:6px 8px;min-width:80px">注文者</th><th style="padding:6px 8px;min-width:120px">工事名</th>
+        <th style="padding:6px 8px;width:50px">元請/<br>下請</th><th style="padding:6px 8px;width:35px">JV</th>
+        <th style="padding:6px 8px;min-width:100px">工事現場</th><th style="padding:6px 8px;min-width:80px">配置技術者</th>
+        <th style="padding:6px 8px;width:45px">主任/<br>監理</th><th style="padding:6px 8px;width:80px">請負代金<br>（千円）</th>
+        <th style="padding:6px 8px;width:80px">うち元請<br>（千円）</th><th style="padding:6px 8px;width:55px">着工</th><th style="padding:6px 8px;width:55px">完成</th>
+      </tr></thead>
+      <tbody>${rows||`<tr><td colspan="11" style="text-align:center;padding:18px;color:#aaa">該当工事なし</td></tr>`}</tbody>
+      <tfoot>
+        <tr style="background:#eef;font-weight:700"><td colspan="7" style="padding:6px 8px;text-align:right">記載 ${b.rows.length}件 小計</td>
+          <td style="padding:6px 8px;text-align:right">${fmt(lsAll)}</td><td style="padding:6px 8px;text-align:right">${fmt(lsMoto)}</td><td colspan="2"></td></tr>
+        <tr style="background:var(--nav);color:#fff;font-weight:700"><td colspan="7" style="padding:6px 8px;text-align:right">当業種 完成工事高合計（全${b.allCount}件）</td>
+          <td style="padding:6px 8px;text-align:right">${fmt(sen(total.all))}</td><td style="padding:6px 8px;text-align:right">${fmt(sen(total.moto))}</td>
+          <td colspan="2" style="font-size:10px;text-align:center">下請計<br>${fmt(sen(total.shita))}千円</td></tr>
+      </tfoot>
+    </table></div>${extraNote}
+  </div>`;
 }
 
 function printKeireki(){
   const type=vg('kr_type')||'';
   const tax=vg('kr_tax')||'税込';
-  const yr=parseInt(vg('kr_year'))||getYr();
   const isTaxExcl=tax==='税抜';
-
-  let cases=S.cases.filter(c=>{
-    if(type&&c.kouji_type!==type)return false;
-    return (cMo(c)).startsWith(yr+'');
-  }).sort((a,b)=>{
-    const am=a.moto_shita==='元請'?0:1,bm=b.moto_shita==='元請'?0:1;
-    if(am!==bm)return am-bm;
-    return fn(b.jisha_h)-fn(a.jisha_h);
-  });
-
-  const ROWS=13;
-  let totAmt=0,totMoto=0,cnt=0;
+  const mode=vg('kr_mode')||'keishin';
+  const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
+  const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
 
   function toR(ds){
-    if(!ds)return {y:'',m:''};
+    if(!ds||ds==='未定')return {y:'',m:''};
     const d=new Date(ds);
     return {y:String(d.getFullYear()-2018),m:String(d.getMonth()+1)};
   }
-  function toK(val){
-    const v=fn(val);if(!v)return '';
-    return Math.round((isTaxExcl?v/1.1:v)/1000).toLocaleString();
-  }
-
-  let dataRows='';
-  for(let i=0;i<ROWS;i++){
-    const c=cases[i];
-    if(c){
-      const amt=Math.round((isTaxExcl?fn(c.jisha_h)/1.1:fn(c.jisha_h))/1000);
-      const motoAmt=c.moto_shita==='元請'?amt:0;
-      totAmt+=amt;totMoto+=motoAmt;cnt++;
-      const ks=toR(c.kouki_s),ke=toR(c.kouki_e);
-      const gishi=c.gishi_type||'';
-      dataRows+=`<tr>
-        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:70px">${c.client||''}</td>
+  const THEAD=`<tr class="hdr1">
+      <th rowspan="2" style="width:9%">注文者</th><th rowspan="2" style="width:14%">工事名</th>
+      <th rowspan="2" style="width:4%">元請<br>又は<br>下請<br>の別</th><th rowspan="2" style="width:3%">JV<br>の<br>別</th>
+      <th rowspan="2" style="width:10%">工事現場の<br>都道府県及び<br>市区町村名</th><th colspan="2" style="width:14%">配 置 技 術 者</th>
+      <th colspan="3" style="width:22%">請 負 代 金 の 額</th>
+      <th rowspan="2" style="width:10%">工　期<br><span style="font-size:7px">着工年月<br>完成又は完成予定年月</span></th></tr>
+    <tr class="hdr2"><th style="width:8%">氏　名</th><th style="width:6%">主任技術者<br>又は監理技術者<br>の別</th><th style="width:8%"></th><th style="width:7%">うち<br>元請工事</th><th style="width:7%">うち<br>PC・法面処理<br>・鋼橋上部</th></tr>`;
+  function pageRows(b){
+    const n=Math.max(13,b.rows.length);let html='';
+    for(let i=0;i<n;i++){
+      const r=b.rows[i];
+      if(r){
+        const c=r.c;const amt=Math.round(r.amt/1000);const motoAmt=r.isMoto?amt:0;
+        const ks=toR(c.kouki_s),ke=toR(c.kouki_e);const gishi=c.gishi_type||'';
+        const star=(b.mode==='keishin'&&r.uragaki)?'★':'';
+        html+=`<tr>
+        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:70px">${star}${c.client||''}</td>
         <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:100px">${c.kouji||''}</td>
         <td rowspan="2" class="c ed" contenteditable="true">${c.moto_shita||''}</td>
         <td rowspan="2" class="c ed" contenteditable="true">${c.jv||''}</td>
@@ -3942,8 +4223,8 @@ function printKeireki(){
         <td class="c sub">千円</td><td class="c sub">千円</td><td class="c sub"></td>
         <td class="c ed" contenteditable="true" style="font-size:8px">令和 ${ke.y} 年 ${ke.m} 月</td>
       </tr>`;
-    } else {
-      dataRows+=`<tr>
+      } else {
+        html+=`<tr>
         <td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td>
         <td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td><td rowspan="2" class="ed" contenteditable="true"></td>
         <td class="ed" contenteditable="true"></td><td class="ed" contenteditable="true"></td><td class="ed" contenteditable="true"></td><td class="c ed" contenteditable="true" style="font-size:8px;color:#ccc">令和　年　月</td>
@@ -3951,8 +4232,28 @@ function printKeireki(){
         <td class="c sub">千円</td><td class="c sub">千円</td><td class="c sub"></td>
         <td class="c ed" contenteditable="true" style="font-size:8px;color:#ccc">令和　年　月</td>
       </tr>`;
+      }
     }
+    return html;
   }
+  function pageHtml(b,idx){
+    const sen=v=>Math.round(v/1000);
+    const brk=idx?' style="page-break-before:always"':'';
+    const typeLine=`<div class="type-line"><div class="left">（建設工事の種類）<span>${b.gyoshu}</span>工事</div><div class="right">（ ${tax==='税込'?'<u>税込</u>・税抜':'税込・<u>税抜</u>'} ）</div></div>`;
+    if(b.empty){
+      return `<div${brk}>${typeLine}<div style="padding:30px;text-align:center;border:1px solid #000">工事実績なし</div></div>`;
+    }
+    const lsAll=sen(b.rows.reduce((s,r)=>s+r.amt,0));
+    const lsMoto=sen(b.rows.filter(r=>r.isMoto).reduce((s,r)=>s+r.amt,0));
+    const tAll=sen((b.total||{}).all||0),tMoto=sen((b.total||{}).moto||0);
+    return `<div${brk}>${typeLine}
+    <table><thead>${THEAD}</thead><tbody>${pageRows(b)}</tbody>
+    <tfoot>
+      <tr class="totrow"><td colspan="7" class="c">小　計（記載 ${b.rows.length}件）</td><td class="r">${lsAll?lsAll.toLocaleString():''}</td><td class="r">${lsMoto?lsMoto.toLocaleString():''}</td><td></td><td></td></tr>
+      <tr class="totrow"><td colspan="2" class="c">合　計（全${b.allCount}件）</td><td colspan="2" class="c" style="font-size:7px">うち 元請工事</td><td colspan="3"></td><td class="r">${tAll?tAll.toLocaleString():''}</td><td class="r">${tMoto?tMoto.toLocaleString():''}</td><td></td><td></td></tr>
+    </tfoot></table></div>`;
+  }
+  const pages=gyoshuList.map((g,i)=>pageHtml(keirekiBuild(mode,g,yr,isTaxExcl),i)).join('');
 
   const w=window.open('','_blank','width=1100,height=800');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -3984,170 +4285,114 @@ tr{height:20px}
 <div class="header-note">様式第二号（第二条、第十三条の二、第十三条の三、第十九条の八関係）</div>
 <div class="header-note2">（用紙Ａ４）</div>
 <h1>工 事 経 歴 書</h1>
-<div class="type-line">
-  <div class="left">（建設工事の種類）<span>${type||'　　　　　'}</span>工事</div>
-  <div class="right">（ ${tax==='税込'?'<u>税込</u>・税抜':'税込・<u>税抜</u>'} ）</div>
-</div>
-<div class="no-print-note">✏️ セルをクリックして直接編集できます → 編集後「🖨️ 印刷」ボタンで印刷 / PDF保存</div>
+<div style="font-size:10px;color:#444;margin-bottom:6px;text-align:center">出力モード：${(KEIREKI_MODES[mode]||{}).label||mode}　／　対象事業年度：${fyLabel(yr)}　／　${tax}　／　業種ごとに改ページ</div>
+<div class="no-print-note">✏️ セルをクリックして直接編集できます → 編集後「🖨️ 印刷」ボタンで印刷 / PDF保存（業種ごとに改ページ）</div>
 <div class="no-print-note" style="background:#e3f2fd;color:#1565c0"><button onclick="window.print()" style="padding:8px 24px;font-size:14px;font-weight:700;background:#1565c0;color:#fff;border:none;border-radius:8px;cursor:pointer">🖨️ 印刷 / PDF保存</button></div>
-<table>
-  <thead>
-    <tr class="hdr1">
-      <th rowspan="2" style="width:9%">注文者</th>
-      <th rowspan="2" style="width:14%">工事名</th>
-      <th rowspan="2" style="width:4%">元請<br>又は<br>下請<br>の別</th>
-      <th rowspan="2" style="width:3%">JV<br>の<br>別</th>
-      <th rowspan="2" style="width:10%">工事現場の<br>都道府県及び<br>市区町村名</th>
-      <th colspan="2" style="width:14%">配 置 技 術 者</th>
-      <th colspan="3" style="width:22%">請 負 代 金 の 額</th>
-      <th rowspan="2" style="width:10%">工　期<br><span style="font-size:7px">着工年月<br>完成又は完成予定年月</span></th>
-    </tr>
-    <tr class="hdr2">
-      <th style="width:8%">氏　名</th>
-      <th style="width:6%">主任技術者<br>又は監理技術者<br>の別</th>
-      <th style="width:8%"></th>
-      <th style="width:7%">うち<br>元請工事</th>
-      <th style="width:7%">うち<br>PC・法面処理<br>・鋼橋上部</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${dataRows}
-  </tbody>
-  <tfoot>
-    <tr class="totrow">
-      <td colspan="7" class="c">小　計</td>
-      <td class="r">${cnt?totAmt.toLocaleString():''}</td>
-      <td class="r">${totMoto?totMoto.toLocaleString():''}</td>
-      <td></td>
-      <td></td>
-    </tr>
-    <tr class="totrow">
-      <td colspan="2" class="c">合　計</td>
-      <td colspan="2" class="c" style="font-size:7px">うち 元請工事</td>
-      <td colspan="3"></td>
-      <td class="r">${cnt?totAmt.toLocaleString():''}</td>
-      <td class="r">${totMoto?totMoto.toLocaleString():''}</td>
-      <td></td>
-      <td></td>
-    </tr>
-    <tr>
-      <td colspan="2" class="c" style="font-size:8px">${cnt||''}件　${cnt?totAmt.toLocaleString():''}千円</td>
-      <td colspan="2" class="c" style="font-size:8px">${cnt?totMoto.toLocaleString():''}千円</td>
-      <td colspan="3"></td>
-      <td colspan="2" class="c" style="font-size:8px">${cnt?totAmt.toLocaleString():''}千円</td>
-      <td colspan="2"></td>
-    </tr>
-  </tfoot>
-</table>
+${pages}
 </body></html>`);
   w.document.close();
 }
 
 const KEIREKI_TPL='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';
+const KEIREKI_MERGES=[
+  {s:{r:2,c:0},e:{r:2,c:11}},{s:{r:4,c:0},e:{r:4,c:11}},
+  {s:{r:6,c:0},e:{r:10,c:0}},{s:{r:6,c:3},e:{r:10,c:3}},
+  {s:{r:6,c:5},e:{r:6,c:7}},{s:{r:7,c:5},e:{r:10,c:5}},
+  {s:{r:7,c:6},e:{r:7,c:7}},{s:{r:8,c:6},e:{r:8,c:7}},
+  {s:{r:6,c:8},e:{r:6,c:9}},{s:{r:6,c:10},e:{r:6,c:11}},
+  {s:{r:7,c:10},e:{r:10,c:10}},
+  {s:{r:25,c:6},e:{r:27,c:6}},{s:{r:25,c:7},e:{r:27,c:7}},
+  {s:{r:25,c:8},e:{r:27,c:8}},{s:{r:25,c:9},e:{r:27,c:9}},
+  {s:{r:25,c:10},e:{r:25,c:11}},{s:{r:26,c:10},e:{r:27,c:10}},{s:{r:26,c:11},e:{r:27,c:11}},
+  {s:{r:29,c:6},e:{r:31,c:6}},{s:{r:29,c:7},e:{r:31,c:7}},
+  {s:{r:29,c:8},e:{r:31,c:8}},{s:{r:29,c:9},e:{r:31,c:9}},
+  {s:{r:29,c:10},e:{r:29,c:11}},{s:{r:30,c:10},e:{r:31,c:10}},{s:{r:30,c:11},e:{r:31,c:11}}
+];
 function exportKerekiExcel(){
   if(typeof XLSX==='undefined'){alert('Excelライブラリ未読込。ネット接続を確認');return;}
   const type=vg('kr_type');
   const tax=vg('kr_tax')||'税込';
-  const yr=parseInt(vg('kr_year'))||getYr();
   const isTaxExcl=tax==='税抜';
-  let cases=S.cases.filter(c=>{
-    if(type&&c.kouji_type!==type)return false;
-    const cm=c.seikyuu_t||'';
-    return cm.startsWith(yr+'');
-  }).sort((a,b)=>{
-    const am=a.moto_shita==='元請'?0:1;const bm=b.moto_shita==='元請'?0:1;
-    if(am!==bm)return am-bm;
-    return fn(b.jisha_h)-fn(a.jisha_h);
-  });
+  const mode=vg('kr_mode')||'keishin';
+  const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
+  const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
   const bin=atob(KEIREKI_TPL);const arr=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
-  const wb=XLSX.read(arr,{type:'array',cellStyles:true});
-  const ws=wb.Sheets[wb.SheetNames[0]];
-  // マージ復元
-  ws['!merges']=[
-    {s:{r:2,c:0},e:{r:2,c:11}},{s:{r:4,c:0},e:{r:4,c:11}},
-    {s:{r:6,c:0},e:{r:10,c:0}},{s:{r:6,c:3},e:{r:10,c:3}},
-    {s:{r:6,c:5},e:{r:6,c:7}},{s:{r:7,c:5},e:{r:10,c:5}},
-    {s:{r:7,c:6},e:{r:7,c:7}},{s:{r:8,c:6},e:{r:8,c:7}},
-    {s:{r:6,c:8},e:{r:6,c:9}},{s:{r:6,c:10},e:{r:6,c:11}},
-    {s:{r:7,c:10},e:{r:10,c:10}},
-    {s:{r:25,c:6},e:{r:27,c:6}},{s:{r:25,c:7},e:{r:27,c:7}},
-    {s:{r:25,c:8},e:{r:27,c:8}},{s:{r:25,c:9},e:{r:27,c:9}},
-    {s:{r:25,c:10},e:{r:25,c:11}},{s:{r:26,c:10},e:{r:27,c:10}},{s:{r:26,c:11},e:{r:27,c:11}},
-    {s:{r:29,c:6},e:{r:31,c:6}},{s:{r:29,c:7},e:{r:31,c:7}},
-    {s:{r:29,c:8},e:{r:31,c:8}},{s:{r:29,c:9},e:{r:31,c:9}},
-    {s:{r:29,c:10},e:{r:29,c:11}},{s:{r:30,c:10},e:{r:31,c:10}},{s:{r:30,c:11},e:{r:31,c:11}}
-  ];
-  function sc(ref,v,t){ws[ref]={t:t||'s',v:v};}
-  // タイトル
-  sc('A5','（'+(type||'　　　　　　')+'）工事　（ '+tax+' ）');
-  // データ
-  const cols='ABCDEFGHIJKL';
-  const totAmt={all:0,moto:0};
-  for(let i=0;i<13;i++){
-    const r=12+i;const c=cases[i];
-    if(c){
-      const amt=fn(toSenYen(c.jisha_h,isTaxExcl));
-      const motoAmt=c.moto_shita==='元請'?amt:0;
-      totAmt.all+=amt;totAmt.moto+=motoAmt;
-      sc('A'+r,c.client||'');
-      sc('B'+r,c.moto_shita||'');
-      sc('C'+r,c.jv||'');
-      sc('D'+r,c.kouji||'');
-      sc('E'+r,c.genba||c.place||'');
-      sc('F'+r,c.haichi_gishi||'');
-      sc('G'+r,c.gishi_type==='主任'?'✓':'');
-      sc('H'+r,c.gishi_type==='監理'?'✓':'');
-      if(amt)sc('I'+r,amt,'n');
-      if(motoAmt)sc('J'+r,motoAmt,'n');
-      sc('K'+r,toReiwa(c.kouki_s));
-      sc('L'+r,toReiwa(c.kouki_e));
+  const sen=v=>Math.round(v/1000);
+  const master=XLSX.utils.book_new();const used={};
+  gyoshuList.forEach(g=>{
+    const b=keirekiBuild(mode,g,yr,isTaxExcl);
+    const wb=XLSX.read(arr,{type:'array',cellStyles:true});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    ws['!merges']=KEIREKI_MERGES.map(m=>({s:{r:m.s.r,c:m.s.c},e:{r:m.e.r,c:m.e.c}}));
+    const sc=(ref,v,t)=>{ws[ref]={t:t||'s',v:v};};
+    sc('A5','（'+g+'）工事　（ '+tax+' ）');
+    let lsAll=0,lsMoto=0;
+    for(let i=0;i<13;i++){
+      const r=12+i;const row=b.rows[i];
+      if(row){
+        const c=row.c;const amt=sen(row.amt);const motoAmt=row.isMoto?amt:0;
+        lsAll+=amt;lsMoto+=motoAmt;
+        sc('A'+r,((mode==='keishin'&&row.uragaki)?'★':'')+(c.client||''));
+        sc('B'+r,c.moto_shita||'');
+        sc('C'+r,c.jv||'');
+        sc('D'+r,c.kouji||'');
+        sc('E'+r,c.genba||c.place||'');
+        sc('F'+r,c.haichi_gishi||'');
+        sc('G'+r,c.gishi_type==='主任'?'✓':'');
+        sc('H'+r,c.gishi_type==='監理'?'✓':'');
+        if(amt)sc('I'+r,amt,'n');
+        if(motoAmt)sc('J'+r,motoAmt,'n');
+        sc('K'+r,toReiwa(c.kouki_s));
+        sc('L'+r,toReiwa(c.kouki_e));
+      }
     }
-  }
-  // 列幅復元
-  ws['!cols']=[{wch:13},{wch:5},{wch:4.5},{wch:22},{wch:13.5},{wch:13},{wch:10.5},{wch:13},{wch:12.5},{wch:13},{wch:13},{wch:13}];
-  sc('H26',cases.length,'n');sc('I26',totAmt.all,'n');sc('J26',totAmt.moto,'n');
-  sc('K27',totAmt.moto,'n');
-  sc('H30',cases.length,'n');sc('I30',totAmt.all,'n');sc('J30',totAmt.moto,'n');
-  sc('K31',totAmt.moto,'n');
-  // 列幅を公式テンプレートに合わせる
-  ws['!cols']=[{wch:14},{wch:6},{wch:5},{wch:22},{wch:14},{wch:14},{wch:11},{wch:14},{wch:13},{wch:14},{wch:14},{wch:14}];
-  XLSX.writeFile(wb,'工事経歴書_'+(type||'全種類')+'_'+yr+'年度.xlsx');
+    const tAll=sen((b.total||{}).all||0),tMoto=sen((b.total||{}).moto||0);
+    // 小計（記載分）
+    sc('H26',b.rows.length,'n');sc('I26',lsAll,'n');sc('J26',lsMoto,'n');sc('K27',lsMoto,'n');
+    // 合計（業種全体の完成工事高）
+    sc('H30',b.allCount,'n');sc('I30',tAll,'n');sc('J30',tMoto,'n');sc('K31',tMoto,'n');
+    if(b.rows.length>13)sc('A33','※記載13件超：別紙に続けてください（全'+b.rows.length+'件中13件表示）');
+    ws['!cols']=[{wch:14},{wch:6},{wch:5},{wch:22},{wch:14},{wch:14},{wch:11},{wch:14},{wch:13},{wch:14},{wch:14},{wch:14}];
+    let nm=(g||'種類').replace(/[\\/?*\[\]:]/g,'').slice(0,28)||'種類';
+    const base=nm;let k=2;while(used[nm]){nm=base.slice(0,26)+'_'+k;k++;}used[nm]=1;
+    XLSX.utils.book_append_sheet(master,ws,nm);
+  });
+  XLSX.writeFile(master,'工事経歴書_'+mode+'_'+yr+'年度.xlsx');
 }
 function exportKerekiWord(){
   const type=vg('kr_type')||'';
   const tax=vg('kr_tax')||'税込';
-  const yr=parseInt(vg('kr_year'))||getYr();
   const isTaxExcl=tax==='税抜';
-
-  let cases=S.cases.filter(c=>{
-    if(type&&c.kouji_type!==type)return false;
-    return (cMo(c)).startsWith(yr+'');
-  }).sort((a,b)=>{
-    const am=a.moto_shita==='元請'?0:1,bm=b.moto_shita==='元請'?0:1;
-    if(am!==bm)return am-bm;
-    return fn(b.jisha_h)-fn(a.jisha_h);
-  });
-
-  const ROWS=13;
-  let totAmt=0,totMoto=0,cnt=0;
-  function toR(ds){if(!ds)return '';const d=new Date(ds);return `令和 ${d.getFullYear()-2018} 年 ${d.getMonth()+1} 月`;}
-  function toK(val){const v=fn(val);if(!v)return '';return Math.round((isTaxExcl?v/1.1:v)/1000).toLocaleString();}
-
-  let rows='';
-  for(let i=0;i<ROWS;i++){
-    const c=cases[i];
-    if(c){
-      const amt=Math.round((isTaxExcl?fn(c.jisha_h)/1.1:fn(c.jisha_h))/1000);
-      const motoAmt=c.moto_shita==='元請'?amt:0;
-      totAmt+=amt;totMoto+=motoAmt;cnt++;
-      const g=c.gishi_type||'';
-      rows+=`<tr><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.moto_shita||''}</td><td>${c.jv||''}</td><td>${c.genba||c.place||''}</td><td>${c.haichi_gishi||''}</td><td>${g==='主任'?'☑主任□監理':g==='監理'?'□主任☑監理':''}</td><td style="text-align:right">${amt?amt.toLocaleString():''} 千円</td><td style="text-align:right">${motoAmt?motoAmt.toLocaleString():''} 千円</td><td></td><td>${toR(c.kouki_s)}</td><td>${toR(c.kouki_e)}</td></tr>`;
-    } else {
-      rows+=`<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>千円</td><td>千円</td><td></td><td></td><td></td></tr>`;
+  const mode=vg('kr_mode')||'keishin';
+  const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
+  const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
+  function toR(ds){if(!ds||ds==='未定')return '';const d=new Date(ds);return `令和 ${d.getFullYear()-2018} 年 ${d.getMonth()+1} 月`;}
+  const sen=v=>Math.round(v/1000);
+  const HEAD=`<tr><th>注文者</th><th>工事名</th><th>元請又は<br>下請の別</th><th>JVの別</th><th>工事現場の都道府県<br>及び市区町村名</th><th>配置技術者<br>氏名</th><th>主任技術者又は<br>監理技術者の別</th><th>請負代金の額</th><th>うち元請工事</th><th>うちPC・法面処理<br>・鋼橋上部</th><th>着工年月</th><th>完成又は<br>完成予定年月</th></tr>`;
+  function pageBlock(b,idx){
+    const brk=idx?' style="page-break-before:always"':'';
+    const typeLine=`<p class="info">（建設工事の種類）<u>　${b.gyoshu}　</u>工事　　（ ${tax==='税込'?'<u>税込</u>・税抜':'税込・<u>税抜</u>'} ）</p>`;
+    if(b.empty)return `<div${brk}>${typeLine}<p style="text-align:center;border:1pt solid #000;padding:20pt">工事実績なし</p></div>`;
+    const n=Math.max(13,b.rows.length);let rows='';
+    for(let i=0;i<n;i++){
+      const row=b.rows[i];
+      if(row){
+        const c=row.c;const amt=sen(row.amt);const motoAmt=row.isMoto?amt:0;const g=c.gishi_type||'';
+        const star=(mode==='keishin'&&row.uragaki)?'★':'';
+        rows+=`<tr><td>${star}${c.client||''}</td><td>${c.kouji||''}</td><td>${c.moto_shita||''}</td><td>${c.jv||''}</td><td>${c.genba||c.place||''}</td><td>${c.haichi_gishi||''}</td><td>${g==='主任'?'☑主任□監理':g==='監理'?'□主任☑監理':''}</td><td style="text-align:right">${amt?amt.toLocaleString():''} 千円</td><td style="text-align:right">${motoAmt?motoAmt.toLocaleString():''} 千円</td><td></td><td>${toR(c.kouki_s)}</td><td>${toR(c.kouki_e)}</td></tr>`;
+      } else {
+        rows+=`<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>千円</td><td>千円</td><td></td><td></td><td></td></tr>`;
+      }
     }
+    const lsAll=sen(b.rows.reduce((s,r)=>s+r.amt,0)),lsMoto=sen(b.rows.filter(r=>r.isMoto).reduce((s,r)=>s+r.amt,0));
+    const tAll=sen((b.total||{}).all||0),tMoto=sen((b.total||{}).moto||0);
+    return `<div${brk}>${typeLine}<table>${HEAD}${rows}
+    <tr class="totrow"><td colspan="7" style="text-align:center">小計（記載 ${b.rows.length}件）</td><td style="text-align:right">${lsAll?lsAll.toLocaleString()+' 千円':''}</td><td style="text-align:right">${lsMoto?lsMoto.toLocaleString()+' 千円':''}</td><td></td><td colspan="2"></td></tr>
+    <tr class="totrow"><td colspan="7" style="text-align:center">合計（全${b.allCount}件）</td><td style="text-align:right">${tAll?tAll.toLocaleString()+' 千円':''}</td><td style="text-align:right">${tMoto?tMoto.toLocaleString()+' 千円':''}</td><td></td><td colspan="2"></td></tr>
+    </table></div>`;
   }
-
+  const pages=gyoshuList.map((g,i)=>pageBlock(keirekiBuild(mode,g,yr,isTaxExcl),i)).join('');
   const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="UTF-8">
 <style>
@@ -4162,19 +4407,14 @@ th{background:#f0f0f0;text-align:center}
 </style></head><body>
 <p style="font-size:7pt">様式第二号（第二条、第十三条の二、第十三条の三、第十九条の八関係）<span style="float:right">（用紙Ａ４）</span></p>
 <h1>工 事 経 歴 書</h1>
-<p class="info">（建設工事の種類）<u>　${type||'　　　'}　</u>工事　　（ ${tax==='税込'?'<u>税込</u>・税抜':'税込・<u>税抜</u>'} ）</p>
-<table>
-<tr><th>注文者</th><th>工事名</th><th>元請又は<br>下請の別</th><th>JVの別</th><th>工事現場の都道府県<br>及び市区町村名</th><th>配置技術者<br>氏名</th><th>主任技術者又は<br>監理技術者の別</th><th>請負代金の額</th><th>うち元請工事</th><th>うちPC・法面処理<br>・鋼橋上部</th><th>着工年月</th><th>完成又は<br>完成予定年月</th></tr>
-${rows}
-<tr class="totrow"><td colspan="7" style="text-align:center">小計</td><td class="ed" contenteditable="true" style="text-align:right">${cnt?totAmt.toLocaleString()+' 千円':''}</td><td class="ed" contenteditable="true" style="text-align:right">${totMoto?totMoto.toLocaleString()+' 千円':''}</td><td></td><td colspan="2"></td></tr>
-<tr class="totrow"><td colspan="7" style="text-align:center">合計　${cnt}件</td><td class="ed" contenteditable="true" style="text-align:right">${cnt?totAmt.toLocaleString()+' 千円':''}</td><td class="ed" contenteditable="true" style="text-align:right">${totMoto?totMoto.toLocaleString()+' 千円':''}</td><td></td><td colspan="2"></td></tr>
-</table>
+<p style="font-size:9pt;text-align:center">出力モード：${(KEIREKI_MODES[mode]||{}).label||mode}　／　対象事業年度：${fyLabel(yr)}　／　${tax}</p>
+${pages}
 </body></html>`;
 
   const blob=new Blob(['\ufeff'+html],{type:'application/msword'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download=`工事経歴書_${type||'全種類'}_${yr}年度.doc`;
+  a.download=`工事経歴書_${mode}_${yr}年度.doc`;
   a.click();URL.revokeObjectURL(a.href);
 }
 
