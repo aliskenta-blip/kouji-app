@@ -1884,7 +1884,7 @@ function renderMonthly(){
     S.cases.forEach(c=>{
       if(ids.has(c.id)||!matchSrch(c))return;
       const dm=(c.date||'').slice(0,7);
-      if(dm&&dm<mk){const r=calc(c);if(r.remaining>0||r.misu>0||c.more_flag==='✓'){cases.push(c);ids.add(c.id);return;}}
+      if(dm&&dm<mk){const r=calc(c);if(r.remaining>0||r.misu>0){cases.push(c);ids.add(c.id);return;}}  // 残高（未請求残 or 未収金）があるうちだけ繰越。入金で残ゼロになれば自動で消える
       if(getBilledMonth(c,mk)>0||getNyukinMonth(c,mk)>0){cases.push(c);ids.add(c.id);}
     });
   }
@@ -2043,6 +2043,8 @@ function renderMonthly(){
     const hasCurAct=bm>0||nyMonth>0;   // 当月に請求 or 入金がある＝当月の出来高
     const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk&&!hasCurAct;
     const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
+    // 繰越（再掲）行の請済/入済は淡色ロック（元の月の状態の再掲）。入金は「入金」欄で記録すると残高ゼロで自動で消える
+    const carryCk=lbl=>`<span class="ck gk" style="opacity:.3;cursor:default" title="前月以前からの繰越（再掲）。請済/入済は記入月で操作、入金は左の『当月入金/未収金』欄で記録してください">${lbl}</span>`;
     const doneCk=isDone(c)?`<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します">完</span>`;
     const chakKs=(c.kouki_s||'').slice(0,7);
     const chakkouOn=!!chakKs&&chakKs!=='未定'&&chakKs<=mk;   // 工期開始が当月以前＝着工済み（以降の月も自動でチェック表示）
@@ -2072,8 +2074,8 @@ function renderMonthly(){
       <td class="num big ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?'¥'+fmt(r.arari):'—'}</td>
       <td class="ctr ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?fmtP(r.arariRate)+(r.isEstimate?' 予':''):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
-      <td class="ctr">${mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請')}</td>
-      <td class="ctr">${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
+      <td class="ctr">${carried?carryCk('請'):mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請')}</td>
+      <td class="ctr">${carried?carryCk('入'):mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
       <td class="ctr">${mkCk2(c.shashin,c.id,'shashin','p','写')}</td>
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
       <td class="ctr">${chakkouCk}</td>
@@ -3448,7 +3450,7 @@ function togMorei(id){
   const c=S.cases.find(x=>x.id===id);if(!c)return;
   const cur=(c.date||'').slice(0,7);
   if(!cur){alert('記入月が未設定です');return;}
-  const next=shiftYM(cur,1);
+  const next=shiftYM(getMK(getYr(),getMo()),1);   // 押した（表示中の）月の次月へ繰越
   if(!confirm(`「${c.place||''} ${c.kouji||''}」を請求漏れとして${next}に移動しますか？`))return;
   // 請求した金額（billings）も一緒に翌月へ繰越す
   (c.billings||[]).forEach(b=>{if((b.month||'')===cur)b.month=next;});
@@ -3507,9 +3509,7 @@ function miSeikyuu(id){
   const c=S.cases.find(c=>c.id===id);if(!c)return;
   const cur=c.date||'';
   if(!cur){alert('記入月が未設定です');return;}
-  const y=parseInt(cur.slice(0,4)),m=parseInt(cur.slice(5,7));
-  const ny=m>=12?y+1:y;const nm=m>=12?1:m+1;
-  const next=ny+'-'+String(nm).padStart(2,'0');
+  const next=shiftYM(getMK(getYr(),getMo()),1);   // 押した（表示中の）月の次月へ繰越
   if(!confirm(`「${c.place||''} ${c.kouji||''}」を${next}に繰越しますか？`))return;
   c.date=next;
   c.seikyuu_c='';c.nyukin_c='';c.seikyuu_c_date='';   // 繰越先では請済/入済チェックを空に
