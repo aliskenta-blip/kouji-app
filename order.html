@@ -1349,6 +1349,7 @@ function sortCases(cases,table){
     let va,vb;
     if(f==='jisha_h'||f==='jisha_s'||f==='nyukin'||f==='m3'){va=fn(a[f]);vb=fn(b[f]);}
     else if(f==='misu'){va=calc(a).misu;vb=calc(b).misu;}
+    else if(f==='remaining'){va=calc(a).remaining;vb=calc(b).remaining;}
     else if(f==='arari'){va=calc(a).arari;vb=calc(b).arari;}
     else if(f==='km'){va=calc(a).km;vb=calc(b).km;}
     else if(f==='ksr'){va=calc(a).ksr;vb=calc(b).ksr;}
@@ -1385,7 +1386,8 @@ const COL_TIPS={
   kubun:'工事の種類分け（造成・給排水・舗装など）',
   jisha_h:'お客さんから受注した契約金額（発注金額）',
   jisha_s:'お客さんへ請求した金額。クリックで月ごとの出来高を入力',
-  misu:'請求したのにまだ入金されていない金額（請求−入金）',
+  misu:'請求したのにまだ入金されていない金額（累計請求−累計入金）',
+  remaining:'発注額のうち、まだ請求していない残り（発注額−累計請求）',
   km:'協力会社の見積金額',
   ksr:'協力会社からの請求金額＝外注の原価',
   ksh:'協力会社へ支払い済みの金額',
@@ -1977,7 +1979,7 @@ function renderMonthly(){
     ${sortTh('place','場所',mt)}
     ${sortTh('client','発注者',mt)}${sortTh('tantou','担当',mt)}
     ${sortTh('kouji','工事名',mt)}${sortTh('kubun','区分',mt)}
-    ${sM('jisha_h','発注額')}${sM('jisha_s','請求額')}${sM('misu','未収金')}
+    ${sM('jisha_h','発注額')}${sM('jisha_s','請求額')}${sM('remaining','未請求残')}${sM('misu','未収金')}
     <th title="施工形態。自社＝自社施工 / 単独＝外注のみ / 合同＝自社＋外注">施工</th>
     ${sM('km','協見積')}${sM('ksr','協請求')}<th class="s" title="協力会社へ請求した月">協請月</th><th class="s" title="協力会社へ支払う（振込）月">協振込</th>
     ${sM('miharai','未払残')}
@@ -1993,14 +1995,14 @@ function renderMonthly(){
     <th>備考</th><th>操作</th>
   </tr>`;
 
-  let tot={jh:0,js:0,km:0,ks:0,ny:0,nyPrev:0,mi:0,sh:0,mp:0,ar:0,m3:0};
+  let tot={jh:0,js:0,km:0,ks:0,ny:0,nyPrev:0,mi:0,rem:0,sh:0,mp:0,ar:0,m3:0};
   const rows=cases.map((c,i)=>{
     const r=calc(c);
     const bm=getBilledMonth(c,mk);
     const nyMonth=getNyukinMonth(c,mk);
     const nyPrev=getNyukinPrev(c,mk);
     tot.jh+=fn(c.jisha_h);tot.js+=bm;tot.km+=r.km;tot.ks+=r.ksr;
-    tot.ny+=nyMonth;tot.nyPrev+=nyPrev;tot.mi+=r.remaining;tot.sh+=r.ksh;tot.mp+=r.miharai;tot.ar+=r.arari;tot.m3+=fn(c.m3);
+    tot.ny+=nyMonth;tot.nyPrev+=nyPrev;tot.rem+=r.remaining;tot.mi+=r.misu;tot.sh+=r.ksh;tot.mp+=r.miharai;tot.ar+=r.arari;tot.m3+=fn(c.m3);
     const subRows=(c.kyousha_list||[]).map((k,ki)=>{
       const kmi=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));
       const ke=`style="cursor:pointer" title="クリックで編集"`;
@@ -2008,7 +2010,7 @@ function renderMonthly(){
         <td></td><td colspan="8" style="padding-left:16px;font-size:10px">
           ↳ <b style="color:var(--nav2)">${k.name||'—'}</b> ${k.type?'<span style="color:#888">('+k.type+')</span>':''}
         </td>
-        <td></td><td></td><td></td>
+        <td></td><td></td><td></td><td></td>
         <td class="num" ${ke} onclick="editKyoCell('${c.id}',${ki},'mitsumori',this,'number')" style="font-size:10px;cursor:pointer">¥${fmt(fn(k.mitsumori))}</td>
         <td class="num" style="font-size:10px;cursor:pointer;color:var(--nav2)" onclick="editKyoBillings('${c.id}',${ki},this)">¥${fmt(fn(k.seikyuu))}</td>
         <td class="ctr" style="font-size:9px;cursor:pointer" onclick="editKyoMonth('${c.id}',${ki},'seikyuu_t',this)">${k.seikyuu_t||'—'}</td>
@@ -2043,8 +2045,6 @@ function renderMonthly(){
     const hasCurAct=bm>0||nyMonth>0;   // 当月に請求 or 入金がある＝当月の出来高
     const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk&&!hasCurAct;
     const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
-    // 繰越（再掲）行の請済/入済は淡色ロック（元の月の状態の再掲）。入金は「入金」欄で記録すると残高ゼロで自動で消える
-    const carryCk=lbl=>`<span class="ck gk" style="opacity:.3;cursor:default" title="前月以前からの繰越（再掲）。請済/入済は記入月で操作、入金は左の『当月入金/未収金』欄で記録してください">${lbl}</span>`;
     const doneCk=isDone(c)?`<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します">完</span>`;
     const chakKs=(c.kouki_s||'').slice(0,7);
     const chakkouOn=!!chakKs&&chakKs!=='未定'&&chakKs<=mk;   // 工期開始が当月以前＝着工済み（以降の月も自動でチェック表示）
@@ -2062,7 +2062,8 @@ function renderMonthly(){
       <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${c.kubun||''}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(bm)}</td>
-      <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額-累計請求額" onclick="editBillings('${c.id}',this)">¥${fmt(r.remaining)}</td>
+      <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">¥${fmt(r.remaining)}</td>
+      <td class="${r.misu>0?'cl':'ca'}" style="cursor:pointer" title="累計請求−累計入金（請求済で未入金）" onclick="editBillings('${c.id}',this)">¥${fmt(r.misu)}</td>
       <td class="ctr"><span class="sekou ${sekouCls}">${sekouType}</span></td>
       <td class="num big" style="cursor:pointer" title="クリックで展開→編集" onclick="togSub('${c.id}')">¥${fmt(r.km)}</td>
       <td class="num" style="cursor:pointer" title="クリックで展開→編集" onclick="togSub('${c.id}')">¥${fmt(r.ksr)}</td>
@@ -2074,8 +2075,8 @@ function renderMonthly(){
       <td class="num big ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?'¥'+fmt(r.arari):'—'}</td>
       <td class="ctr ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?fmtP(r.arariRate)+(r.isEstimate?' 予':''):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
-      <td class="ctr">${carried?carryCk('請'):mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請')}</td>
-      <td class="ctr">${carried?carryCk('入'):mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
+      <td class="ctr">${mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請')}</td>
+      <td class="ctr">${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
       <td class="ctr">${mkCk2(c.shashin,c.id,'shashin','p','写')}</td>
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
       <td class="ctr">${chakkouCk}</td>
@@ -2091,12 +2092,12 @@ function renderMonthly(){
     </tr>`;
     return mainRow+subRows;
   });
-  document.getElementById('mBody').innerHTML=rows.join('')||`<tr><td colspan="30" class="empty">この月のデータなし<br><small>「＋ 案件追加」から入力してください</small></td></tr>`;
+  document.getElementById('mBody').innerHTML=rows.join('')||`<tr><td colspan="31" class="empty">この月のデータなし<br><small>「＋ 案件追加」から入力してください</small></td></tr>`;
 
   const tr2=tot.js>0?tot.ar/tot.js*100:0;
   document.getElementById('mFoot').innerHTML=`<tr class="tot">
     <td colspan="9">合計（${cases.length}件）</td>
-    <td class="num big">¥${fmt(tot.jh)}</td><td class="num">¥${fmt(tot.js)}</td><td class="num">¥${fmt(tot.mi)}</td>
+    <td class="num big">¥${fmt(tot.jh)}</td><td class="num">¥${fmt(tot.js)}</td><td class="num">¥${fmt(tot.rem)}</td><td class="num">¥${fmt(tot.mi)}</td>
     <td></td>
     <td class="num big">¥${fmt(tot.km)}</td><td class="num">¥${fmt(tot.ks)}</td><td></td><td></td>
     <td class="num">¥${fmt(tot.mp)}</td>
