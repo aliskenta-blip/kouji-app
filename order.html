@@ -1408,7 +1408,7 @@ function sortTh(field,label,table){
   const tip=COL_TIPS[field];
   return `<th class="${cls}"${tip?' title="'+tip+'"':''} onclick="doSort('${field}','${table}')">${label}</th>`;
 }
-const fmt=n=>n==null||n===''?'':Number(n).toLocaleString('ja-JP');
+const fmt=n=>n==null||n===''?'':Math.round(Number(n)).toLocaleString('ja-JP');
 const fmtP=n=>(Number(n)||0).toFixed(1)+'%';
 const vg=id=>{const e=document.getElementById(id);return e?e.value:''};
 const vs=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v??''};
