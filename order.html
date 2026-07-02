@@ -1519,6 +1519,14 @@ function calc(c){
   const remaining=Math.max(0,jh-js);
   return {js,jh,ny,km,ksr,ksh,misu,miharai,arari,arariRate,cnt:ks.length,isEstimate,remaining,hasJuchu};
 }
+// 案件の粗利率（発注額ベースで安定させる）。協力会社が無い＝原価不明で対象外(0)。中間マージン案件は既存率を使用
+function projArariRate(c){
+  const r=calc(c);
+  if(r.cnt<=0)return 0;
+  if(r.hasJuchu)return r.arariRate/100;
+  const jh=fn(c.jisha_h);const cost=r.ksr>0?r.ksr:r.km;
+  return jh>0?((jh-cost)/jh):0;
+}
 function getBilledMonth(c,ym){
   const bl=c.billings||[];
   return bl.filter(b=>(b.month||'')===ym).reduce((a,b)=>a+fn(b.amount),0);
@@ -1891,15 +1899,22 @@ function renderMonthly(){
     });
   }
 
-  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0;
-  cases.forEach(c=>{const r=calc(c);const bm=getBilledMonth(c,mk);const nyM=getNyukinMonth(c,mk);ts+=bm;tn+=nyM;tmi+=r.misu;tar+=r.arari;tky+=r.ksr;tmp+=r.miharai;});
+  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tmore=0,tmoreCnt=0;
+  cases.forEach(c=>{
+    const r=calc(c);const bm=getBilledMonth(c,mk);const nyM=getNyukinMonth(c,mk);
+    ts+=bm;tn+=nyM;tmi+=r.misu;tky+=r.ksr;tmp+=r.miharai;trem+=r.remaining;
+    tar+=bm*projArariRate(c);                       // 粗利＝当月請求×案件の粗利率（発生・率ベース）
+    if(c.more_flag==='✓'){tmore+=r.misu;tmoreCnt++;} // 請求もれ（請求漏れフラグの未収金）
+  });
   document.getElementById('mKpi').innerHTML=`
     <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）"><div class="kl">当月請求（税込）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${cases.length}件</div></div>
     <div class="kpi g" title="この月に入金された金額の合計"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
-    <div class="kpi r" title="請求したのに未入金の合計（請求−入金）"><div class="kl">未収金</div><div class="kv">¥${fmt(tmi)}</div></div>
+    <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）"><div class="kl">未収金</div><div class="kv">¥${fmt(tmi)}</div></div>
+    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）"><div class="kl">未請求残</div><div class="kv">¥${fmt(trem)}</div></div>
+    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計"><div class="kl">請求もれ</div><div class="kv">¥${fmt(tmore)}</div><div class="ks">${tmoreCnt}件</div></div>
     <div class="kpi o" title="協力会社からの請求合計＝外注の原価"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
     <div class="kpi r" title="協力会社へまだ支払っていない合計"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
-    <div class="kpi g" title="粗利の合計（外注分の自社受注額−外注原価）"><div class="kl">粗利</div><div class="kv">¥${fmt(tar)}</div></div>`;
+    <div class="kpi g" title="粗利＝当月請求×案件ごとの粗利率（発生ベース。入金・支払のタイミングでブレません／協力会社なしは対象外）"><div class="kl">粗利</div><div class="kv">¥${fmt(tar)}</div></div>`;
 
   // 発注者別当月請求合計
   const byClient={};
@@ -2001,8 +2016,9 @@ function renderMonthly(){
     const bm=getBilledMonth(c,mk);
     const nyMonth=getNyukinMonth(c,mk);
     const nyPrev=getNyukinPrev(c,mk);
+    const arariMonth=bm*projArariRate(c);   // 当月粗利＝当月請求×案件の粗利率（発生・率ベース）
     tot.jh+=fn(c.jisha_h);tot.js+=bm;tot.km+=r.km;tot.ks+=r.ksr;
-    tot.ny+=nyMonth;tot.nyPrev+=nyPrev;tot.rem+=r.remaining;tot.mi+=r.misu;tot.sh+=r.ksh;tot.mp+=r.miharai;tot.ar+=r.arari;tot.m3+=fn(c.m3);
+    tot.ny+=nyMonth;tot.nyPrev+=nyPrev;tot.rem+=r.remaining;tot.mi+=r.misu;tot.sh+=r.ksh;tot.mp+=r.miharai;tot.ar+=arariMonth;tot.m3+=fn(c.m3);
     const subRows=(c.kyousha_list||[]).map((k,ki)=>{
       const kmi=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));
       const ke=`style="cursor:pointer" title="クリックで編集"`;
@@ -2072,8 +2088,8 @@ function renderMonthly(){
       <td class="${r.miharai>0?'cw':'ca'}" style="cursor:pointer" onclick="togSub('${c.id}')">¥${fmt(r.miharai)}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
-      <td class="num big ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?'¥'+fmt(r.arari):'—'}</td>
-      <td class="ctr ${showArari?(r.arari>=0?'cp':'cl'):''}">${showArari?fmtP(r.arariRate)+(r.isEstimate?' 予':''):'—'}</td>
+      <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝当月請求×粗利率（発生ベース）">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}</td>
+      <td class="ctr ${showArari?(r.arari>=0?'cp':'cl'):''}" title="案件の粗利率（発注額ベース）">${showArari?fmtP(projArariRate(c)*100)+(r.isEstimate?' 予':''):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請')}</td>
       <td class="ctr">${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
