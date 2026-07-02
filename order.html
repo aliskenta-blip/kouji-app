@@ -1526,7 +1526,8 @@ function projArariRate(c){
   const isSelf=c.jisha_sekou==='✓';
   if(!r.hasJuchu&&isSelf)return 0;            // 合同(自社+外注)は自社労務が入らず粗利が過大→対象外
   if(r.hasJuchu)return r.arariRate/100;       // 中間マージン案件は既存率
-  const jh=fn(c.jisha_h);const cost=r.km>0?r.km:r.ksr;   // 原価は見積を優先（請求＝出来高だと率がぶれるため）。見積が無ければ請求で代用
+  // 原価＝協力会社の請求（実額）があればそれを優先、無ければ見積。分母は発注金額（固定）で率を安定化
+  const jh=fn(c.jisha_h);const cost=r.ksr>0?r.ksr:r.km;
   if(cost<=0)return 0;                        // 協力原価が未入力＝粗利不明→0（率100%表示のバグ防止）
   return jh>0?((jh-cost)/jh):0;
 }
