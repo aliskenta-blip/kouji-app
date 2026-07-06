@@ -414,7 +414,6 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <span style="font-weight:700;color:#1565c0" id="maBatchCount">0件選択</span>
     <select id="maBatchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px" onchange="batchFieldChg('maBatch')">
       <option value="date">記入月</option>
-      <option value="seikyuu_t">請求月</option>
       <option value="kubun">区分</option>
       <option value="tantou">担当</option>
       <option value="branch">支店</option>
@@ -470,7 +469,6 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <span style="font-weight:700;color:#1565c0" id="batchCount">0件選択</span>
     <select id="batchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px" onchange="batchFieldChg('batch')">
       <option value="date">記入月</option>
-      <option value="seikyuu_t">請求月</option>
       <option value="kubun">区分</option>
       <option value="tantou">担当</option>
       <option value="branch">支店</option>
@@ -1332,7 +1330,10 @@ function syncBillings(caseId){
   const ends=bl.map(b=>b.kouki_e).filter(Boolean).sort();
   if(starts.length)c.kouki_s=starts[0];
   if(ends.length)c.kouki_e=ends[ends.length-1];
-  c.kanryo=isDone(c)?'✓':'';   // 累計が発注額に到達したら完工
+  // 案件全体フラグを billings から自動同期（請済＝請求あり／入済＝全額入金）。月毎チェックと整合させる
+  c.seikyuu_c=fn(c.jisha_s)>0?'✓':'';
+  c.nyukin_c=(fn(c.jisha_s)>0&&fn(c.nyukin)>=fn(c.jisha_s))?'✓':'';
+  c.kanryo=isDone(c)?'✓':'';   // 累計が発注額に到達＋全額入金で完工
   sv();
 }
 
@@ -2084,7 +2085,7 @@ function renderMonthly(){
       <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${c.kubun||''}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(bm)}</td>
-      <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">¥${fmt(r.remaining)}</td>
+      <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">${r.js>r.jh?`<span style="color:#c62828;font-weight:700" title="累計請求が発注額を超えています。金額を確認してください">▲¥${fmt(r.js-r.jh)}超過</span>`:'¥'+fmt(r.remaining)}</td>
       <td class="${r.misu>0?'cl':'ca'}" style="cursor:pointer" title="累計請求−累計入金（請求済で未入金）" onclick="editBillings('${c.id}',this)">¥${fmt(r.misu)}</td>
       <td class="ctr"><span class="sekou ${sekouCls}">${sekouType}</span></td>
       <td class="num big" style="cursor:pointer" title="クリックで展開→編集" onclick="togSub('${c.id}')">¥${fmt(r.km)}</td>
@@ -2097,8 +2098,8 @@ function renderMonthly(){
       <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝当月請求×粗利率（発生ベース）">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}</td>
       <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="案件の粗利率（発注額ベース）">${showArari?fmtP(projArariRate(c)*100)+(r.isEstimate?' 予':''):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
-      <td class="ctr">${mkCk2(c.seikyuu_c,c.id,'seikyuu_c','p','請')}</td>
-      <td class="ctr">${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入')}</td>
+      <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
+      <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
       <td class="ctr">${mkCk2(c.shashin,c.id,'shashin','p','写')}</td>
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
       <td class="ctr">${chakkouCk}</td>
@@ -3477,7 +3478,30 @@ function togChakkou(id){
   else { c.kouki_s=mk; addLog('check',`${c.place||''}の「着工（工期開始）」を${mk}に設定`); }
   sv();renderMonthly();
 }
-// 月（YYYY-MM）を delta か月ずらす
+// 入金チェック（月毎で完結）：表示中の月の請求分だけを入金済/未入金に切り替える。他の月には影響しない
+function togNyukinMonth(id){
+  if(!canEdit())return;
+  const c=S.cases.find(x=>x.id===id);if(!c)return;
+  const mk=getMK(getYr(),getMo());
+  const bl=c.billings||[];
+  const mbs=bl.filter(b=>(b.month||'').slice(0,7)===mk&&fn(b.amount)>0);
+  if(mbs.length){
+    const allPaid=mbs.every(b=>fn(b.nyukin)>=fn(b.amount));
+    mbs.forEach(b=>{ if(allPaid){b.nyukin='0';b.nyukin_d='';} else {b.nyukin=b.amount;b.nyukin_d=new Date().toISOString().slice(0,10);} });
+    syncBillings(id);
+    addLog('check',`${c.place||''} ${mk}分の入金を${allPaid?'未入金':'入金済'}に`);
+  } else {
+    // billings未生成(旧データ)：当月＝記入月/請求月なら jisha_s 全体の入金をトグル
+    const cm=(c.seikyuu_t||c.date||'').slice(0,7);
+    if(cm===mk&&fn(c.jisha_s)>0){
+      const paid=fn(c.nyukin)>=fn(c.jisha_s);
+      c.nyukin=paid?'0':String(fn(c.jisha_s));c.nyukin_d=paid?'':new Date().toISOString().slice(0,10);
+      c.nyukin_c=paid?'':'✓';c.kanryo=isDone(c)?'✓':'';sv();
+      addLog('check',`${c.place||''} ${mk}分の入金を${paid?'未入金':'入金済'}に`);
+    } else { alert('この月には請求（出来高）がありません。「請求額」欄から請求を登録してください。');return; }
+  }
+  renderMonthly();
+}
 function shiftYM(ym,delta){
   if(!ym||ym.length<7)return ym;
   let y=parseInt(ym.slice(0,4)),m=parseInt(ym.slice(5,7))+delta;
@@ -3997,7 +4021,8 @@ function krJyuchuList(){
 }
 function krKanryoList(){
   const yr=vg('kr_year')||'';
-  return S.cases.filter(c=>isDone(c)&&(!yr||krCompYear(c)===String(yr))).sort((a,b)=>{
+  // 完了工事表は「完成（発注額まで請求済）」基準。入金の有無は問わない（銀行提出等で施工完了を出すため）
+  return S.cases.filter(c=>fn(c.jisha_h)>0&&calc(c).remaining<=0&&(!yr||krCompYear(c)===String(yr))).sort((a,b)=>{
     const ae=(a.kouki_e&&a.kouki_e!=='未定')?a.kouki_e:(cMo(a)||'');const be=(b.kouki_e&&b.kouki_e!=='未定')?b.kouki_e:(cMo(b)||'');
     return be.localeCompare(ae);
   });
@@ -4503,29 +4528,26 @@ function exportKerekiExcel(){
     ws['!merges']=KEIREKI_MERGES.map(m=>({s:{r:m.s.r,c:m.s.c},e:{r:m.e.r,c:m.e.c}}));
     const sc=(ref,v,t)=>{ws[ref]={t:t||'s',v:v};};
     sc('A5','（'+g+'）工事　（ '+tax+' ）');
-    let lsAll=0,lsMoto=0;
-    for(let i=0;i<13;i++){
+    const nInd=Math.min(b.rows.length,b.other?12:13);   // その他がある時は個別12行＋その他1行=13行に収める
+    for(let i=0;i<nInd;i++){
       const r=12+i;const row=b.rows[i];
-      if(row){
-        const c=row.c;const amt=sen(row.amt);const motoAmt=row.isMoto?amt:0;
-        lsAll+=amt;lsMoto+=motoAmt;
-        sc('A'+r,((mode==='keishin'&&row.uragaki)?'★':'')+(c.client||''));
-        sc('B'+r,c.moto_shita||'');
-        sc('C'+r,c.jv||'');
-        sc('D'+r,c.kouji||'');
-        sc('E'+r,c.genba||c.place||'');
-        sc('F'+r,c.haichi_gishi||'');
-        sc('G'+r,c.gishi_type==='主任'?'✓':'');
-        sc('H'+r,c.gishi_type==='監理'?'✓':'');
-        if(amt)sc('I'+r,amt,'n');
-        if(motoAmt)sc('J'+r,motoAmt,'n');
-        sc('K'+r,toReiwa(c.kouki_s));
-        sc('L'+r,toReiwa(c.kouki_e));
-      }
+      const c=row.c;const amt=sen(row.amt);const motoAmt=row.isMoto?amt:0;
+      sc('A'+r,((mode==='keishin'&&row.uragaki)?'★':'')+(c.client||''));
+      sc('B'+r,c.moto_shita||'');
+      sc('C'+r,c.jv||'');
+      sc('D'+r,c.kouji||'');
+      sc('E'+r,c.genba||c.place||'');
+      sc('F'+r,c.haichi_gishi||'');
+      sc('G'+r,c.gishi_type==='主任'?'✓':'');
+      sc('H'+r,c.gishi_type==='監理'?'✓':'');
+      if(amt)sc('I'+r,amt,'n');
+      if(motoAmt)sc('J'+r,motoAmt,'n');
+      sc('K'+r,toReiwa(c.kouki_s));
+      sc('L'+r,toReiwa(c.kouki_e));
     }
-    // 「その他 ○件 一括」行（記載枠に空きがあれば追加）
-    if(b.other&&b.rows.length<13){
-      const r=12+b.rows.length;
+    // 「その他 ○件 一括」行（必ず出す）
+    if(b.other){
+      const r=12+nInd;
       sc('A'+r,'その他');sc('D'+r,'（'+b.other.count+'件 一括）');
       sc('I'+r,sen(b.other.sum),'n');if(b.other.moto)sc('J'+r,sen(b.other.moto),'n');
     }
