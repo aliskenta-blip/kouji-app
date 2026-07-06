@@ -687,6 +687,12 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <div class="mtitle" id="mdlT">案件追加</div>
     <button class="mc" onclick="closeMov()">✕</button>
   </div>
+  <div style="padding:9px 12px;background:#eef6ff;border:1px solid #cfe3ff;border-radius:10px;margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span style="font-size:12px;color:#2456a6;font-weight:700">📄 発注書PDFから自動記入</span>
+    <input type="file" id="f_hacchu_pdf" accept="application/pdf,.pdf" style="font-size:12px;max-width:200px">
+    <button type="button" id="f_hacchu_btn" onclick="importHacchuOrder()" style="font-size:12px;padding:6px 12px;border:none;border-radius:6px;background:#1f6fd6;color:#fff;cursor:pointer">🔍 読み取って記入</button>
+    <span id="f_hacchu_status" style="font-size:11px;color:#888"></span>
+  </div>
   <div class="st">📍 案件情報</div>
   <div class="grid g2">
     <div class="fg"><label>記入月 *</label><input type="month" id="f_dt"></div>
@@ -3333,6 +3339,60 @@ function openAdd(){
   const fp=document.getElementById('f_pl');
   setTimeout(()=>{try{fp.focus();}catch(e){}},120);
   setTimeout(()=>{try{fp.focus();}catch(e){}},320);
+}
+// 発注書PDF → AI読み取り（extract-pdf, doc_type=hacchu）→ 案件フォーム自動記入
+async function importHacchuOrder(){
+  const fileEl=document.getElementById('f_hacchu_pdf');
+  const f=fileEl&&fileEl.files?fileEl.files[0]:null;
+  const st=document.getElementById('f_hacchu_status');
+  const btn=document.getElementById('f_hacchu_btn');
+  if(!f){alert('発注書PDFを選択してください');return;}
+  btn.disabled=true;st.textContent='読み取り中…（10〜20秒）';
+  try{
+    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).replace(/^data:.*;base64,/,''));r.onerror=()=>rej(new Error('ファイル読込失敗'));r.readAsDataURL(f);});
+    const KEY='sb_publishable_Wz8q-baZl7onBYT1MSWjYw_U95PUEO3';
+    const res=await fetch('https://qqdjaihzvfncspevylrl.functions.supabase.co/extract-pdf',{
+      method:'POST',
+      headers:{'content-type':'application/json','Authorization':'Bearer '+KEY,'apikey':KEY},
+      body:JSON.stringify({pdf_base64:b64,doc_type:'hacchu',model:'sonnet'})
+    });
+    const d=await res.json();
+    if(!res.ok||d.error)throw new Error(d.error||('HTTP '+res.status));
+    // 空でない項目だけ記入（既存入力を消さない）
+    if(d.site_name)vs('f_pl',d.site_name);
+    if(d.site_address)vs('f_genba',d.site_address);
+    else if(d.site_name&&typeof autoGenba==='function')autoGenba(d.site_name);
+    if(d.kouji_name)vs('f_kj',d.kouji_name);
+    if(typeof d.amount==='number'&&d.amount>0)vs('f_jh',String(Math.round(d.amount/1000)/10));
+    if(/^\d{4}-\d{2}/.test(d.doc_date||''))vs('f_dt',d.doc_date.slice(0,7));
+    hacchuSelectByText('f_cl',d.client_name);
+    hacchuSelectByText('f_ta',d.tantou);
+    hacchuSetKouki('f_kouki_s','f_kouki_s_mitei',d.kouki_start);
+    hacchuSetKouki('f_kouki_e','f_kouki_e_mitei',d.kouki_end);
+    if(typeof onGyoshuChange==='function')onGyoshuChange();
+    const miss=[];if(!d.client_name)miss.push('発注者');if(!(d.amount>0))miss.push('金額');
+    st.textContent='✓ 記入しました。内容を確認して保存してください。'+(miss.length?'（未取得: '+miss.join('・')+'）':'');
+  }catch(e){
+    st.textContent='';
+    alert('読み取り失敗: '+(e.message||e)+'\n\n※エッジ関数の再デプロイ（発注書対応）が必要な場合があります。');
+  }finally{btn.disabled=false;}
+}
+// select から表示テキストが一致/包含する選択肢を選ぶ
+function hacchuSelectByText(id,text){
+  if(!text)return;
+  const sel=document.getElementById(id);if(!sel)return;
+  const t=(''+text).replace(/[\s　]/g,'');
+  for(let i=0;i<sel.options.length;i++){
+    const ot=(sel.options[i].textContent||'').replace(/[\s　]/g,'');
+    if(ot&&(ot===t||ot.indexOf(t)>=0||t.indexOf(ot)>=0)){sel.value=sel.options[i].value;return;}
+  }
+}
+// 工期(月)の記入。'未定'ならチェックボックスON
+function hacchuSetKouki(fid,mid,val){
+  if(!val)return;
+  const mitei=document.getElementById(mid),fel=document.getElementById(fid);
+  if(val==='未定'){if(mitei){mitei.checked=true;}if(fel){fel.disabled=true;}vs(fid,'');return;}
+  if(/^\d{4}-\d{2}/.test(val)){if(mitei){mitei.checked=false;}if(fel){fel.disabled=false;}vs(fid,val.slice(0,7));}
 }
 // 保存済みの値が select の options に無い場合に補完するヘルパー
 // （マスタが後から編集された / client_links のフィルタから漏れた等で
