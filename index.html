@@ -140,7 +140,7 @@ body.role-user .master-only{display:none!important}
 <div class="card"><div class="card-hdr ch-g">📝 最近の日報</div><div class="card-body" id="dRecent"></div></div></div>
 
 <div id="p-nippo" class="panel"><div class="card"><div class="card-hdr ch-g">📝 日報入力</div><div class="card-body">
-  <div class="grid2"><div class="fg"><label>日付 *</label><input type="date" id="np_date"></div><div class="fg"><label>現場 *</label><input type="text" id="np_site_search" placeholder="🔍 現場名・工事名で絞り込み" oninput="renderNpSiteOptions()" style="margin-bottom:5px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;width:100%;box-sizing:border-box"><select id="np_site" style="width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px"></select></div></div>
+  <div class="grid2"><div class="fg"><label>日付 *</label><input type="date" id="np_date"></div><div class="fg"><label>現場 *</label><input type="text" id="np_site_search" placeholder="🔍 現場名・工事名で検索" oninput="renderNpSiteOptions()" style="margin-bottom:5px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;width:100%;box-sizing:border-box"><input type="hidden" id="np_site"><div id="np_site_sel" style="font-size:12px;color:#2e7d32;font-weight:700;margin-bottom:4px;min-height:16px"></div><div id="np_site_list" style="max-height:200px;overflow-y:auto;border:1.5px solid #e0e0e0;border-radius:10px"></div></div></div>
   <div class="grid2"><div class="fg"><label>天候</label><select id="np_weather" style="padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;width:100%;box-sizing:border-box"><option value="">—</option><option>☀晴</option><option>☁曇</option><option>☔雨</option><option>⛄雪</option></select></div><div class="fg" style="display:flex;align-items:flex-end"><button class="btn bo btn-sm" onclick="copyPrevNippo()" style="width:100%">📋 前日をコピー</button></div></div>
   <div class="st">🚛 車両</div><div id="np_vehicles"></div>
   <div class="st">🏗️ 重機</div><div id="np_machines"></div>
@@ -583,14 +583,26 @@ function renderMcUsage(){
 }
 // 現場セレクトを検索ボックスで絞り込んで再描画（200件超でも探しやすく）
 function renderNpSiteOptions(){
-  const ss=document.getElementById('np_site');if(!ss)return;
-  const cv=ss.value;
+  const listEl=document.getElementById('np_site_list');if(!listEl)return;
+  const cur=(document.getElementById('np_site')||{}).value||'';
   const q=(document.getElementById('np_site_search')?.value||'').trim().toLowerCase();
   let list=activeSites();
   if(q)list=list.filter(s=>(s.name||'').toLowerCase().includes(q));
   list.sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
-  ss.innerHTML='<option value="">—選択—</option>'+list.map(s=>`<option value="${s.id}"${s.id===cv?' selected':''}>${s.name}</option>`).join('');
-  if(q&&list.length===1)ss.value=list[0].id; // 1件に絞れたら自動選択
+  listEl.innerHTML=list.length
+    ? list.map(s=>`<div onclick="pickNpSite('${s.id}')" style="padding:12px;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:14px;${s.id===cur?'background:#e8f5e9;font-weight:700':''}">${s.name}</div>`).join('')
+    : '<div style="padding:12px;color:#bbb;font-size:13px">該当する現場がありません</div>';
+  syncNpSiteDisplay();
+}
+function pickNpSite(id){
+  const h=document.getElementById('np_site');if(h)h.value=id;
+  renderNpSiteOptions();
+}
+function syncNpSiteDisplay(){
+  const sel=document.getElementById('np_site_sel');if(!sel)return;
+  const id=(document.getElementById('np_site')||{}).value||'';
+  const s=id?(D.sites||[]).find(x=>x.id===id):null;
+  sel.textContent=s?('✓ 選択中: '+s.name):'';
 }
 function initNippo(){
   if(!document.getElementById('np_date').value)document.getElementById('np_date').value=new Date().toISOString().slice(0,10);
@@ -726,6 +738,7 @@ function saveNippo(){
 function editNippo(id){
   const r=D.reports.find(x=>x.id===id);if(!r)return;editNippoId=id;sw('nippo');
   document.getElementById('np_date').value=r.date;document.getElementById('np_site').value=r.siteId;document.getElementById('np_note').value=r.note||'';const _w=document.getElementById('np_weather');if(_w)_w.value=r.weather||'';
+  renderNpSiteOptions();
   vhUsage=(r.vehicleUsage||[]).map(u=>({...u}));
   mcUsage=(r.machineUsage||[]).map(u=>({...u}));
   setTimeout(()=>{
