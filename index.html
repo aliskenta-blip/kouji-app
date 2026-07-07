@@ -140,7 +140,7 @@ body.role-user .master-only{display:none!important}
 <div class="card"><div class="card-hdr ch-g">📝 最近の日報</div><div class="card-body" id="dRecent"></div></div></div>
 
 <div id="p-nippo" class="panel"><div class="card"><div class="card-hdr ch-g">📝 日報入力</div><div class="card-body">
-  <div class="grid2"><div class="fg"><label>日付 *</label><input type="date" id="np_date"></div><div class="fg"><label>現場 *</label><select id="np_site"></select></div></div>
+  <div class="grid2"><div class="fg"><label>日付 *</label><input type="date" id="np_date"></div><div class="fg"><label>現場 *</label><input type="text" id="np_site_search" placeholder="🔍 現場名・工事名で絞り込み" oninput="renderNpSiteOptions()" style="margin-bottom:5px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;width:100%;box-sizing:border-box"><select id="np_site" size="6" style="width:100%;box-sizing:border-box"></select></div></div>
   <div class="st">🚛 車両</div><div id="np_vehicles"></div>
   <div class="st">🏗️ 重機</div><div id="np_machines"></div>
   <div class="st">👷 メンバー（出勤）</div><div class="chk-grid" id="np_members"></div>
@@ -345,34 +345,46 @@ function mi(id,ph,fn){return `<input type="text" id="${id}" placeholder="${ph}" 
 function chkHtml(val,label,checked,onChange){const c=checked?'checked':'';return `<label class="chk-item${checked?' checked':''}"><input type="checkbox" value="${val}"${c?' checked':''} onchange="this.parentElement.classList.toggle('checked',this.checked);${onChange||''}"> ${label}</label>`;}
 
 // ── マスター ──
-function renderSiteMst(){const el=document.getElementById('mst_site_ui');if(!el)return;el.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">${mi('ms_s','現場名','addS()')}<button class="btn bg btn-sm" onclick="addS()">追加</button><button class="btn bb btn-sm" onclick="syncSitesFromOrder()">🔗 発注管理から取込</button></div>
-<div style="font-size:11px;color:#888;margin-bottom:8px">発注管理Proの現場を取り込むと、3アプリで現場が揃い、日報の労務が原価に紐付きます</div>
+function renderSiteMst(){const el=document.getElementById('mst_site_ui');if(!el)return;el.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">${mi('ms_s','現場名','addS()')}<button class="btn bg btn-sm" onclick="addS()">追加</button><button class="btn bb btn-sm" onclick="syncSitesFromOrder()">🔗 発注管理から取込</button><button class="btn bo btn-sm" onclick="delSyncedSites()">🗑 取込分を削除</button></div>
+<div style="font-size:11px;color:#888;margin-bottom:8px">現場名＝場所＋工事名＋区分。発注管理Proと現場を揃え、日報の労務を原価に紐付けます</div>
 <div style="font-size:12px;font-weight:700;color:var(--pri);margin-bottom:4px">施工中</div>
 <div>${activeSites().map(v=>`<div class="mst-item"><span>${v.name}</span><button class="mst-del" onclick="dm('sites','${v.id}')">×</button></div>`).join('')||'<div style="color:#bbb;font-size:12px;padding:4px 0">なし</div>'}</div>
 ${completedSites().length?`<div style="font-size:12px;font-weight:700;color:var(--acc);margin:12px 0 4px">完了物件</div><div>${completedSites().map(v=>`<div class="mst-item"><span>${v.name} <span class="sub">${v.completedDate||''}</span></span><button class="btn bo btn-sm" style="font-size:10px;padding:4px 8px" onclick="reopenSite('${v.id}')">再開</button></div>`).join('')}</div>`:''}`;}
 function addS(){const i=document.getElementById('ms_s');const v=i.value.trim();if(!v)return;D.sites.push({id:uid(),name:v});i.value='';sv();renderMstUI();setTimeout(()=>document.getElementById('ms_s')?.focus(),50);}
 // 発注管理Pro(order_app)の現場を取り込み、orderIdで紐付け（3アプリ現場統一）
+// 現場名 = 場所＋工事名(kouji)。工事名(枝番)が識別の主軸。
+function orderSiteName(c){
+  const name=[c.place,c.kouji,c.kubun].map(x=>(x||'').trim()).filter(Boolean).join(' ');
+  return name||(c.client||'').trim()||'(現場)';
+}
 async function syncSitesFromOrder(){
   if(typeof firebase==='undefined'||!firebase.database){alert('Firebaseに接続できていません');return;}
-  if(!confirm('発注管理Proの現場を取り込みます。\n（既存の現場は変更しません）\nよろしいですか？'))return;
+  if(!confirm('発注管理Proの現場を取り込みます。\n（新規は追加、既存の取込現場は名称を更新）\nよろしいですか？'))return;
   try{
     const snap=await firebase.database().ref('order_app/data').once('value');
     let v=snap.val(); if(typeof v==='string')v=JSON.parse(v);
     const cases=(v&&v.cases)||[];
     if(!cases.length){alert('発注管理に現場データがありませんでした');return;}
-    const have=new Set(D.sites.map(s=>s.orderId).filter(Boolean));
-    let added=0;
+    const byOrder={}; D.sites.forEach(s=>{if(s.orderId)byOrder[s.orderId]=s;});
+    let added=0,updated=0;
     cases.forEach(c=>{
-      if(!c.id||have.has(c.id))return;
-      const g=(c.genba&&c.genba!==c.place)?c.genba:'';
-      const nm=[c.place,g].filter(Boolean).join('・')||'(現場)';
-      const name=[nm,c.client||''].filter(Boolean).join(' / ');
-      D.sites.push({id:uid(),orderId:c.id,name,completed:(c.kanryo==='✓'||c.kanryo===true)});
-      added++;
+      if(!c.id)return;
+      const name=orderSiteName(c);
+      const completed=(c.kanryo==='✓'||c.kanryo===true);
+      const ex=byOrder[c.id];
+      if(ex){ if(ex.name!==name){ex.name=name;updated++;} ex.completed=completed; }
+      else{ D.sites.push({id:uid(),orderId:c.id,name,completed}); added++; }
     });
     sv();renderMstUI();
-    alert(added?`発注管理から現場を${added}件取り込みました`:'新規の現場はありませんでした（最新です）');
+    alert(`取込しました（新規${added}件 / 名称更新${updated}件）`);
   }catch(e){alert('取込に失敗しました: '+(e.message||e));}
+}
+// 発注管理から取り込んだ現場をまとめて削除（手入力の現場は残す）
+function delSyncedSites(){
+  const n=D.sites.filter(s=>s.orderId).length;
+  if(!n){alert('発注管理から取り込んだ現場はありません');return;}
+  if(!confirm(`発注管理から取り込んだ現場 ${n}件 を削除します。\n（手入力の現場は残ります）\nよろしいですか？`))return;
+  D.sites=D.sites.filter(s=>!s.orderId);sv();renderMstUI();alert(`${n}件削除しました`);
 }
 function renderVehicleMst(){const el=document.getElementById('mst_vehicle_ui');if(!el)return;el.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">${mi('ms_vn','車番','addV()')}<input type="text" id="ms_vt" placeholder="種類" style="width:70px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter'){event.preventDefault();addV()}"><input type="number" id="ms_vr" placeholder="日額" inputmode="numeric" style="width:70px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter'){event.preventDefault();addV()}"><input type="number" id="ms_vf" placeholder="燃料/日" inputmode="numeric" style="width:70px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter'){event.preventDefault();addV()}"><button class="btn bb btn-sm" onclick="addV()">追加</button></div><div>${D.vehicles.map(v=>`<div class="mst-item"><span>${v.number} <span class="sub">${v.type||''}</span> <span class="sub admin-only">日額¥${fmt(v.dailyRate)} 燃料¥${fmt(v.fuelRate||0)}</span></span><button class="mst-del" onclick="dm('vehicles','${v.id}')">×</button></div>`).join('')||'<div class="empty">未登録</div>'}</div>`;}
 function addV(){const n=document.getElementById('ms_vn').value.trim();const t=document.getElementById('ms_vt').value.trim();const r=document.getElementById('ms_vr').value;const f=document.getElementById('ms_vf').value;if(!n)return;D.vehicles.push({id:uid(),number:n,type:t,dailyRate:Number(r)||0,fuelRate:Number(f)||0});document.getElementById('ms_vn').value='';document.getElementById('ms_vt').value='';document.getElementById('ms_vr').value='';document.getElementById('ms_vf').value='';sv();renderMstUI();setTimeout(()=>document.getElementById('ms_vn')?.focus(),50);}
@@ -559,10 +571,20 @@ function renderMcUsage(){
     </div>`;
   }).join('')||'<span class="empty">重機未登録</span>';
 }
+// 現場セレクトを検索ボックスで絞り込んで再描画（200件超でも探しやすく）
+function renderNpSiteOptions(){
+  const ss=document.getElementById('np_site');if(!ss)return;
+  const cv=ss.value;
+  const q=(document.getElementById('np_site_search')?.value||'').trim().toLowerCase();
+  let list=activeSites();
+  if(q)list=list.filter(s=>(s.name||'').toLowerCase().includes(q));
+  list.sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
+  ss.innerHTML='<option value="">—選択—</option>'+list.map(s=>`<option value="${s.id}"${s.id===cv?' selected':''}>${s.name}</option>`).join('');
+  if(q&&list.length===1)ss.value=list[0].id; // 1件に絞れたら自動選択
+}
 function initNippo(){
   if(!document.getElementById('np_date').value)document.getElementById('np_date').value=new Date().toISOString().slice(0,10);
-  const ss=document.getElementById('np_site');const cv=ss.value;
-  ss.innerHTML='<option value="">—選択—</option>'+activeSites().map(s=>`<option value="${s.id}"${s.id===cv?' selected':''}>${s.name}</option>`).join('');
+  renderNpSiteOptions();
   renderVhUsage();
   renderMcUsage();
   // メンバー
@@ -612,7 +634,7 @@ function matSelectOpts(selId){
   return h;
 }
 function gMP(id){const m=D.materials.find(m=>m.id===id);return m?m.unitPrice:0;}
-function clearNippo(){document.getElementById('np_date').value=new Date().toISOString().slice(0,10);document.getElementById('np_site').value='';document.getElementById('np_note').value='';document.querySelectorAll('#np_members input,#np_works input').forEach(c=>{c.checked=false;c.parentElement.classList.remove('checked');});matRows=[];vhUsage=[];mcUsage=[];editNippoId=null;renderMatRows();initNippo();}
+function clearNippo(){document.getElementById('np_date').value=new Date().toISOString().slice(0,10);document.getElementById('np_site').value='';const _ss=document.getElementById('np_site_search');if(_ss)_ss.value='';document.getElementById('np_note').value='';document.querySelectorAll('#np_members input,#np_works input').forEach(c=>{c.checked=false;c.parentElement.classList.remove('checked');});matRows=[];vhUsage=[];mcUsage=[];editNippoId=null;renderMatRows();initNippo();}
 let editNippoId=null;
 function saveNippo(){
   const date=document.getElementById('np_date').value;const siteId=document.getElementById('np_site').value;
