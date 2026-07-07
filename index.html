@@ -547,38 +547,21 @@ function setVU(id,lvl){const ex=vhUsage.find(u=>u.id===id);if(ex)ex.level=lvl;el
 function removeVU(id){vhUsage=vhUsage.filter(u=>u.id!==id);renderVhUsage();}
 function setMU(id,lvl){const ex=mcUsage.find(u=>u.id===id);if(ex)ex.level=lvl;else mcUsage.push({id,level:lvl});renderMcUsage();}
 function removeMU(id){mcUsage=mcUsage.filter(u=>u.id!==id);renderMcUsage();}
+// 車両・重機は「使ったものをタップで選ぶだけ」（稼働レベルは撤去。燃料費は実費で管理）
 function renderVhUsage(){
   const vel=document.getElementById('np_vehicles');if(!vel)return;
+  vel.className='chk-grid';
   vel.innerHTML=D.vehicles.map(v=>{
-    const cu=vhUsage.find(u=>u.id===v.id);const on=!!cu;
-    return `<div style="padding:8px 0;border-bottom:1px solid #f0f0f0">
-      <label class="chk-item${on?' checked':''}" style="margin-bottom:${on?'6px':'0'}">
-        <input type="checkbox" ${on?'checked':''} onchange="if(this.checked){setVU('${v.id}',1)}else{removeVU('${v.id}')};this.parentElement.classList.toggle('checked',this.checked)"> ${v.number} ${v.type||''}
-      </label>
-      ${on?`<select onchange="setVU('${v.id}',parseFloat(this.value))" style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:14px;background:#fff;-webkit-appearance:none">
-        <option value="1"${cu.level===1?' selected':''}>🔴 全日稼働</option>
-        <option value="0.5"${cu.level===0.5?' selected':''}>🟡 半日稼働</option>
-        <option value="0.25"${cu.level===0.25?' selected':''}>🔵 往復のみ</option>
-        <option value="0"${cu.level===0?' selected':''}>⚪ 未使用</option>
-      </select>`:''}
-    </div>`;
+    const on=!!vhUsage.find(u=>u.id===v.id);
+    return `<label class="chk-item${on?' checked':''}"><input type="checkbox" ${on?'checked':''} onchange="if(this.checked){setVU('${v.id}',1)}else{removeVU('${v.id}')};this.parentElement.classList.toggle('checked',this.checked)"> ${v.number} ${v.type||''}</label>`;
   }).join('')||'<span class="empty">車両未登録</span>';
 }
 function renderMcUsage(){
   const mcel=document.getElementById('np_machines');if(!mcel)return;
+  mcel.className='chk-grid';
   mcel.innerHTML=D.machines.map(m=>{
-    const cu=mcUsage.find(u=>u.id===m.id);const on=!!cu;
-    return `<div style="padding:8px 0;border-bottom:1px solid #f0f0f0">
-      <label class="chk-item${on?' checked':''}" style="margin-bottom:${on?'6px':'0'}">
-        <input type="checkbox" ${on?'checked':''} onchange="if(this.checked){setMU('${m.id}',1)}else{removeMU('${m.id}')};this.parentElement.classList.toggle('checked',this.checked)"> ${m.name}
-      </label>
-      ${on?`<select onchange="setMU('${m.id}',parseFloat(this.value))" style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:14px;background:#fff;-webkit-appearance:none">
-        <option value="1"${cu.level===1?' selected':''}>🔴 全日稼働</option>
-        <option value="0.5"${cu.level===0.5?' selected':''}>🟡 半日稼働</option>
-        <option value="0.25"${cu.level===0.25?' selected':''}>🔵 往復のみ</option>
-        <option value="0"${cu.level===0?' selected':''}>⚪ 未使用</option>
-      </select>`:''}
-    </div>`;
+    const on=!!mcUsage.find(u=>u.id===m.id);
+    return `<label class="chk-item${on?' checked':''}"><input type="checkbox" ${on?'checked':''} onchange="if(this.checked){setMU('${m.id}',1)}else{removeMU('${m.id}')};this.parentElement.classList.toggle('checked',this.checked)"> ${m.name}</label>`;
   }).join('')||'<span class="empty">重機未登録</span>';
 }
 // 現場セレクトを検索ボックスで絞り込んで再描画（200件超でも探しやすく）
