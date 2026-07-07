@@ -3402,9 +3402,14 @@ async function _procHacchu(){
     if(typeof onGyoshuChange==='function')onGyoshuChange();
     // 発注書PDFを書類貼付にも自動保存（Storage）。未設定でも記入は継続
     try{pdfH=await uploadPdfToStorage(f,'hacchu');renderPdfTags();}catch(_e){}
+    // 重複現場チェック（既に登録済みなら二重登録の恐れ→警告）
+    const _cn=s=>(''+(s||'')).replace(/[\s　]/g,'');
+    const _k=_cn((d.city||'')+(d.site_no||''));
+    const dup=_k?(S.cases||[]).find(c=>_cn((c.place||'')+(c.kouji||''))===_k):null;
     const miss=[];if(!d.client_name)miss.push('発注者');if(!(d.amount>0))miss.push('金額');if(!d.kubun)miss.push('区分');
     const more=_hacchuQ.length>1?`　[${_hacchuI+1}/${_hacchuQ.length}] 保存後「▶次の発注書」`:'';
-    st.textContent='✓ 記入しました。確認して保存。'+(miss.length?'（未取得: '+miss.join('・')+'）':'')+more;
+    if(dup){st.innerHTML='<span style="color:#c62828;font-weight:700">⚠ 同じ現場が既に登録済みかも: '+(dup.place||'')+(dup.kouji||'')+'（'+(dup.client||'')+'）。二重登録に注意</span>'+(miss.length?' / 未取得: '+miss.join('・'):'')+more;}
+    else st.textContent='✓ 記入しました。確認して保存。'+(miss.length?'（未取得: '+miss.join('・')+'）':'')+more;
   }catch(e){st.textContent='';alert('読み取り失敗: '+(e.message||e)+'\n\n※発注書対応の更新をSupabaseに再デプロイする必要があります');}
   finally{btn.disabled=false;}
 }
