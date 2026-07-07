@@ -2066,8 +2066,8 @@ function renderMonthly(){
     }).join('');
     const kouki=c.kouki_s==='未定'||c.kouki_e==='未定'?'未定':(c.kouki_s||c.kouki_e?`${(c.kouki_s||'').slice(5)}〜${(c.kouki_e||'').slice(5)}`:'');
     const pdfs=[];
-    if(c.pdf_hacchu)pdfs.push(`<span class="pdf-tag" onclick="viewCasePdf('${c.id}','h')" title="${c.pdf_hacchu.name}">発注書</span>`);
-    if(c.pdf_seikyuu)pdfs.push(`<span class="pdf-tag" onclick="viewCasePdf('${c.id}','s')" title="${c.pdf_seikyuu.name}">請求書</span>`);
+    if(c.pdf_hacchu)pdfs.push(`<span class="pdf-tag" onclick="event.stopPropagation();viewCasePdf('${c.id}','h')" title="発注書PDF: ${c.pdf_hacchu.name}" style="cursor:pointer;font-size:9px;background:#eef6ff;border:1px solid #cfe3ff;border-radius:4px;padding:0 4px;margin-left:4px;color:#2456a6;white-space:nowrap">📄発注</span>`);
+    if(c.pdf_seikyuu)pdfs.push(`<span class="pdf-tag" onclick="event.stopPropagation();viewCasePdf('${c.id}','s')" title="請求書PDF: ${c.pdf_seikyuu.name}" style="cursor:pointer;font-size:9px;background:#f1f8e9;border:1px solid #dcedc8;border-radius:4px;padding:0 4px;margin-left:4px;color:#558b2f;white-space:nowrap">📄請求</span>`);
     const shikou=Math.max(0,r.js-r.km);
     const seikyuuDate=c.seikyuu_c_date?new Date(c.seikyuu_c_date):null;
     const daysSinceSeikyuu=seikyuuDate?Math.floor((new Date()-seikyuuDate)/(1000*60*60*24)):0;
@@ -2102,7 +2102,7 @@ function renderMonthly(){
       <td ${ec} onclick="editCell('${c.id}','place',this)">${c.place||''}</td>
       <td ${ec} onclick="editCell('${c.id}','client',this)">${c.client||''}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${c.tantou||''}</td>
-      <td ${ec} onclick="editCell('${c.id}','kouji',this)">${c.kouji||''}</td>
+      <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${c.kouji||''}${pdfs.join('')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${c.kubun||''}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(bm)}</td>
