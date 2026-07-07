@@ -151,6 +151,13 @@ body.role-user .master-only{display:none!important}
   <div id="np_mats"></div>
   <button class="btn bb btn-sm" onclick="addMatRow()" style="margin:4px 0 16px">＋ 材料追加</button>
   <div class="fg"><label>備考</label><input type="text" id="np_note" placeholder="特記事項"></div>
+  <div style="margin-top:10px">
+    <button class="btn bb btn-sm" onclick="showNippoReport()" style="width:100%">📝 報告文を作成（LINE用）</button>
+    <div id="np_report_box" style="display:none;margin-top:6px">
+      <textarea id="np_report" style="width:100%;box-sizing:border-box;min-height:130px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:13px;line-height:1.6"></textarea>
+      <div style="display:flex;gap:8px;margin-top:6px"><button class="btn bo btn-sm" onclick="copyNippoReport()" style="flex:1">📋 コピー</button><button class="btn bg btn-sm" onclick="shareNippoLine()" style="flex:1">💬 LINEで送る</button></div>
+    </div>
+  </div>
   <div style="display:flex;gap:8px;margin-top:8px"><button class="btn bx" onclick="clearNippo()" style="flex:1">クリア</button><button class="btn bg" onclick="saveNippo()" style="flex:2">💾 保存</button></div>
 </div></div></div>
 
@@ -632,6 +639,42 @@ function renderMatQuick(){
   el.innerHTML=top.map(id=>{const m=(D.materials||[]).find(x=>x.id===id);return m?`<button type="button" class="btn bb btn-sm" style="font-size:12px;padding:6px 10px" onclick="quickAddMat('${id}')">＋${m.name}</button>`:'';}).join('')||'<span style="font-size:11px;color:#bbb">材料マスタを登録すると、よく使う材料がここにボタンで出ます</span>';
 }
 function quickAddMat(id){matRows.push({materialId:id,qty:0,unitPrice:gMP(id)});renderMatRows();}
+// 日報の入力内容から報告文を自動生成（LINE/報告用）
+function buildNippoReport(){
+  const dv=(document.getElementById('np_date').value||'');
+  const date=dv?`${+dv.slice(0,4)}/${+dv.slice(5,7)}/${+dv.slice(8,10)}`:'';
+  const site=((D.sites||[]).find(s=>s.id===document.getElementById('np_site').value)||{}).name||'';
+  const weather=document.getElementById('np_weather')?document.getElementById('np_weather').value:'';
+  const veh=vhUsage.filter(u=>u.level>=0).map(u=>{const v=(D.vehicles||[]).find(x=>x.id===u.id);return v?((v.number||'')+(v.type?' '+v.type:'')).trim():'';}).filter(Boolean);
+  const mac=mcUsage.filter(u=>u.level>=0).map(u=>{const v=(D.machines||[]).find(x=>x.id===u.id);return v?v.name:'';}).filter(Boolean);
+  const mem=Array.from(document.querySelectorAll('#np_members input:checked')).map(c=>{const m=(D.members||[]).find(x=>x.id===c.value);return m?m.name:'';}).filter(Boolean);
+  const works=Array.from(document.querySelectorAll('#np_works input:checked')).map(c=>{const w=(D.works||[]).find(x=>x.id===c.value);return w?w.name:'';}).filter(Boolean);
+  const mats=matRows.filter(r=>r.materialId&&r.qty>0).map(r=>{const m=(D.materials||[]).find(x=>x.id===r.materialId);return m?`${m.name} ${r.qty}${m.unit||''}`:'';}).filter(Boolean);
+  const note=(document.getElementById('np_note').value||'').trim();
+  let o=date+(weather?' '+weather:'');
+  o+=`\n現場名 ${site||'—'}`;
+  if(veh.length)o+=`\n車両 ${veh.join('・')}`;
+  if(mac.length)o+=`\n重機 ${mac.join('・')}`;
+  if(mem.length)o+=`\nメンバー ${mem.join('・')}`;
+  if(mats.length)o+=`\n材料 ${mats.join('　')}`;
+  if(works.length)o+=`\n作業内容 ${works.join('・')}`;
+  if(note)o+=`\n備考 ${note}`;
+  return o;
+}
+function showNippoReport(){
+  const box=document.getElementById('np_report_box');const ta=document.getElementById('np_report');
+  ta.value=buildNippoReport();box.style.display='block';
+}
+function copyNippoReport(){
+  const ta=document.getElementById('np_report');
+  const done=()=>alert('報告文をコピーしました。LINE等に貼り付けてください');
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(ta.value).then(done,()=>{ta.select();document.execCommand('copy');done();});}
+  else{ta.select();document.execCommand('copy');done();}
+}
+function shareNippoLine(){
+  const t=document.getElementById('np_report').value||'';
+  window.open('https://line.me/R/share?text='+encodeURIComponent(t),'_blank');
+}
 // 前日(直近)の日報をコピー（日付・現場は今のまま、内容だけ流用）
 function copyPrevNippo(){
   const sid=document.getElementById('np_site').value;
