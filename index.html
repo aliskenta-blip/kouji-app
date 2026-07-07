@@ -141,11 +141,14 @@ body.role-user .master-only{display:none!important}
 
 <div id="p-nippo" class="panel"><div class="card"><div class="card-hdr ch-g">📝 日報入力</div><div class="card-body">
   <div class="grid2"><div class="fg"><label>日付 *</label><input type="date" id="np_date"></div><div class="fg"><label>現場 *</label><input type="text" id="np_site_search" placeholder="🔍 現場名・工事名で絞り込み" oninput="renderNpSiteOptions()" style="margin-bottom:5px;padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;width:100%;box-sizing:border-box"><select id="np_site" size="6" style="width:100%;box-sizing:border-box"></select></div></div>
+  <div class="grid2"><div class="fg"><label>天候</label><select id="np_weather" style="padding:10px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;width:100%;box-sizing:border-box"><option value="">—</option><option>☀晴</option><option>☁曇</option><option>☔雨</option><option>⛄雪</option></select></div><div class="fg" style="display:flex;align-items:flex-end"><button class="btn bo btn-sm" onclick="copyPrevNippo()" style="width:100%">📋 前日をコピー</button></div></div>
   <div class="st">🚛 車両</div><div id="np_vehicles"></div>
   <div class="st">🏗️ 重機</div><div id="np_machines"></div>
   <div class="st">👷 メンバー（出勤）</div><div class="chk-grid" id="np_members"></div>
   <div class="st">🔨 作業内容</div><div class="chk-grid" id="np_works"></div>
-  <div class="st">📦 使用材料</div><div id="np_mats"></div>
+  <div class="st">📦 使用材料</div>
+  <div id="np_matquick" style="display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 6px"></div>
+  <div id="np_mats"></div>
   <button class="btn bb btn-sm" onclick="addMatRow()" style="margin:4px 0 16px">＋ 材料追加</button>
   <div class="fg"><label>備考</label><input type="text" id="np_note" placeholder="特記事項"></div>
   <div style="display:flex;gap:8px;margin-top:8px"><button class="btn bx" onclick="clearNippo()" style="flex:1">クリア</button><button class="btn bg" onclick="saveNippo()" style="flex:2">💾 保存</button></div>
@@ -594,6 +597,7 @@ function initNippo(){
   const wel=document.getElementById('np_works');const wchk=Array.from(wel.querySelectorAll('input:checked')).map(i=>i.value);
   wel.innerHTML=D.works.map(w=>{const c=wchk.includes(w.id);return chkHtml(w.id,w.name,c);}).join('')||'<span class="empty">未登録</span>';
   renderMatRows();
+  renderMatQuick();
 }
 function renderMatRows(){
   const el=document.getElementById('np_mats');
@@ -618,6 +622,31 @@ function renderMatRows(){
   if(!matRows.length)el.innerHTML='<div style="color:#bbb;font-size:13px;padding:8px 0">材料なし</div>';
 }
 function addMatRow(){matRows.push({materialId:'',qty:0,unitPrice:0});renderMatRows();}
+// よく使う材料をワンタップ追加
+function renderMatQuick(){
+  const el=document.getElementById('np_matquick');if(!el)return;
+  const freq={};
+  (D.reports||[]).forEach(r=>(r.materials||[]).forEach(m=>{if(m.materialId)freq[m.materialId]=(freq[m.materialId]||0)+1;}));
+  let top=Object.keys(freq).sort((a,b)=>freq[b]-freq[a]).slice(0,8);
+  if(!top.length)top=(D.materials||[]).slice(0,8).map(m=>m.id);
+  el.innerHTML=top.map(id=>{const m=(D.materials||[]).find(x=>x.id===id);return m?`<button type="button" class="btn bb btn-sm" style="font-size:12px;padding:6px 10px" onclick="quickAddMat('${id}')">＋${m.name}</button>`:'';}).join('')||'<span style="font-size:11px;color:#bbb">材料マスタを登録すると、よく使う材料がここにボタンで出ます</span>';
+}
+function quickAddMat(id){matRows.push({materialId:id,qty:0,unitPrice:gMP(id)});renderMatRows();}
+// 前日(直近)の日報をコピー（日付・現場は今のまま、内容だけ流用）
+function copyPrevNippo(){
+  const sid=document.getElementById('np_site').value;
+  const cand=(D.reports||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const r=(sid?cand.find(x=>x.siteId===sid):null)||cand[0];
+  if(!r){alert('コピー元の日報がまだありません');return;}
+  const w=document.getElementById('np_weather');if(w)w.value=r.weather||'';
+  vhUsage=(r.vehicleUsage||[]).map(u=>({...u}));
+  mcUsage=(r.machineUsage||[]).map(u=>({...u}));
+  matRows=(r.materials||[]).map(m=>({...m}));
+  document.querySelectorAll('#np_members input').forEach(c=>{c.checked=(r.memberIds||[]).includes(c.value);c.parentElement.classList.toggle('checked',c.checked);});
+  document.querySelectorAll('#np_works input').forEach(c=>{c.checked=(r.workIds||[]).includes(c.value);c.parentElement.classList.toggle('checked',c.checked);});
+  renderVhUsage();renderMcUsage();renderMatRows();
+  alert(`${r.date} の日報をコピーしました（日付・現場は今のまま）`);
+}
 function matSelectOpts(selId){
   let h='';const subs=allSubs();const used=new Set();
   D.matCats.forEach(cat=>{
@@ -634,12 +663,13 @@ function matSelectOpts(selId){
   return h;
 }
 function gMP(id){const m=D.materials.find(m=>m.id===id);return m?m.unitPrice:0;}
-function clearNippo(){document.getElementById('np_date').value=new Date().toISOString().slice(0,10);document.getElementById('np_site').value='';const _ss=document.getElementById('np_site_search');if(_ss)_ss.value='';document.getElementById('np_note').value='';document.querySelectorAll('#np_members input,#np_works input').forEach(c=>{c.checked=false;c.parentElement.classList.remove('checked');});matRows=[];vhUsage=[];mcUsage=[];editNippoId=null;renderMatRows();initNippo();}
+function clearNippo(){document.getElementById('np_date').value=new Date().toISOString().slice(0,10);document.getElementById('np_site').value='';const _ss=document.getElementById('np_site_search');if(_ss)_ss.value='';const _w=document.getElementById('np_weather');if(_w)_w.value='';document.getElementById('np_note').value='';document.querySelectorAll('#np_members input,#np_works input').forEach(c=>{c.checked=false;c.parentElement.classList.remove('checked');});matRows=[];vhUsage=[];mcUsage=[];editNippoId=null;renderMatRows();initNippo();}
 let editNippoId=null;
 function saveNippo(){
   const date=document.getElementById('np_date').value;const siteId=document.getElementById('np_site').value;
   if(!date||!siteId){alert('日付と現場は必須です');return;}
   const r={date,siteId,
+    weather:document.getElementById('np_weather')?document.getElementById('np_weather').value:'',
     vehicleUsage:vhUsage.filter(u=>u.level>=0),
     machineUsage:mcUsage.filter(u=>u.level>=0),
     memberIds:Array.from(document.querySelectorAll('#np_members input:checked')).map(c=>c.value),
@@ -652,7 +682,7 @@ function saveNippo(){
 }
 function editNippo(id){
   const r=D.reports.find(x=>x.id===id);if(!r)return;editNippoId=id;sw('nippo');
-  document.getElementById('np_date').value=r.date;document.getElementById('np_site').value=r.siteId;document.getElementById('np_note').value=r.note||'';
+  document.getElementById('np_date').value=r.date;document.getElementById('np_site').value=r.siteId;document.getElementById('np_note').value=r.note||'';const _w=document.getElementById('np_weather');if(_w)_w.value=r.weather||'';
   vhUsage=(r.vehicleUsage||[]).map(u=>({...u}));
   mcUsage=(r.machineUsage||[]).map(u=>({...u}));
   setTimeout(()=>{
