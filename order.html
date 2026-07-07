@@ -688,9 +688,10 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <button class="mc" onclick="closeMov()">✕</button>
   </div>
   <div style="padding:9px 12px;background:#eef6ff;border:1px solid #cfe3ff;border-radius:10px;margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <span style="font-size:12px;color:#2456a6;font-weight:700">📄 発注書PDFから自動記入</span>
-    <input type="file" id="f_hacchu_pdf" accept="application/pdf,.pdf" style="font-size:12px;max-width:200px">
+    <span style="font-size:12px;color:#2456a6;font-weight:700">📄 発注書PDFから自動記入（複数可）</span>
+    <input type="file" id="f_hacchu_pdf" accept="application/pdf,.pdf" multiple style="font-size:12px;max-width:200px">
     <button type="button" id="f_hacchu_btn" onclick="importHacchuOrder()" style="font-size:12px;padding:6px 12px;border:none;border-radius:6px;background:#1f6fd6;color:#fff;cursor:pointer">🔍 読み取って記入</button>
+    <button type="button" onclick="nextHacchu()" style="font-size:12px;padding:6px 12px;border:1px solid #1f6fd6;border-radius:6px;background:#fff;color:#1f6fd6;cursor:pointer">▶ 次の発注書</button>
     <span id="f_hacchu_status" style="font-size:11px;color:#888"></span>
   </div>
   <div class="st">📍 案件情報</div>
@@ -3341,51 +3342,65 @@ function openAdd(){
   setTimeout(()=>{try{fp.focus();}catch(e){}},320);
 }
 // 発注書PDF → AI読み取り（extract-pdf, doc_type=hacchu）→ 案件フォーム自動記入
+let _hacchuQ=[],_hacchuI=0;
 async function importHacchuOrder(){
-  const fileEl=document.getElementById('f_hacchu_pdf');
-  const f=fileEl&&fileEl.files?fileEl.files[0]:null;
+  const files=Array.from((document.getElementById('f_hacchu_pdf')||{}).files||[]);
+  if(!files.length){alert('発注書PDFを選択してください');return;}
+  _hacchuQ=files;_hacchuI=0;await _procHacchu();
+}
+async function nextHacchu(){
+  if(_hacchuI+1>=_hacchuQ.length){alert('最後の発注書です');return;}
+  _hacchuI++;openAdd();setTimeout(_procHacchu,180);
+}
+async function _procHacchu(){
+  const f=_hacchuQ[_hacchuI];if(!f)return;
   const st=document.getElementById('f_hacchu_status');
   const btn=document.getElementById('f_hacchu_btn');
-  if(!f){alert('発注書PDFを選択してください');return;}
-  btn.disabled=true;st.textContent='読み取り中…（10〜20秒）';
+  btn.disabled=true;st.textContent=`読み取り中…（${_hacchuI+1}/${_hacchuQ.length}）`;
   try{
     const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).replace(/^data:.*;base64,/,''));r.onerror=()=>rej(new Error('ファイル読込失敗'));r.readAsDataURL(f);});
     const KEY='sb_publishable_Wz8q-baZl7onBYT1MSWjYw_U95PUEO3';
     const res=await fetch('https://qqdjaihzvfncspevylrl.functions.supabase.co/extract-pdf',{
-      method:'POST',
-      headers:{'content-type':'application/json','Authorization':'Bearer '+KEY,'apikey':KEY},
-      body:JSON.stringify({pdf_base64:b64,doc_type:'hacchu',model:'sonnet'})
-    });
+      method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+KEY,'apikey':KEY},
+      body:JSON.stringify({pdf_base64:b64,doc_type:'hacchu',model:'sonnet'})});
     const d=await res.json();
     if(!res.ok||d.error)throw new Error(d.error||('HTTP '+res.status));
-    // 空でない項目だけ記入（既存入力を消さない）
-    if(d.site_name)vs('f_pl',d.site_name);
-    if(d.site_address)vs('f_genba',d.site_address);
-    else if(d.site_name&&typeof autoGenba==='function')autoGenba(d.site_name);
-    if(d.kouji_name)vs('f_kj',d.kouji_name);
+    // order.htmlの欄の意味に合わせて記入（場所=市区、工事名=枝番、経歴書現場=県+市区）
+    if(d.city)vs('f_pl',d.city);
+    if(d.site_no)vs('f_kj',d.site_no);
+    if(d.prefecture||d.city)vs('f_genba',((d.prefecture||'')+(d.city||'')).trim());
     if(typeof d.amount==='number'&&d.amount>0)vs('f_jh',String(Math.round(d.amount/1000)/10));
     if(/^\d{4}-\d{2}/.test(d.doc_date||''))vs('f_dt',d.doc_date.slice(0,7));
     hacchuSelectByText('f_cl',d.client_name);
+    hacchuSelectByText('f_br',d.branch);
     hacchuSelectByText('f_ta',d.tantou);
+    hacchuSelectByText('f_kb',d.kubun);
+    // 建設工事種類: 工種で判定（給水系→管工事、他→とび・土工）
+    for(const cand of hacchuKoujiType(d.kubun)){if(hacchuSelectByText('f_kouji_type',cand))break;}
     hacchuSetKouki('f_kouki_s','f_kouki_s_mitei',d.kouki_start);
     hacchuSetKouki('f_kouki_e','f_kouki_e_mitei',d.kouki_end);
     if(typeof onGyoshuChange==='function')onGyoshuChange();
-    const miss=[];if(!d.client_name)miss.push('発注者');if(!(d.amount>0))miss.push('金額');
-    st.textContent='✓ 記入しました。内容を確認して保存してください。'+(miss.length?'（未取得: '+miss.join('・')+'）':'');
-  }catch(e){
-    st.textContent='';
-    alert('読み取り失敗: '+(e.message||e)+'\n\n※エッジ関数の再デプロイ（発注書対応）が必要な場合があります。');
-  }finally{btn.disabled=false;}
+    const miss=[];if(!d.client_name)miss.push('発注者');if(!(d.amount>0))miss.push('金額');if(!d.kubun)miss.push('区分');
+    const more=_hacchuQ.length>1?`　[${_hacchuI+1}/${_hacchuQ.length}] 保存後「▶次の発注書」`:'';
+    st.textContent='✓ 記入しました。確認して保存。'+(miss.length?'（未取得: '+miss.join('・')+'）':'')+more;
+  }catch(e){st.textContent='';alert('読み取り失敗: '+(e.message||e)+'\n\n※発注書対応の更新をSupabaseに再デプロイする必要があります');}
+  finally{btn.disabled=false;}
 }
-// select から表示テキストが一致/包含する選択肢を選ぶ
+// 区分から建設工事種類の候補（給水系=管工事）
+function hacchuKoujiType(kubun){
+  return /給水|給排水|水道|仮設水道|漏水|汚水|排水|管工/.test(kubun||'')
+    ?['管工事','水道施設']:['とび・土工・コンクリート','とび','土工'];
+}
+// select から表示テキストが一致/包含する選択肢を選ぶ（一致したら true）
 function hacchuSelectByText(id,text){
-  if(!text)return;
-  const sel=document.getElementById(id);if(!sel)return;
+  if(!text)return false;
+  const sel=document.getElementById(id);if(!sel)return false;
   const t=(''+text).replace(/[\s　]/g,'');
   for(let i=0;i<sel.options.length;i++){
     const ot=(sel.options[i].textContent||'').replace(/[\s　]/g,'');
-    if(ot&&(ot===t||ot.indexOf(t)>=0||t.indexOf(ot)>=0)){sel.value=sel.options[i].value;return;}
+    if(ot&&(ot===t||ot.indexOf(t)>=0||t.indexOf(ot)>=0)){sel.value=sel.options[i].value;return true;}
   }
+  return false;
 }
 // 工期(月)の記入。'未定'ならチェックボックスON
 function hacchuSetKouki(fid,mid,val){
