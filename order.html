@@ -688,9 +688,9 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <button class="mc" onclick="closeMov()">✕</button>
   </div>
   <div style="padding:9px 12px;background:#eef6ff;border:1px solid #cfe3ff;border-radius:10px;margin:0 0 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <span style="font-size:12px;color:#2456a6;font-weight:700">📄 発注書PDFから自動記入（複数可）</span>
-    <input type="file" id="f_hacchu_pdf" accept="application/pdf,.pdf" multiple style="font-size:12px;max-width:200px">
-    <button type="button" id="f_hacchu_btn" onclick="importHacchuOrder()" style="font-size:12px;padding:6px 12px;border:none;border-radius:6px;background:#1f6fd6;color:#fff;cursor:pointer">🔍 読み取って記入</button>
+    <span style="font-size:12px;color:#2456a6;font-weight:700">📄 発注書PDF（1ファイルに複数まとめてOK）</span>
+    <input type="file" id="f_hacchu_pdf" accept="application/pdf,.pdf" style="font-size:12px;max-width:200px">
+    <button type="button" id="f_hacchu_btn" onclick="importHacchuOrder()" style="font-size:12px;padding:6px 12px;border:none;border-radius:6px;background:#1f6fd6;color:#fff;cursor:pointer">🔍 一括読み取り</button>
     <button type="button" onclick="nextHacchu()" style="font-size:12px;padding:6px 12px;border:1px solid #1f6fd6;border-radius:6px;background:#fff;color:#1f6fd6;cursor:pointer">▶ 次の発注書</button>
     <span id="f_hacchu_status" style="font-size:11px;color:#888"></span>
   </div>
@@ -3362,56 +3362,66 @@ function openAdd(){
   setTimeout(()=>{try{fp.focus();}catch(e){}},320);
 }
 // 発注書PDF → AI読み取り（extract-pdf, doc_type=hacchu）→ 案件フォーム自動記入
-let _hacchuQ=[],_hacchuI=0;
+// 1ファイル内の複数発注書を一括読み取り→1件ずつフォームに記入して登録
+let _hacchuOrders=[],_hacchuI=0,_hacchuPdf=null;
+function _fileToB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).replace(/^data:.*;base64,/,''));r.onerror=()=>rej(new Error('ファイル読込失敗'));r.readAsDataURL(f);});}
 async function importHacchuOrder(){
   const files=Array.from((document.getElementById('f_hacchu_pdf')||{}).files||[]);
-  if(!files.length){alert('発注書PDFを選択してください');return;}
-  _hacchuQ=files;_hacchuI=0;await _procHacchu();
-}
-async function nextHacchu(){
-  if(_hacchuI+1>=_hacchuQ.length){alert('最後の発注書です');return;}
-  _hacchuI++;openAdd();setTimeout(_procHacchu,180);
-}
-async function _procHacchu(){
-  const f=_hacchuQ[_hacchuI];if(!f)return;
+  if(!files.length){alert('発注書PDF（1ファイルに複数の発注書が入っていてOK）を選択してください');return;}
+  const f=files[0];
   const st=document.getElementById('f_hacchu_status');
   const btn=document.getElementById('f_hacchu_btn');
-  btn.disabled=true;st.textContent=`読み取り中…（${_hacchuI+1}/${_hacchuQ.length}）`;
+  btn.disabled=true;st.textContent='一括読み取り中…（枚数により30〜120秒）';
   try{
-    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).replace(/^data:.*;base64,/,''));r.onerror=()=>rej(new Error('ファイル読込失敗'));r.readAsDataURL(f);});
+    const b64=await _fileToB64(f);
     const KEY='sb_publishable_Wz8q-baZl7onBYT1MSWjYw_U95PUEO3';
     const res=await fetch('https://qqdjaihzvfncspevylrl.functions.supabase.co/extract-pdf',{
       method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+KEY,'apikey':KEY},
-      body:JSON.stringify({pdf_base64:b64,doc_type:'hacchu',model:'sonnet'})});
+      body:JSON.stringify({pdf_base64:b64,doc_type:'hacchu_batch',model:'sonnet'})});
     const d=await res.json();
     if(!res.ok||d.error)throw new Error(d.error||('HTTP '+res.status));
-    // order.htmlの欄の意味に合わせて記入（場所=市区、工事名=枝番、経歴書現場=県+市区）
-    if(d.city)vs('f_pl',d.city);
-    if(d.site_no)vs('f_kj',d.site_no);
-    if(d.prefecture||d.city)vs('f_genba',((d.prefecture||'')+(d.city||'')).trim());
-    if(typeof d.amount==='number'&&d.amount>0)vs('f_jh',String(Math.round(d.amount/1000)/10));
-    if(/^\d{4}-\d{2}/.test(d.doc_date||''))vs('f_dt',d.doc_date.slice(0,7));
-    hacchuSelectByText('f_cl',d.client_name);
-    hacchuSelectByText('f_br',d.branch);
-    hacchuSelectByText('f_ta',d.tantou);
-    hacchuSelectByText('f_kb',d.kubun);
-    // 建設工事種類: 工種で判定（給水系→管工事、他→とび・土工）
-    for(const cand of hacchuKoujiType(d.kubun)){if(hacchuSelectByText('f_kouji_type',cand))break;}
-    hacchuSetKouki('f_kouki_s','f_kouki_s_mitei',d.kouki_start);
-    hacchuSetKouki('f_kouki_e','f_kouki_e_mitei',d.kouki_end);
-    if(typeof onGyoshuChange==='function')onGyoshuChange();
-    // 発注書PDFを書類貼付にも自動保存（Storage）。未設定でも記入は継続
-    try{pdfH=await uploadPdfToStorage(f,'hacchu');renderPdfTags();}catch(_e){}
-    // 重複現場チェック（既に登録済みなら二重登録の恐れ→警告）
-    const _cn=s=>(''+(s||'')).replace(/[\s　]/g,'');
-    const _k=_cn((d.city||'')+(d.site_no||''));
-    const dup=_k?(S.cases||[]).find(c=>_cn((c.place||'')+(c.kouji||''))===_k):null;
-    const miss=[];if(!d.client_name)miss.push('発注者');if(!(d.amount>0))miss.push('金額');if(!d.kubun)miss.push('区分');
-    const more=_hacchuQ.length>1?`　[${_hacchuI+1}/${_hacchuQ.length}] 保存後「▶次の発注書」`:'';
-    if(dup){st.innerHTML='<span style="color:#c62828;font-weight:700">⚠ 同じ現場が既に登録済みかも: '+(dup.place||'')+(dup.kouji||'')+'（'+(dup.client||'')+'）。二重登録に注意</span>'+(miss.length?' / 未取得: '+miss.join('・'):'')+more;}
-    else st.textContent='✓ 記入しました。確認して保存。'+(miss.length?'（未取得: '+miss.join('・')+'）':'')+more;
+    const orders=(d.orders||[]).filter(o=>o&&(o.city||o.site_no||o.amount>0));
+    if(!orders.length)throw new Error('発注書が見つかりませんでした');
+    _hacchuOrders=orders;_hacchuI=0;
+    // PDFは1回だけStorageへ→各案件で同じURLを添付
+    _hacchuPdf=null;try{_hacchuPdf=await uploadPdfToStorage(f,'hacchu');}catch(_e){}
+    fillHacchuForm(_hacchuOrders[0]);
   }catch(e){st.textContent='';alert('読み取り失敗: '+(e.message||e)+'\n\n※発注書対応の更新をSupabaseに再デプロイする必要があります');}
   finally{btn.disabled=false;}
+}
+function nextHacchu(){
+  if(!_hacchuOrders.length){alert('先に「読み取って記入」で読み込んでください');return;}
+  if(_hacchuI+1>=_hacchuOrders.length){alert('最後の発注書です（全'+_hacchuOrders.length+'件）');return;}
+  _hacchuI++;openAdd();setTimeout(()=>fillHacchuForm(_hacchuOrders[_hacchuI]),180);
+}
+function fillHacchuForm(d){
+  if(!d)return;
+  const st=document.getElementById('f_hacchu_status');
+  // order.htmlの欄の意味に合わせて記入（場所=市区、工事名=枝番、経歴書現場=県+市区）
+  if(d.city)vs('f_pl',d.city);
+  if(d.site_no)vs('f_kj',d.site_no);
+  if(d.prefecture||d.city)vs('f_genba',((d.prefecture||'')+(d.city||'')).trim());
+  if(typeof d.amount==='number'&&d.amount>0)vs('f_jh',String(Math.round(d.amount/1000)/10));
+  if(/^\d{4}-\d{2}/.test(d.doc_date||''))vs('f_dt',d.doc_date.slice(0,7));
+  hacchuSelectByText('f_cl',d.client_name);
+  hacchuSelectByText('f_br',d.branch);
+  hacchuSelectByText('f_ta',d.tantou);
+  hacchuSelectByText('f_kb',d.kubun);
+  // 建設工事種類: 工種で判定（給水系→管工事、他→とび・土工）
+  for(const cand of hacchuKoujiType(d.kubun)){if(hacchuSelectByText('f_kouji_type',cand))break;}
+  hacchuSetKouki('f_kouki_s','f_kouki_s_mitei',d.kouki_start);
+  hacchuSetKouki('f_kouki_e','f_kouki_e_mitei',d.kouki_end);
+  if(typeof onGyoshuChange==='function')onGyoshuChange();
+  if(_hacchuPdf){pdfH=_hacchuPdf;renderPdfTags();}
+  // 重複現場チェック（既に登録済みなら二重登録の恐れ→警告）
+  const _cn=s=>(''+(s||'')).replace(/[\s　]/g,'');
+  const _k=_cn((d.city||'')+(d.site_no||''));
+  const dup=_k?(S.cases||[]).find(c=>_cn((c.place||'')+(c.kouji||''))===_k):null;
+  const miss=[];if(!d.client_name)miss.push('発注者');if(!(d.amount>0))miss.push('金額');if(!d.kubun)miss.push('区分');
+  const pos=`[${_hacchuI+1}/${_hacchuOrders.length}]`;
+  const more=_hacchuOrders.length>1?`　${pos} 保存後「▶次の発注書」`:'';
+  if(dup){st.innerHTML='<span style="color:#c62828;font-weight:700">⚠ 同じ現場が既に登録済みかも: '+(dup.place||'')+(dup.kouji||'')+'（'+(dup.client||'')+'）。二重登録に注意</span>'+(miss.length?' / 未取得: '+miss.join('・'):'')+more;}
+  else st.textContent='✓ 記入 '+pos+'。確認して保存。'+(miss.length?'（未取得: '+miss.join('・')+'）':'')+more;
 }
 // 区分から建設工事種類の候補（給水系=管工事）
 function hacchuKoujiType(kubun){
