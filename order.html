@@ -1557,16 +1557,28 @@ function getNyukinPrev(c,ym){
 function isDone(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0&&r.misu<=0;}
 
 // ── PDF ──
-function handlePdf(type){
+// PDFはFirebase Storageに保存し、データにはリンクだけ持つ（本体データを軽く保つ）
+async function uploadPdfToStorage(file,prefix){
+  const safe=(file.name||'doc.pdf').replace(/[^\w.\-]/g,'_');
+  const path=(prefix||'doc')+'/'+Date.now()+'_'+safe;
+  const ref=firebase.storage().ref().child(path);
+  const snap=await ref.put(file);
+  const url=await snap.ref.getDownloadURL();
+  return {name:file.name||'doc.pdf',url:url,path:path,date:new Date().toISOString().slice(0,10)};
+}
+async function handlePdf(type){
   const input=document.getElementById(type==='h'?'f_pdf_h':'f_pdf_s');
   const file=input.files[0];if(!file)return;
-  const reader=new FileReader();
-  reader.onload=function(e){
-    const data={name:file.name,data:e.target.result,date:new Date().toISOString().slice(0,10)};
+  const tag=document.getElementById(type==='h'?'pdf_h_tag':'pdf_s_tag');
+  if(tag)tag.innerHTML='<span style="font-size:11px;color:#888">アップロード中…</span>';
+  try{
+    const data=await uploadPdfToStorage(file,type==='h'?'hacchu':'seikyuu');
     if(type==='h')pdfH=data; else pdfS=data;
     renderPdfTags();
-  };
-  reader.readAsDataURL(file);
+  }catch(e){
+    renderPdfTags();
+    alert('PDF保存に失敗: '+(e.message||e)+'\n\n※Firebase Storageのルール設定が必要です（案内済みの手順を確認してください）');
+  }
 }
 function renderPdfTags(){
   const hTag=document.getElementById('pdf_h_tag');
@@ -1576,11 +1588,13 @@ function renderPdfTags(){
 }
 function viewPdf(type){
   const d=type==='h'?pdfH:pdfS;if(!d)return;
+  if(d.url){window.open(d.url,'_blank');return;}
   const w=window.open();w.document.write(`<iframe src="${d.data}" style="width:100%;height:100%;border:none"></iframe>`);
 }
 function viewCasePdf(id,type){
   const c=S.cases.find(c=>c.id===id);if(!c)return;
   const d=type==='h'?c.pdf_hacchu:c.pdf_seikyuu;if(!d)return;
+  if(d.url){window.open(d.url,'_blank');return;}
   const w=window.open();w.document.write(`<iframe src="${d.data}" style="width:100%;height:100%;border:none"></iframe>`);
 }
 
@@ -3380,6 +3394,8 @@ async function _procHacchu(){
     hacchuSetKouki('f_kouki_s','f_kouki_s_mitei',d.kouki_start);
     hacchuSetKouki('f_kouki_e','f_kouki_e_mitei',d.kouki_end);
     if(typeof onGyoshuChange==='function')onGyoshuChange();
+    // 発注書PDFを書類貼付にも自動保存（Storage）。未設定でも記入は継続
+    try{pdfH=await uploadPdfToStorage(f,'hacchu');renderPdfTags();}catch(_e){}
     const miss=[];if(!d.client_name)miss.push('発注者');if(!(d.amount>0))miss.push('金額');if(!d.kubun)miss.push('区分');
     const more=_hacchuQ.length>1?`　[${_hacchuI+1}/${_hacchuQ.length}] 保存後「▶次の発注書」`:'';
     st.textContent='✓ 記入しました。確認して保存。'+(miss.length?'（未取得: '+miss.join('・')+'）':'')+more;
@@ -4860,6 +4876,7 @@ function doRestoreFromPrompt(){
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" async defer onerror="console.log('XLSX not loaded')"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script>
 // Firebase初期化
 try{
