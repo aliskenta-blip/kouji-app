@@ -1557,13 +1557,19 @@ function getNyukinPrev(c,ym){
 function isDone(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0&&r.misu<=0;}
 
 // ── PDF ──
-// PDFはFirebase Storageに保存し、データにはリンクだけ持つ（本体データを軽く保つ）
+// PDFはSupabase Storage(kouji-costと同じ・無料)に保存し、データにはURLだけ持つ
 async function uploadPdfToStorage(file,prefix){
+  const SB='https://qqdjaihzvfncspevylrl.supabase.co';
+  const KEY='sb_publishable_Wz8q-baZl7onBYT1MSWjYw_U95PUEO3';
+  const BUCKET='docs';
   const safe=(file.name||'doc.pdf').replace(/[^\w.\-]/g,'_');
   const path=(prefix||'doc')+'/'+Date.now()+'_'+safe;
-  const ref=firebase.storage().ref().child(path);
-  const snap=await ref.put(file);
-  const url=await snap.ref.getDownloadURL();
+  const res=await fetch(`${SB}/storage/v1/object/${BUCKET}/${path}`,{
+    method:'POST',
+    headers:{apikey:KEY,Authorization:'Bearer '+KEY,'content-type':file.type||'application/pdf','x-upsert':'true'},
+    body:file});
+  if(!res.ok)throw new Error('Storage保存失敗 '+res.status+': '+(await res.text()).slice(0,140));
+  const url=`${SB}/storage/v1/object/public/${BUCKET}/${path}`;
   return {name:file.name||'doc.pdf',url:url,path:path,date:new Date().toISOString().slice(0,10)};
 }
 async function handlePdf(type){
@@ -4876,7 +4882,6 @@ function doRestoreFromPrompt(){
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" async defer onerror="console.log('XLSX not loaded')"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script>
 // Firebase初期化
 try{
