@@ -4929,6 +4929,7 @@ function doRestoreFromPrompt(){
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" async defer onerror="console.log('XLSX not loaded')"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
 // Firebase初期化
@@ -4942,6 +4943,35 @@ try{
     messagingSenderId:"18106982549",
     appId:"1:18106982549:web:4bcce86d94806720f77b9c"
   });
+  // ===== 端末ログイン（情報保護: ログインした端末だけ読み書き可） =====
+  const _auth=firebase.auth();
+  window._fbTryLogin=async function(){
+    const em=(document.getElementById('fbl-mail')||{}).value||'';
+    const pw=(document.getElementById('fbl-pass')||{}).value||'';
+    const er=document.getElementById('fbl-err');
+    if(!em.trim()||!pw){if(er)er.textContent='メールとパスワードを入れてください';return;}
+    try{if(er)er.textContent='確認中…';await _auth.signInWithEmailAndPassword(em.trim(),pw);location.reload();}
+    catch(e){if(er)er.textContent='ログインできません（メール/パスワードを確認）';}
+  };
+  function _showLogin(){
+    if(document.getElementById('fbl-ov'))return;
+    const d=document.createElement('div');d.id='fbl-ov';
+    d.style.cssText='position:fixed;inset:0;background:#f5f6f8;z-index:99999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML='<div style="background:#fff;border-radius:14px;padding:26px 22px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:300px">'
+      +'<div style="font-weight:800;font-size:16px;margin-bottom:4px">🔒 端末の認証</div>'
+      +'<div style="font-size:12px;color:#888;margin-bottom:14px">情報保護のため、この端末で1回だけログインしてください（次回からは不要です）</div>'
+      +'<input id="fbl-mail" type="email" placeholder="メールアドレス" autocomplete="username" style="width:100%;box-sizing:border-box;padding:11px;border:1.5px solid #ddd;border-radius:9px;font-size:14px;margin-bottom:8px">'
+      +'<input id="fbl-pass" type="password" placeholder="パスワード" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:11px;border:1.5px solid #ddd;border-radius:9px;font-size:14px;margin-bottom:8px" onkeydown="if(event.key===\'Enter\')_fbTryLogin()">'
+      +'<div id="fbl-err" style="font-size:11px;color:#d33;min-height:14px;margin-bottom:6px"></div>'
+      +'<button onclick="_fbTryLogin()" style="width:100%;padding:12px;border:none;border-radius:9px;background:#2563eb;color:#fff;font-size:14px;font-weight:700;cursor:pointer">ログイン</button></div>';
+    document.body.appendChild(d);
+  }
+  let _fbBootDone=false;
+  _auth.onAuthStateChanged(u=>{
+    if(u){const ov=document.getElementById('fbl-ov');if(ov)ov.remove();if(!_fbBootDone){_fbBootDone=true;_fbBoot();}}
+    else _showLogin();
+  });
+  function _fbBoot(){
   const fbDb=firebase.database();
   const fbRef=fbDb.ref('order_app');
 
@@ -5041,6 +5071,7 @@ try{
       console.log('✅ Firebase sync complete: '+S.cases.length+'件');
     }catch(e){console.log('Firebase reload error:',e);}
   })();
+  }  // _fbBoot end
 }catch(e){console.log('Firebase init skipped:',e.message);}
 </script>
 </body>
