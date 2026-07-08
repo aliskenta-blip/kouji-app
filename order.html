@@ -3363,28 +3363,60 @@ function openAdd(){
 }
 // 発注書PDF → AI読み取り（extract-pdf, doc_type=hacchu）→ 案件フォーム自動記入
 // 1ファイル内の複数発注書を一括読み取り→1件ずつフォームに記入して登録
+// 大きいスキャン(100頁超)はAIの上限があるため24頁ずつ自動分割(2頁重ね)で順に読む
 let _hacchuOrders=[],_hacchuI=0,_hacchuPdf=null;
-function _fileToB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).replace(/^data:.*;base64,/,''));r.onerror=()=>rej(new Error('ファイル読込失敗'));r.readAsDataURL(f);});}
+function _u8b64(u8){let s='';const CH=8192;for(let i=0;i<u8.length;i+=CH)s+=String.fromCharCode.apply(null,u8.subarray(i,i+CH));return btoa(s);}
+async function _pdfChunks(f,size,overlap){
+  const bytes=new Uint8Array(await f.arrayBuffer());
+  let doc=null,n=0;
+  try{doc=await PDFLib.PDFDocument.load(bytes,{ignoreEncryption:true});n=doc.getPageCount();}
+  catch(e){return [{b64:_u8b64(bytes),from:1,to:0}];}
+  if(n<=size)return [{b64:_u8b64(bytes),from:1,to:n}];
+  const out=[];let start=0;
+  while(start<n){
+    const end=Math.min(n,start+size);
+    const sub=await PDFLib.PDFDocument.create();
+    const idx=[];for(let i=start;i<end;i++)idx.push(i);
+    (await sub.copyPages(doc,idx)).forEach(p=>sub.addPage(p));
+    out.push({b64:_u8b64(await sub.save()),from:start+1,to:end});
+    if(end>=n)break;
+    start=end-(overlap||0);
+  }
+  return out;
+}
 async function importHacchuOrder(){
   const files=Array.from((document.getElementById('f_hacchu_pdf')||{}).files||[]);
   if(!files.length){alert('発注書PDF（1ファイルに複数の発注書が入っていてOK）を選択してください');return;}
   const f=files[0];
   const st=document.getElementById('f_hacchu_status');
   const btn=document.getElementById('f_hacchu_btn');
-  btn.disabled=true;st.textContent='一括読み取り中…（枚数により30〜120秒）';
+  btn.disabled=true;st.textContent='PDFを確認中…';
+  const KEY='sb_publishable_Wz8q-baZl7onBYT1MSWjYw_U95PUEO3';
+  let orders=[];const errs=[];
   try{
-    const b64=await _fileToB64(f);
-    const KEY='sb_publishable_Wz8q-baZl7onBYT1MSWjYw_U95PUEO3';
-    const res=await fetch('https://qqdjaihzvfncspevylrl.functions.supabase.co/extract-pdf',{
-      method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+KEY,'apikey':KEY},
-      body:JSON.stringify({pdf_base64:b64,doc_type:'hacchu_batch',model:'sonnet'})});
-    const d=await res.json();
-    if(!res.ok||d.error)throw new Error(d.error||('HTTP '+res.status));
-    const orders=(d.orders||[]).filter(o=>o&&(o.city||o.site_no||o.amount>0));
-    if(!orders.length)throw new Error('発注書が見つかりませんでした');
+    const chunks=await _pdfChunks(f,24,2);
+    for(let i=0;i<chunks.length;i++){
+      const c=chunks[i];
+      st.textContent=chunks.length>1
+        ?`一括読み取り中… パート${i+1}/${chunks.length}（${c.from}〜${c.to}頁）／ここまで発注書${orders.length}件`
+        :'一括読み取り中…（30〜120秒）';
+      try{
+        const res=await fetch('https://qqdjaihzvfncspevylrl.functions.supabase.co/extract-pdf',{
+          method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+KEY,'apikey':KEY},
+          body:JSON.stringify({pdf_base64:c.b64,doc_type:'hacchu_batch',model:'sonnet'})});
+        const d=await res.json();
+        if(!res.ok||d.error)throw new Error(d.error||('HTTP '+res.status));
+        orders.push(...(d.orders||[]).filter(o=>o&&(o.city||o.site_no||o.amount>0)));
+      }catch(e){errs.push(`${c.from}〜${c.to}頁:${(e.message||e)}`.slice(0,80));}
+    }
+    // 分割の重なりで同じ発注書が2回出たら除去（市区+枝番+金額）
+    const seen=new Set();
+    orders=orders.filter(o=>{const k=((o.city||'')+(o.site_no||'')).replace(/[\s　]/g,'')+'|'+(o.amount||0);if(seen.has(k))return false;seen.add(k);return true;});
+    if(!orders.length)throw new Error('発注書が見つかりませんでした'+(errs.length?'（エラー: '+errs.join(' / ')+'）':''));
     _hacchuOrders=orders;_hacchuI=0;
     // PDFは1回だけStorageへ→各案件で同じURLを添付
     _hacchuPdf=null;try{_hacchuPdf=await uploadPdfToStorage(f,'hacchu');}catch(_e){}
+    if(errs.length)alert('一部の範囲が読めませんでした（その分は再取込を）:\n'+errs.join('\n'));
     fillHacchuForm(_hacchuOrders[0]);
   }catch(e){st.textContent='';alert('読み取り失敗: '+(e.message||e)+'\n\n※発注書対応の更新をSupabaseに再デプロイする必要があります');}
   finally{btn.disabled=false;}
@@ -4897,6 +4929,7 @@ function doRestoreFromPrompt(){
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" async defer onerror="console.log('XLSX not loaded')"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script>
 // Firebase初期化
 try{
