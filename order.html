@@ -4951,7 +4951,12 @@ try{
     const er=document.getElementById('fbl-err');
     if(!em.trim()||!pw){if(er)er.textContent='メールとパスワードを入れてください';return;}
     try{if(er)er.textContent='確認中…';await _auth.signInWithEmailAndPassword(em.trim(),pw);location.reload();}
-    catch(e){if(er)er.textContent='ログインできません（メール/パスワードを確認）';}
+    catch(e){const c=(e&&e.code)||'';let m='ログインできません';
+      if(/too-many/.test(c))m='試行回数制限中です。15〜30分待つか、Firebaseでこのユーザーを削除→再作成してください';
+      else if(/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c))m='メールまたはパスワードが違います';
+      else if(/network/.test(c))m='通信エラー。電波を確認してください';
+      else m='ログインできません: '+c;
+      if(er)er.textContent=m;}
   };
   function _showLogin(){
     if(document.getElementById('fbl-ov'))return;
