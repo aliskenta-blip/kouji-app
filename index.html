@@ -439,13 +439,18 @@ function delSub(catId,subId){const c=D.matCats.find(c=>c.id===catId);if(c)c.subs
 function getCatName(id){for(const c of D.matCats)for(const s of(c.subs||[]))if(s.id===id)return c.name+' > '+s.name;return '未分類';}
 function allSubs(){const r=[];D.matCats.forEach(c=>(c.subs||[]).forEach(s=>r.push({catName:c.name,subId:s.id,subName:s.name})));return r;}
 
-// kouji-cost(請求書)の材料費から材料マスタの単価を更新する
+// kouji-cost(請求書)の材料費から、材料マスタの「品名の追加」と「単価の更新」を行う
+//   品名を請求書ベースに揃えるほど、月末の材料→現場の自動リンクが正確になる
 async function updateMatPricesFromCost(){
   const KEY='sb_publishable_Wz8q-baZl7onBYT1MSWjYw_U95PUEO3';
   const URL='https://qqdjaihzvfncspevylrl.supabase.co/functions/v1/material-prices';
+  // 単価は社外秘のため、端末の認証(Firebaseログイン)を証明するトークンを添えて取得する
+  let tok='';
+  try{tok=await firebase.auth().currentUser.getIdToken();}catch(_){}
+  if(!tok){alert('端末の認証(🔒)が確認できません。ページを再読み込みしてログインし直してください');return;}
   let d;
   try{
-    const res=await fetch(URL,{method:'POST',headers:{Authorization:'Bearer '+KEY,apikey:KEY,'content-type':'application/json'},body:'{}'});
+    const res=await fetch(URL,{method:'POST',headers:{Authorization:'Bearer '+KEY,apikey:KEY,'content-type':'application/json'},body:JSON.stringify({fb_token:tok})});
     d=await res.json();
     if(!res.ok||d.error)throw new Error(d.error||('HTTP '+res.status));
   }catch(e){alert('取得に失敗しました: '+(e.message||e)+'\n\n※読み取りエンジンと同様に、エッジ関数 material-prices のデプロイが必要です');return;}
@@ -455,13 +460,19 @@ async function updateMatPricesFromCost(){
   const by={};mats.forEach(m=>by[canon(m.name)]=m);
   let upd=0;
   (D.materials||[]).forEach(m=>{const src=by[canon(m.name)];if(src&&src.unit_price&&src.unit_price!==m.unitPrice){m.unitPrice=src.unit_price;if(src.unit&&!m.unit)m.unit=src.unit;upd++;}});
+  // 請求書にあって日報マスタに無い品名 → 追加を提案（呼び方を請求書ベースに統一する）
+  const newOnes=mats.filter(m=>(m.name||'').trim()&&!(D.materials||[]).some(x=>canon(x.name)===canon(m.name)));
+  let added=0;
+  if(newOnes.length&&confirm(`請求書にあって日報に無い品名が ${newOnes.length}件 あります。\n材料マスタへ追加しますか？（分類は未分類。不要なものは後で×で消せます）\n\n例: ${newOnes.slice(0,5).map(m=>m.name).join('、')}${newOnes.length>5?' …':''}`)){
+    newOnes.forEach(m=>{D.materials.push({id:uid(),name:m.name,unit:m.unit||'',unitPrice:m.unit_price||0,subId:'',qtyOptions:[]});added++;});
+  }
   sv();renderMstUI();
-  alert(`材料費から単価を${upd}件更新しました（材料費側の品目 ${mats.length}種）`);
+  alert(`材料費から: 単価を${upd}件更新`+(added?`／品名を${added}件追加`:'')+`（材料費側の品目 ${mats.length}種）`);
 }
 function renderMaterialMst(){
   const el=document.getElementById('mst_material_ui');if(!el)return;
   const subs=allSubs();
-  el.innerHTML=`<div style="margin-bottom:10px"><button class="btn bb btn-sm" onclick="updateMatPricesFromCost()" style="width:100%">🔄 材料費(請求書)から単価を更新</button><div style="font-size:11px;color:#888;margin-top:4px">kouji-costで取り込んだ請求書の最新単価を、材料名が一致する材料に反映します</div></div>`+`<div style="border:1.5px solid #d0e4f5;border-radius:10px;padding:12px;margin-bottom:12px;background:#f8fbff">
+  el.innerHTML=`<div style="margin-bottom:10px"><button class="btn bb btn-sm" onclick="updateMatPricesFromCost()" style="width:100%">📦 材料費(請求書)から品名と単価を取り込む</button><div style="font-size:11px;color:#888;margin-top:4px">請求書の品名をここへ揃えるほど、月末の「材料→現場の自動リンク」が正確になります（単価も最新に更新）</div></div>`+`<div style="border:1.5px solid #d0e4f5;border-radius:10px;padding:12px;margin-bottom:12px;background:#f8fbff">
     <div style="font-size:13px;font-weight:700;color:var(--pri);margin-bottom:8px">＋ 材料追加</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
       ${mi('ms_tn','材料名','addMt()')}
