@@ -792,7 +792,7 @@ function saveNippo(){
     note:document.getElementById('np_note').value};
   if(editNippoId){const idx=D.reports.findIndex(x=>x.id===editNippoId);if(idx>=0)D.reports[idx]={...D.reports[idx],...r};editNippoId=null;}
   else{r.id=uid();D.reports.push(r);}
-  sv();clearNippo();alert('保存しました');
+  sv();clearNippo();renderAll();/* ホームの集計も即反映 */alert('保存しました');
 }
 function editNippo(id){
   const r=D.reports.find(x=>x.id===id);if(!r)return;editNippoId=id;sw('nippo');
@@ -806,7 +806,7 @@ function editNippo(id){
     matRows=(r.materials||[]).map(m=>({...m}));renderMatRows();
   },50);
 }
-function delNippo(id){if(!confirm('削除しますか？'))return;D.reports=D.reports.filter(x=>x.id!==id);sv();renderList();}
+function delNippo(id){if(!confirm('削除しますか？'))return;D.reports=D.reports.filter(x=>x.id!==id);sv();renderList();renderAll();/* ホームの勤怠・費用・カレンダーも即反映 */}
 
 // ── 計算 ──
 function cR(r){
