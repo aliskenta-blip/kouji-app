@@ -594,17 +594,35 @@ function renderMcUsage(){
     return `<label class="chk-item${on?' checked':''}"><input type="checkbox" ${on?'checked':''} onchange="if(this.checked){setMU('${m.id}',1)}else{removeMU('${m.id}')};this.parentElement.classList.toggle('checked',this.checked)"> ${m.name}</label>`;
   }).join('')||'<span class="empty">重機未登録</span>';
 }
-// 現場セレクトを検索ボックスで絞り込んで再描画（200件超でも探しやすく）
+// 現場セレクトを「都県タブ＋検索ボックス」で絞り込んで再描画（200件超でも探しやすく）
+const NP_PREF_MAP={'市川市':'千葉県','船橋市':'千葉県','松戸市':'千葉県','鎌ケ谷市':'千葉県','白井市':'千葉県','柏市':'千葉県','習志野市':'千葉県','八千代市':'千葉県','浦安市':'千葉県','袖ケ浦市':'千葉県','木更津市':'千葉県','君津市':'千葉県','富津市':'千葉県','佐倉市':'千葉県','四街道市':'千葉県','八街市':'千葉県','成田市':'千葉県','印西市':'千葉県','千葉市':'千葉県','流山市':'千葉県','野田市':'千葉県','我孫子市':'千葉県','市原市':'千葉県','東金市':'千葉県','茂原市':'千葉県','川口市':'埼玉県','草加市':'埼玉県','越谷市':'埼玉県','三郷市':'埼玉県','八潮市':'埼玉県','春日部市':'埼玉県','さいたま市':'埼玉県','戸田市':'埼玉県','蕨市':'埼玉県','川崎市':'神奈川県','横浜市':'神奈川県','土浦市':'茨城県','取手市':'茨城県','守谷市':'茨城県','龍ケ崎市':'茨城県','つくば市':'茨城県'};
+function npPrefOf(name){
+  const m=String(name||'').replace(/[ヶヵ]/g,'ケ').match(/^\s*([^\s　]{1,8}?[市区町村郡])/);
+  const city=m?m[1]:'';
+  if(!city)return 'その他';
+  if(/区$/.test(city))return '東京都';
+  return NP_PREF_MAP[city]||'その他';
+}
+let npPref='';
+function setNpPref(p){npPref=p;renderNpSiteOptions();}
 function renderNpSiteOptions(){
   const listEl=document.getElementById('np_site_list');if(!listEl)return;
   const cur=(document.getElementById('np_site')||{}).value||'';
   const q=(document.getElementById('np_site_search')?.value||'').trim().toLowerCase();
-  let list=activeSites();
+  const all=activeSites();
+  // 都県タブ（件数つき）。検索中は全都県を横断
+  const prefCnt={};all.forEach(s=>{const p=npPrefOf(s.name);prefCnt[p]=(prefCnt[p]||0)+1;});
+  const prefs=Object.keys(prefCnt).sort((a,b)=>prefCnt[b]-prefCnt[a]);
+  if(npPref&&!prefs.includes(npPref))npPref='';
+  const tabBtn=(p,label,cnt)=>`<button type="button" onclick="setNpPref('${p}')" style="border:1.5px solid ${npPref===p?'#1565c0':'#ddd'};background:${npPref===p?'#1565c0':'#fff'};color:${npPref===p?'#fff':'#555'};border-radius:14px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer">${label}${cnt!=null?` <span style="opacity:.75">${cnt}</span>`:''}</button>`;
+  const tabs=`<div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border-bottom:1px solid #eee;background:#fafbfc">${tabBtn('','すべて',all.length)}${prefs.map(p=>tabBtn(p,p,prefCnt[p])).join('')}</div>`;
+  let list=all;
   if(q)list=list.filter(s=>(s.name||'').toLowerCase().includes(q));
+  else if(npPref)list=list.filter(s=>npPrefOf(s.name)===npPref);
   list.sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
-  listEl.innerHTML=list.length
+  listEl.innerHTML=tabs+(list.length
     ? list.map(s=>`<div onclick="pickNpSite('${s.id}')" style="padding:12px;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:14px;${s.id===cur?'background:#e8f5e9;font-weight:700':''}">${s.name}</div>`).join('')
-    : '<div style="padding:12px;color:#bbb;font-size:13px">該当する現場がありません</div>';
+    : '<div style="padding:12px;color:#bbb;font-size:13px">該当する現場がありません</div>');
   syncNpSiteDisplay();
 }
 function pickNpSite(id){
@@ -700,12 +718,40 @@ function shareNippoLine(){
   const t=document.getElementById('np_report').value||'';
   window.open('https://line.me/R/share?text='+encodeURIComponent(t),'_blank');
 }
-// 前日(直近)の日報をコピー（日付・現場は今のまま、内容だけ流用）
+// 前日(直近)の日報をコピー。前日に複数の日報があれば、どれをコピーするか選べる
 function copyPrevNippo(){
-  const sid=document.getElementById('np_site').value;
-  const cand=(D.reports||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const r=(sid?cand.find(x=>x.siteId===sid):null)||cand[0];
-  if(!r){alert('コピー元の日報がまだありません');return;}
+  const all=(D.reports||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  if(!all.length){alert('コピー元の日報がまだありません');return;}
+  const today=document.getElementById('np_date').value||new Date().toISOString().slice(0,10);
+  const base=all.find(x=>(x.date||'')<today)||all[0];   // 直近の「前の日」
+  const cands=all.filter(r=>r.date===base.date);
+  if(cands.length===1){applyPrevNippo(cands[0]);return;}
+  // 前日に複数（例: 4現場）→ 選択オーバーレイ
+  const sName=id=>{const s=(D.sites||[]).find(x=>x.id===id);return s?s.name:'（現場不明）';};
+  const ov=document.createElement('div');
+  ov.id='prevPickOv';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML=`<div style="background:#fff;border-radius:14px;padding:18px;max-width:440px;width:100%;max-height:80vh;overflow:auto">
+    <div style="font-weight:800;font-size:15px;margin-bottom:10px">📋 ${base.date} の日報が ${cands.length}件。どれをコピー？</div>
+    ${cands.map((r,i)=>`<button type="button" data-i="${i}" style="display:block;width:100%;text-align:left;margin-bottom:8px;padding:12px;border:1.5px solid #d0e4f5;border-radius:10px;background:#f8fbff;font-size:14px;cursor:pointer">
+      <b>${sName(r.siteId)}</b><br>
+      <span style="font-size:12px;color:#888">👷${(r.memberIds||[]).length}人・材料${(r.materials||[]).length}件${r.weather?'・'+r.weather:''}</span>
+    </button>`).join('')}
+    <button type="button" data-i="-1" style="width:100%;padding:10px;border:none;background:#eee;border-radius:10px;font-size:13px;cursor:pointer">キャンセル</button>
+  </div>`;
+  ov.addEventListener('click',e=>{
+    const b=e.target.closest('button');
+    if(!b&&e.target!==ov)return;
+    const i=b?Number(b.dataset.i):-1;
+    ov.remove();
+    if(i>=0)applyPrevNippo(cands[i]);
+  });
+  document.body.appendChild(ov);
+}
+function applyPrevNippo(r){
+  // 現場も含めてコピー（複数から選んだ=その現場の続きを書く意図）
+  const h=document.getElementById('np_site');if(h)h.value=r.siteId||'';
+  renderNpSiteOptions();
   const w=document.getElementById('np_weather');if(w)w.value=r.weather||'';
   vhUsage=(r.vehicleUsage||[]).map(u=>({...u}));
   mcUsage=(r.machineUsage||[]).map(u=>({...u}));
@@ -713,7 +759,7 @@ function copyPrevNippo(){
   document.querySelectorAll('#np_members input').forEach(c=>{c.checked=(r.memberIds||[]).includes(c.value);c.parentElement.classList.toggle('checked',c.checked);});
   document.querySelectorAll('#np_works input').forEach(c=>{c.checked=(r.workIds||[]).includes(c.value);c.parentElement.classList.toggle('checked',c.checked);});
   renderVhUsage();renderMcUsage();renderMatRows();
-  alert(`${r.date} の日報をコピーしました（日付・現場は今のまま）`);
+  alert(`${r.date}「${((D.sites||[]).find(s=>s.id===r.siteId)||{}).name||''}」の日報をコピーしました（日付は今のまま。現場もコピー済み）`);
 }
 function matSelectOpts(selId){
   let h='';const subs=allSubs();const used=new Set();
@@ -894,7 +940,12 @@ if(todayReps.length){html+=`<div style="font-size:13px;font-weight:700;color:var
 html+=todayReps.map(r=>rpCard(r)).join('');
 if(otherReps.length&&todayReps.length){html+=`<div style="font-size:12px;color:#999;margin:12px 0 6px">その他</div>`;}
 html+=otherReps.map(r=>rpCard(r)).join('');
-if(!reps.length)html='<div class="empty">日報なし</div>';
+if(!reps.length){
+  // 「あるはずの日報が見えない」対策: どの月・どの絞り込みにデータがあるかを案内
+  const byM={};D.reports.forEach(r=>{const m2=(r.date||'').slice(0,7);if(m2)byM[m2]=(byM[m2]||0)+1;});
+  const near=Object.keys(byM).sort().reverse().slice(0,4).map(m2=>`${m2}：${byM[m2]}件`).join('　');
+  html=`<div class="empty">この条件の日報はありません${near?`<div style="font-size:12px;color:#999;margin-top:6px">📅 日報がある月 → ${near}${sf?'<br>※現場の絞り込みが掛かっています（「全現場」にすると出るかも）':''}</div>`:''}</div>`;
+}
 document.getElementById('lsBody').innerHTML=html;
 }
 function rpCard(r){const c=cR(r);const da=D.dailyAbsent[r.date]||[];return `<div class="rp-card"><div style="display:flex;justify-content:space-between;align-items:start"><div><div class="rp-date">${r.date}</div><div class="rp-site">${sN(r.siteId)}</div></div><div style="display:flex;gap:6px"><button class="btn bb btn-sm" onclick="editNippo('${r.id}')">編集</button><button class="btn br btn-sm" onclick="delNippo('${r.id}')">削</button></div></div><div class="rp-info">🚛 ${vNs(r)}　👷 ${mN(r.memberIds)}</div>${da.length?`<div class="rp-info" style="color:var(--red)">🏠 休み：${mN(da)}</div>`:''}${(r.workIds||[]).length?`<div class="rp-info">🔨 ${wN(r.workIds)}</div>`:''}${r.note?`<div class="rp-info">📝 ${r.note}</div>`:''}<div class="rp-costs admin-only"><span style="color:var(--acc)">材¥${fmt(c.mc)}</span><span style="color:var(--blue)">労¥${fmt(c.lc)}</span><span style="color:#6a1b9a">車¥${fmt(c.vc)}</span><span style="color:var(--red)">計¥${fmt(c.t)}</span></div></div>`;}
