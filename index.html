@@ -128,7 +128,7 @@ body.role-user .master-only{display:none!important}
     <button class="login-btn" style="background:#eee;color:#333" onclick="backToLogin()">戻る</button>
   </div>
 </div>
-<div class="hdr"><h1>🏗️ 工事台帳・日報</h1><div style="display:flex;align-items:center;gap:8px"><span id="hdrInfo" style="font-size:10px;opacity:.6"></span><span id="hdrUser" onclick="doLogout()" style="font-size:11px;padding:4px 10px;border:1px solid rgba(255,255,255,.3);border-radius:20px;cursor:pointer;color:#fff"></span></div></div>
+<div class="hdr"><h1><img src="logo_name.jpg" alt="株式会社アイル" title="株式会社アイル" style="height:30px;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'">工事台帳・日報</h1><div style="display:flex;align-items:center;gap:8px"><span id="hdrInfo" style="font-size:10px;opacity:.6"></span><span id="hdrUser" onclick="doLogout()" style="font-size:11px;padding:4px 10px;border:1px solid rgba(255,255,255,.3);border-radius:20px;cursor:pointer;color:#fff"></span></div></div>
 <div class="pc-tabs"><div class="pc-tab on" onclick="sw('dash')">📊 ダッシュ</div><div class="pc-tab" onclick="sw('nippo')">📝 日報記入</div><div class="pc-tab" onclick="sw('list')">📋 日報一覧</div><div class="pc-tab" onclick="sw('attend')">👷 勤怠</div><div class="pc-tab" onclick="sw('ledger')">📖 工事台帳</div><div class="pc-tab" onclick="sw('mst')">⚙️ マスター</div></div>
 <div class="page">
 <div id="p-dash" class="panel on"><div id="dCal"></div><div class="kpis" id="dKpi"></div>
