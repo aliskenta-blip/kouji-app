@@ -96,15 +96,16 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 .sch-table th{position:static!important}
 .sch-table td.task-name,.sch-table td.task-days,.sch-table td.task-amount,.sch-table td.task-kouki,.sch-table td.task-note{position:static!important}
 .sch-table td.day .bar{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-.sch-table{font-size:8px!important}
+.sch-table{font-size:var(--p-fs,8px)!important}
 .sch-table th.day-num{min-width:16px!important;width:16px!important;font-size:7px!important;padding:1px!important}
 .sch-table th.dow{font-size:6px!important;height:12px!important}
-.sch-table td.day{width:16px!important;min-width:16px!important;height:18px!important}
-.sch-table td.task-name{min-width:140px!important;max-width:140px!important;font-size:8px!important}
-.sch-table td.task-days{min-width:45px!important;font-size:8px!important}
-.sch-table td.task-amount{min-width:50px!important;font-size:8px!important}
-.sch-table td.task-kouki{min-width:35px!important;font-size:8px!important}
-.sch-table td.task-note{min-width:65px!important;max-width:65px!important;font-size:7px!important}
+.sch-table td.day{width:16px!important;min-width:16px!important;height:var(--p-row-h,18px)!important}
+.sch-table td.task-name{min-width:140px!important;max-width:140px!important;font-size:var(--p-fs,8px)!important}
+.sch-table td.task-days{min-width:45px!important;font-size:var(--p-fs,8px)!important}
+.sch-table td.task-amount{min-width:50px!important;font-size:var(--p-fs,8px)!important}
+.sch-table td.task-kouki{min-width:35px!important;font-size:var(--p-fs,8px)!important}
+.sch-table td.task-note{min-width:65px!important;max-width:65px!important;font-size:calc(var(--p-fs,8px) - 1px)!important}
+.sch-table tbody tr.print-skip{display:none!important}
 /* === 請求可能タブ印刷時：グリッドで1ページに最適化 === */
 #p-bill{padding:0!important;margin:0!important}
 #p-bill > div:first-child{font-size:calc(16px * var(--bill-font-scale,1))!important;padding:0 0 4px!important;border-bottom:2px solid #333;margin-bottom:6px!important;font-weight:700;color:#000!important}
@@ -126,7 +127,7 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 <div class="hdr">
 <h1><img src="logo_name.jpg" alt="株式会社アイル" title="株式会社アイル" style="height:30px;background:#fff;border-radius:6px;padding:2px 5px;vertical-align:middle;margin-right:8px" onerror="this.style.display='none'">工 程 管 理 表</h1>
 <div class="hdr-btns">
-<button onclick="window.print()" title="印刷（現在のタブ）"><span class="hb-icon">🖨️</span><span class="hb-label">印刷</span></button>
+<button onclick="printCurrent()" title="印刷（現在のタブ）"><span class="hb-icon">🖨️</span><span class="hb-label">印刷</span></button>
 <button onclick="exportBk()" title="バックアップ保存（JSONダウンロード）"><span class="hb-icon">💾</span><span class="hb-label">BK保存</span></button>
 <button onclick="document.getElementById('bkFile').click()" title="バックアップ復元（JSON読込）"><span class="hb-icon">📥</span><span class="hb-label">BK復元</span></button>
 <input type="file" id="bkFile" accept=".json" style="display:none" onchange="importBk(this)">
@@ -203,6 +204,32 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 <div class="btns" style="margin-top:10px">
 <button class="btn-x" onclick="document.getElementById('holPop').style.display='none';render()">閉じる</button>
 </div>
+</div>
+</div>
+<div class="popup-ov" id="printPop" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+<div class="popup">
+<h3>🖨️ 印刷設定</h3>
+<div class="popup-section-title">印刷する期間</div>
+<div style="display:flex;gap:6px;margin-bottom:10px">
+<input type="month" id="pp_start" style="flex:1;padding:8px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit">
+<select id="pp_count" style="padding:8px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit">
+<option value="1">1ヶ月</option><option value="2">2ヶ月</option><option value="3">3ヶ月</option>
+<option value="6">6ヶ月</option><option value="12">1年</option>
+</select>
+</div>
+<div class="popup-section-title" style="display:flex;align-items:center;justify-content:space-between">
+<span>印刷する現場</span>
+<span>
+<button type="button" onclick="ppAll(true)" style="font-size:10px;padding:3px 8px;border:1px solid #ddd;border-radius:4px;background:#f7f7f7;cursor:pointer;font-family:inherit">全選択</button>
+<button type="button" onclick="ppAll(false)" style="font-size:10px;padding:3px 8px;border:1px solid #ddd;border-radius:4px;background:#f7f7f7;cursor:pointer;font-family:inherit">全解除</button>
+</span>
+</div>
+<div id="pp_list" style="max-height:300px;overflow-y:auto;margin-bottom:6px"></div>
+<div class="btns">
+<button class="btn-x" onclick="document.getElementById('printPop').style.display='none'">キャンセル</button>
+<button class="btn-b" onclick="execPrint()">🖨️ 印刷する</button>
+</div>
+<div style="margin-top:8px;font-size:10px;color:#999;line-height:1.5">💡 選んだ現場だけが、用紙の高さいっぱいに拡大されて印刷されます</div>
 </div>
 </div>
 <div class="popup-ov" id="colPop" style="display:none" onclick="if(event.target===this)this.style.display='none'">
@@ -505,6 +532,61 @@ document.documentElement.style.setProperty('--bill-cols',cols);
 document.documentElement.style.setProperty('--bill-font-scale',fs);
 }
 window.addEventListener('beforeprint',optimizeBillPrint);
+
+/* === 工程表の印刷：選択範囲印刷 + 用紙いっぱいに縦拡大 === */
+function printCurrent(){
+if(document.getElementById('p-bill').classList.contains('on')){window.print();return;}
+openPrintPop();
+}
+function openPrintPop(){
+const active=D.tasks.filter(t=>!t.billed);
+if(!active.length){alert('印刷する現場がありません');return;}
+document.getElementById('pp_list').innerHTML=active.map(t=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:13px"><input type="checkbox" class="pp-chk" value="${t.id}" checked style="width:17px;height:17px">${t.name||''}</label>`).join('');
+document.getElementById('pp_start').value=document.getElementById('startMonth').value;
+document.getElementById('pp_count').value=document.getElementById('monthCount').value;
+document.getElementById('printPop').style.display='flex';
+}
+function ppAll(v){document.querySelectorAll('.pp-chk').forEach(c=>c.checked=v);}
+let printBackup=null;
+function execPrint(){
+const ids=new Set(Array.from(document.querySelectorAll('.pp-chk:checked')).map(c=>c.value));
+if(!ids.size){alert('印刷する現場を選択してください');return;}
+const sm=document.getElementById('startMonth'),mc=document.getElementById('monthCount');
+printBackup={sm:sm.value,mc:mc.value};
+sm.value=document.getElementById('pp_start').value||sm.value;
+mc.value=document.getElementById('pp_count').value;
+render();
+let visible=0;
+document.querySelectorAll('#schTable tbody tr').forEach(tr=>{
+const day=tr.querySelector('td.day');if(!day)return;
+if(ids.has(day.dataset.tid))visible++;else tr.classList.add('print-skip');
+});
+fitPrintHeight(visible||1);
+document.getElementById('printPop').style.display='none';
+setTimeout(()=>window.print(),80);
+}
+/* Ctrl+P など直接印刷でも用紙いっぱいに合わせる */
+window.addEventListener('beforeprint',()=>{
+if(!document.getElementById('p-sch').classList.contains('on'))return;
+const rows=Array.from(document.querySelectorAll('#schTable tbody tr')).filter(tr=>!tr.classList.contains('print-skip')&&tr.querySelector('td.day')).length;
+fitPrintHeight(rows||1);
+});
+window.addEventListener('afterprint',()=>{
+if(!printBackup)return;
+document.getElementById('startMonth').value=printBackup.sm;
+document.getElementById('monthCount').value=printBackup.mc;
+printBackup=null;
+render();
+});
+/* A3横の印刷可能高さから1行の高さ・文字サイズを計算（行数が少ないほど大きく） */
+function fitPrintHeight(n){
+const availMM=270;/* 297mm - 余白10mm - ヘッダー約17mm */
+const rowMM=Math.min(16,Math.max(4.2,availMM/n));
+const rowPx=rowMM*3.78;
+const fs=Math.min(14,Math.max(7,Math.round(rowPx*0.42)));
+document.documentElement.style.setProperty('--p-row-h',rowMM.toFixed(2)+'mm');
+document.documentElement.style.setProperty('--p-fs',fs+'px');
+}
 
 function completeTask(id){
 const t=D.tasks.find(t=>t.id===id);if(!t)return;
