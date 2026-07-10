@@ -60,6 +60,9 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 .sch-table td.day{width:28px;min-width:28px;height:30px;cursor:crosshair;padding:0;position:relative}
 .sch-table td.day.sat{background:#f5f8ff}.sch-table td.day.sun,.sch-table td.day.hol{background:#fff5f5}
 .sch-table td.day .bar{position:absolute;inset:2px 0;border-radius:2px}
+/* 範囲選択印刷モード */
+.sch-wrap.sel-mode td.day{cursor:cell}
+.sch-table td.day.sel-hi::after{content:'';position:absolute;inset:0;background:rgba(230,81,0,.35);pointer-events:none;z-index:2}
 .col-resizer{position:absolute;top:0;right:0;bottom:0;width:8px;cursor:col-resize;z-index:11;background:transparent;border-right:2px solid transparent}
 .col-resizer:hover{background:rgba(255,235,59,.4);border-right-color:#ffeb3b}
 .col-resizer.dragging{background:rgba(255,235,59,.7);border-right-color:#ffeb3b}
@@ -96,7 +99,8 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 .sch-table th{position:static!important}
 .sch-table td.task-name,.sch-table td.task-days,.sch-table td.task-amount,.sch-table td.task-kouki,.sch-table td.task-note{position:static!important}
 .sch-table td.day .bar{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-.sch-table{font-size:var(--p-fs,8px)!important}
+/* テーブル高さを印刷可能領域いっぱいに固定（行が多ければ自動で複数ページ） */
+.sch-table{font-size:var(--p-fs,8px)!important;height:285mm!important}
 .sch-table th.day-num{min-width:16px!important;width:16px!important;font-size:7px!important;padding:1px!important}
 .sch-table th.dow{font-size:6px!important;height:12px!important}
 .sch-table td.day{width:16px!important;min-width:16px!important;height:var(--p-row-h,18px)!important}
@@ -105,7 +109,6 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 .sch-table td.task-amount{min-width:50px!important;font-size:var(--p-fs,8px)!important}
 .sch-table td.task-kouki{min-width:35px!important;font-size:var(--p-fs,8px)!important}
 .sch-table td.task-note{min-width:65px!important;max-width:65px!important;font-size:calc(var(--p-fs,8px) - 1px)!important}
-.sch-table tbody tr.print-skip{display:none!important}
 /* === 請求可能タブ印刷時：グリッドで1ページに最適化 === */
 #p-bill{padding:0!important;margin:0!important}
 #p-bill > div:first-child{font-size:calc(16px * var(--bill-font-scale,1))!important;padding:0 0 4px!important;border-bottom:2px solid #333;margin-bottom:6px!important;font-weight:700;color:#000!important}
@@ -207,29 +210,28 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 </div>
 </div>
 <div class="popup-ov" id="printPop" style="display:none" onclick="if(event.target===this)this.style.display='none'">
-<div class="popup">
-<h3>🖨️ 印刷設定</h3>
-<div class="popup-section-title">印刷する期間</div>
-<div style="display:flex;gap:6px;margin-bottom:10px">
-<input type="month" id="pp_start" style="flex:1;padding:8px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit">
-<select id="pp_count" style="padding:8px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit">
-<option value="1">1ヶ月</option><option value="2">2ヶ月</option><option value="3">3ヶ月</option>
-<option value="6">6ヶ月</option><option value="12">1年</option>
-</select>
-</div>
-<div class="popup-section-title" style="display:flex;align-items:center;justify-content:space-between">
-<span>印刷する現場</span>
-<span>
-<button type="button" onclick="ppAll(true)" style="font-size:10px;padding:3px 8px;border:1px solid #ddd;border-radius:4px;background:#f7f7f7;cursor:pointer;font-family:inherit">全選択</button>
-<button type="button" onclick="ppAll(false)" style="font-size:10px;padding:3px 8px;border:1px solid #ddd;border-radius:4px;background:#f7f7f7;cursor:pointer;font-family:inherit">全解除</button>
-</span>
-</div>
-<div id="pp_list" style="max-height:300px;overflow-y:auto;margin-bottom:6px"></div>
+<div class="popup" style="max-width:380px">
+<h3>🖨️ 印刷</h3>
+<button onclick="printAll()" style="display:block;width:100%;padding:16px;margin-bottom:10px;border:none;border-radius:10px;background:#1565c0;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;text-align:left">📄 全体を印刷<br><span style="font-size:11px;font-weight:400;opacity:.85">いま表示している期間・全現場を用紙いっぱいに印刷</span></button>
+<button onclick="startSelectMode()" style="display:block;width:100%;padding:16px;margin-bottom:10px;border:none;border-radius:10px;background:#e65100;color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;text-align:left">🖱️ 範囲を選んで印刷<br><span style="font-size:11px;font-weight:400;opacity:.85">表の上をマウスでドラッグして、印刷したい現場と日付の範囲を選択</span></button>
 <div class="btns">
 <button class="btn-x" onclick="document.getElementById('printPop').style.display='none'">キャンセル</button>
-<button class="btn-b" onclick="execPrint()">🖨️ 印刷する</button>
 </div>
-<div style="margin-top:8px;font-size:10px;color:#999;line-height:1.5">💡 選んだ現場だけが、用紙の高さいっぱいに拡大されて印刷されます</div>
+</div>
+</div>
+<div id="selHint" class="no-print" style="display:none;position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:400;background:#e65100;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.35);align-items:center;gap:14px">
+<span>🖱️ 印刷したい範囲をドラッグで選択してください</span>
+<button onclick="endSelectMode()" style="background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.6);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">中止</button>
+</div>
+<div class="popup-ov" id="selConfirmPop" style="display:none" onclick="if(event.target===this)selRetry()">
+<div class="popup" style="max-width:360px">
+<h3>🖨️ 選択範囲を印刷</h3>
+<div id="selSummary" style="font-size:15px;font-weight:700;margin-bottom:14px;text-align:center;color:#e65100"></div>
+<div class="btns">
+<button class="btn-x" onclick="selRetry()">選び直す</button>
+<button class="btn-b" onclick="doSelPrint()">🖨️ 印刷する</button>
+</div>
+<div style="text-align:center;margin-top:8px"><button onclick="selCancel()" style="background:none;border:none;color:#888;cursor:pointer;font-size:12px;padding:6px;font-family:inherit">中止する</button></div>
 </div>
 </div>
 <div class="popup-ov" id="colPop" style="display:none" onclick="if(event.target===this)this.style.display='none'">
@@ -316,10 +318,28 @@ function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&l
 function render(){
 const sm=document.getElementById('startMonth').value;if(!sm)return;
 const mc=parseInt(document.getElementById('monthCount').value);
-const [sy,smm]=sm.split('-').map(Number);const today=new Date().toISOString().slice(0,10);
+const today=new Date().toISOString().slice(0,10);
+/* 表示する日付範囲を決定（選択範囲印刷時は printOverride が優先） */
+let dFrom,dTo;
+if(printOverride){dFrom=printOverride.from;dTo=printOverride.to;}
+else{
+const [sy,smm]=sm.split('-').map(Number);
+dFrom=`${sy}-${String(smm).padStart(2,'0')}-01`;
+let ey=sy,em=smm-1+mc-1;while(em>11){em-=12;ey++;}
+dTo=`${ey}-${String(em+1).padStart(2,'0')}-${String(getDays(ey,em)).padStart(2,'0')}`;
+}
 const months=[];
-for(let i=0;i<mc;i++){let y=sy,m=smm-1+i;while(m>11){m-=12;y++;}while(m<0){m+=12;y--;}const dim=getDays(y,m);const days=[];for(let d=1;d<=dim;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const dow=new Date(y,m,d).getDay();const hol=isHoliday(ds);const chol=isCompHol(ds);days.push({d,ds,dow,sat:dow===6,sun:dow===0,hol,chol,today:ds===today});}months.push({y,m,label:`${y}年 ${m+1}月`,days});}
-const active=D.tasks.filter(t=>!t.billed);
+const cur=new Date(dFrom+'T00:00:00'),end=new Date(dTo+'T00:00:00');
+let mo=null;
+while(cur<=end){
+const y=cur.getFullYear(),m=cur.getMonth(),d=cur.getDate();
+if(!mo||mo.y!==y||mo.m!==m){mo={y,m,label:`${y}年 ${m+1}月`,days:[]};months.push(mo);}
+const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+const dow=cur.getDay(),hol=isHoliday(ds),chol=isCompHol(ds);
+mo.days.push({d,ds,dow,sat:dow===6,sun:dow===0,hol,chol,today:ds===today});
+cur.setDate(d+1);
+}
+const active=printOverride?D.tasks.filter(t=>!t.billed&&printOverride.ids.has(t.id)):D.tasks.filter(t=>!t.billed);
 const w=getCW();const sc=getSC();const totalLeft=w.name+w.days+w.amount+w.kouki+w.note;
 let h='<thead><tr><th colspan="5" class="top-left" style="min-width:'+totalLeft+'px"></th>';
 months.forEach(mo=>{h+=`<th class="month-hdr" colspan="${mo.days.length}">${mo.label}</th>`;});h+='</tr>';
@@ -356,6 +376,7 @@ h+='</tbody>';document.getElementById('schTable').innerHTML=h;updateBadge();if(t
 }
 // ダブルクリック: 塗り/消しトグル
 document.addEventListener('dblclick',e=>{
+if(selMode)return;
 const td=e.target.closest('td.day');if(!td)return;
 const tid=td.dataset.tid,ds=td.dataset.ds;if(!tid)return;
 const teamId=document.getElementById('paintTeam').value;
@@ -398,6 +419,7 @@ if(e.button!==0)return;
 if(resizeState||mDrag)return;
 const td=e.target.closest('td.day');if(!td)return;
 e.preventDefault();
+if(selMode){selAnchor={td};selRect=null;updateSelRect(td);return;}
 const tid=td.dataset.tid;if(!tid)return;
 const teamId=document.getElementById('paintTeam').value;
 dragState={startX:e.clientX,teamId,tid};
@@ -419,6 +441,12 @@ if(mDrag){
 e.preventDefault();
 mDrag.wrap.scrollLeft=mDrag.sl-(e.clientX-mDrag.sx);
 mDrag.wrap.scrollTop=mDrag.st-(e.clientY-mDrag.sy);
+return;
+}
+if(selMode){
+if(!selAnchor)return;
+const td=e.target.closest('td.day');if(!td)return;
+updateSelRect(td);
 return;
 }
 if(!dragState)return;
@@ -448,6 +476,11 @@ return;
 if(mDrag){
 mDrag.wrap.classList.remove('middle-dragging');
 mDrag=null;
+return;
+}
+if(selMode){
+if(selAnchor&&selRect)openSelConfirm();
+selAnchor=null;
 return;
 }
 dragState=null;
@@ -533,58 +566,95 @@ document.documentElement.style.setProperty('--bill-font-scale',fs);
 }
 window.addEventListener('beforeprint',optimizeBillPrint);
 
-/* === 工程表の印刷：選択範囲印刷 + 用紙いっぱいに縦拡大 === */
+/* === 工程表の印刷：マウス範囲選択印刷 + 用紙いっぱいに縦拡大 === */
+let printOverride=null;
+let selMode=false,selAnchor=null,selRect=null,selIds=[];
 function printCurrent(){
 if(document.getElementById('p-bill').classList.contains('on')){window.print();return;}
-openPrintPop();
-}
-function openPrintPop(){
-const active=D.tasks.filter(t=>!t.billed);
-if(!active.length){alert('印刷する現場がありません');return;}
-document.getElementById('pp_list').innerHTML=active.map(t=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid #f0f0f0;cursor:pointer;font-size:13px"><input type="checkbox" class="pp-chk" value="${t.id}" checked style="width:17px;height:17px">${t.name||''}</label>`).join('');
-document.getElementById('pp_start').value=document.getElementById('startMonth').value;
-document.getElementById('pp_count').value=document.getElementById('monthCount').value;
+if(!D.tasks.filter(t=>!t.billed).length){alert('印刷する現場がありません');return;}
 document.getElementById('printPop').style.display='flex';
 }
-function ppAll(v){document.querySelectorAll('.pp-chk').forEach(c=>c.checked=v);}
-let printBackup=null;
-function execPrint(){
-const ids=new Set(Array.from(document.querySelectorAll('.pp-chk:checked')).map(c=>c.value));
-if(!ids.size){alert('印刷する現場を選択してください');return;}
-const sm=document.getElementById('startMonth'),mc=document.getElementById('monthCount');
-printBackup={sm:sm.value,mc:mc.value};
-sm.value=document.getElementById('pp_start').value||sm.value;
-mc.value=document.getElementById('pp_count').value;
-render();
-let visible=0;
-document.querySelectorAll('#schTable tbody tr').forEach(tr=>{
-const day=tr.querySelector('td.day');if(!day)return;
-if(ids.has(day.dataset.tid))visible++;else tr.classList.add('print-skip');
-});
-fitPrintHeight(visible||1);
+function printAll(){
 document.getElementById('printPop').style.display='none';
+setTimeout(()=>window.print(),50);
+}
+function startSelectMode(){
+document.getElementById('printPop').style.display='none';
+selMode=true;selAnchor=null;selRect=null;
+document.getElementById('selHint').style.display='flex';
+document.getElementById('schWrap').classList.add('sel-mode');
+}
+function endSelectMode(){
+selMode=false;selAnchor=null;selRect=null;
+document.getElementById('selHint').style.display='none';
+document.getElementById('schWrap').classList.remove('sel-mode');
+clearSelHi();
+}
+function clearSelHi(){document.querySelectorAll('.sel-hi').forEach(el=>el.classList.remove('sel-hi'));}
+function cellPos(td){
+const rows=Array.from(document.querySelectorAll('#schTable tbody tr'));
+return {row:rows.indexOf(td.parentElement),ds:td.dataset.ds};
+}
+function updateSelRect(td){
+const a=cellPos(selAnchor.td),b=cellPos(td);
+if(a.row<0||b.row<0)return;
+const r1=Math.min(a.row,b.row),r2=Math.max(a.row,b.row);
+const d1=a.ds<b.ds?a.ds:b.ds,d2=a.ds<b.ds?b.ds:a.ds;
+selRect={r1,r2,d1,d2};
+clearSelHi();
+const rows=document.querySelectorAll('#schTable tbody tr');
+for(let i=r1;i<=r2;i++){
+if(!rows[i])continue;
+rows[i].querySelectorAll('td.day').forEach(c=>{if(c.dataset.ds>=d1&&c.dataset.ds<=d2)c.classList.add('sel-hi');});
+}
+}
+function fmtDs(ds){const p=ds.split('-');return parseInt(p[1])+'/'+parseInt(p[2]);}
+function openSelConfirm(){
+const rows=document.querySelectorAll('#schTable tbody tr');
+selIds=[];
+for(let i=selRect.r1;i<=selRect.r2;i++){
+const day=rows[i]&&rows[i].querySelector('td.day');
+if(day&&day.dataset.tid)selIds.push(day.dataset.tid);
+}
+if(!selIds.length)return;
+document.getElementById('selSummary').textContent=`現場 ${selIds.length}件 ／ ${fmtDs(selRect.d1)} 〜 ${fmtDs(selRect.d2)}`;
+document.getElementById('selConfirmPop').style.display='flex';
+}
+function selRetry(){
+document.getElementById('selConfirmPop').style.display='none';
+selAnchor=null;selRect=null;clearSelHi();
+}
+function selCancel(){
+document.getElementById('selConfirmPop').style.display='none';
+endSelectMode();
+}
+function doSelPrint(){
+document.getElementById('selConfirmPop').style.display='none';
+printOverride={ids:new Set(selIds),from:selRect.d1,to:selRect.d2};
+endSelectMode();
+render();
 setTimeout(()=>window.print(),80);
 }
-/* Ctrl+P など直接印刷でも用紙いっぱいに合わせる */
+document.addEventListener('keydown',e=>{
+if(e.key==='Escape'&&selMode){document.getElementById('selConfirmPop').style.display='none';endSelectMode();}
+});
+/* Ctrl+P・全体印刷・選択印刷すべて：行数からA3横の高さいっぱいになるよう行高・文字サイズを計算 */
 window.addEventListener('beforeprint',()=>{
 if(!document.getElementById('p-sch').classList.contains('on'))return;
-const rows=Array.from(document.querySelectorAll('#schTable tbody tr')).filter(tr=>!tr.classList.contains('print-skip')&&tr.querySelector('td.day')).length;
+const rows=Array.from(document.querySelectorAll('#schTable tbody tr')).filter(tr=>tr.querySelector('td.day')).length;
 fitPrintHeight(rows||1);
 });
 window.addEventListener('afterprint',()=>{
-if(!printBackup)return;
-document.getElementById('startMonth').value=printBackup.sm;
-document.getElementById('monthCount').value=printBackup.mc;
-printBackup=null;
+if(!printOverride)return;
+printOverride=null;
 render();
 });
-/* A3横の印刷可能高さから1行の高さ・文字サイズを計算（行数が少ないほど大きく） */
 function fitPrintHeight(n){
-const availMM=270;/* 297mm - 余白10mm - ヘッダー約17mm */
-const rowMM=Math.min(16,Math.max(4.2,availMM/n));
+const availMM=272;/* 297mm - 余白10mm - ヘッダー約15mm */
+const rowMM=Math.max(4.2,availMM/n);
 const rowPx=rowMM*3.78;
-const fs=Math.min(14,Math.max(7,Math.round(rowPx*0.42)));
-document.documentElement.style.setProperty('--p-row-h',rowMM.toFixed(2)+'mm');
+const fs=Math.min(18,Math.max(7,Math.round(rowPx*0.45)));
+document.documentElement.style.setProperty('--p-row-h',Math.min(rowMM,45).toFixed(2)+'mm');
 document.documentElement.style.setProperty('--p-fs',fs+'px');
 }
 
