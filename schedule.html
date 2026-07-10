@@ -61,8 +61,9 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 .sch-table td.day.sat{background:#f5f8ff}.sch-table td.day.sun,.sch-table td.day.hol{background:#fff5f5}
 .sch-table td.day .bar{position:absolute;inset:2px 0;border-radius:2px}
 /* 範囲選択印刷モード */
-.sch-wrap.sel-mode td.day{cursor:cell}
+.sch-wrap.sel-mode,.sch-wrap.sel-mode td,.sch-wrap.sel-mode th{cursor:cell!important}
 .sch-table td.day.sel-hi::after{content:'';position:absolute;inset:0;background:rgba(230,81,0,.35);pointer-events:none;z-index:2}
+.sch-table td.task-name.sel-hi,.sch-table td.task-days.sel-hi,.sch-table td.task-amount.sel-hi,.sch-table td.task-kouki.sel-hi,.sch-table td.task-note.sel-hi{background:#ffe0cc!important}
 .col-resizer{position:absolute;top:0;right:0;bottom:0;width:8px;cursor:col-resize;z-index:11;background:transparent;border-right:2px solid transparent}
 .col-resizer:hover{background:rgba(255,235,59,.4);border-right-color:#ffeb3b}
 .col-resizer.dragging{background:rgba(255,235,59,.7);border-right-color:#ffeb3b}
@@ -101,9 +102,9 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 .sch-table td.day .bar{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 /* テーブル高さを印刷可能領域いっぱいに固定（行が多ければ自動で複数ページ） */
 .sch-table{font-size:var(--p-fs,8px)!important;height:285mm!important}
-.sch-table th.day-num{min-width:16px!important;width:16px!important;font-size:7px!important;padding:1px!important}
-.sch-table th.dow{font-size:6px!important;height:12px!important}
-.sch-table td.day{width:16px!important;min-width:16px!important;height:var(--p-row-h,18px)!important}
+.sch-table th.day-num{min-width:var(--p-day-w,16px)!important;width:var(--p-day-w,16px)!important;font-size:var(--p-dfs,7px)!important;padding:1px!important}
+.sch-table th.dow{font-size:calc(var(--p-dfs,7px) - 1px)!important;height:12px!important}
+.sch-table td.day{width:var(--p-day-w,16px)!important;min-width:var(--p-day-w,16px)!important;height:var(--p-row-h,18px)!important}
 .sch-table td.task-name{min-width:140px!important;max-width:140px!important;font-size:var(--p-fs,8px)!important}
 .sch-table td.task-days{min-width:45px!important;font-size:var(--p-fs,8px)!important}
 .sch-table td.task-amount{min-width:50px!important;font-size:var(--p-fs,8px)!important}
@@ -417,9 +418,16 @@ let dragState=null;
 document.addEventListener('mousedown',e=>{
 if(e.button!==0)return;
 if(resizeState||mDrag)return;
+if(selMode){
+if(!e.target.closest('#schWrap'))return;
+e.preventDefault();
+const p=selPosFromEvent(e);if(!p)return;
+selAnchor=p;selRect=null;
+applySelRect(p);
+return;
+}
 const td=e.target.closest('td.day');if(!td)return;
 e.preventDefault();
-if(selMode){selAnchor={td};selRect=null;updateSelRect(td);return;}
 const tid=td.dataset.tid;if(!tid)return;
 const teamId=document.getElementById('paintTeam').value;
 dragState={startX:e.clientX,teamId,tid};
@@ -445,8 +453,8 @@ return;
 }
 if(selMode){
 if(!selAnchor)return;
-const td=e.target.closest('td.day');if(!td)return;
-updateSelRect(td);
+e.preventDefault();
+const p=selPosFromEvent(e);if(p)applySelRect(p);
 return;
 }
 if(!dragState)return;
@@ -591,26 +599,46 @@ document.getElementById('schWrap').classList.remove('sel-mode');
 clearSelHi();
 }
 function clearSelHi(){document.querySelectorAll('.sel-hi').forEach(el=>el.classList.remove('sel-hi'));}
-function cellPos(td){
-const rows=Array.from(document.querySelectorAll('#schTable tbody tr'));
-return {row:rows.indexOf(td.parentElement),ds:td.dataset.ds};
+function selRows(){return Array.from(document.querySelectorAll('#schTable tbody tr')).filter(tr=>tr.querySelector('td.day'));}
+/* マウス座標から「どの行・どの日付か」を求める（表の外でも一番近い行・日にクランプ） */
+function selPosFromEvent(e){
+const rows=selRows();
+if(!rows.length)return null;
+let row=rows.length-1;
+for(let i=0;i<rows.length;i++){
+const r=rows[i].getBoundingClientRect();
+if(e.clientY<=r.bottom){row=i;break;}
 }
-function updateSelRect(td){
-const a=cellPos(selAnchor.td),b=cellPos(td);
-if(a.row<0||b.row<0)return;
-const r1=Math.min(a.row,b.row),r2=Math.max(a.row,b.row);
-const d1=a.ds<b.ds?a.ds:b.ds,d2=a.ds<b.ds?b.ds:a.ds;
+const cells=rows[0].querySelectorAll('td.day');
+const noteEl=rows[0].querySelector('td.task-note');
+const dayLeft=noteEl?noteEl.getBoundingClientRect().right:cells[0].getBoundingClientRect().left;
+const rowMode=e.clientX<dayLeft;/* 現場名側からのドラッグ＝その行の全期間 */
+let ds=null;
+if(!rowMode){
+ds=cells[cells.length-1].dataset.ds;
+for(const c of cells){if(e.clientX<=c.getBoundingClientRect().right){ds=c.dataset.ds;break;}}
+}
+return {row,rowMode,ds};
+}
+function applySelRect(p){
+const rows=selRows();
+if(!rows.length||!selAnchor)return;
+const cells=rows[0].querySelectorAll('td.day');
+const fullFrom=cells[0].dataset.ds,fullTo=cells[cells.length-1].dataset.ds;
+const r1=Math.min(selAnchor.row,p.row),r2=Math.max(selAnchor.row,p.row);
+const a=selAnchor.rowMode?fullFrom:selAnchor.ds;
+const b=p.rowMode?fullTo:p.ds;
+const d1=a<b?a:b,d2=a<b?b:a;
 selRect={r1,r2,d1,d2};
 clearSelHi();
-const rows=document.querySelectorAll('#schTable tbody tr');
 for(let i=r1;i<=r2;i++){
-if(!rows[i])continue;
 rows[i].querySelectorAll('td.day').forEach(c=>{if(c.dataset.ds>=d1&&c.dataset.ds<=d2)c.classList.add('sel-hi');});
+rows[i].querySelectorAll('td.task-name,td.task-days,td.task-amount,td.task-kouki,td.task-note').forEach(c=>c.classList.add('sel-hi'));
 }
 }
 function fmtDs(ds){const p=ds.split('-');return parseInt(p[1])+'/'+parseInt(p[2]);}
 function openSelConfirm(){
-const rows=document.querySelectorAll('#schTable tbody tr');
+const rows=selRows();
 selIds=[];
 for(let i=selRect.r1;i<=selRect.r2;i++){
 const day=rows[i]&&rows[i].querySelector('td.day');
@@ -638,24 +666,36 @@ setTimeout(()=>window.print(),80);
 document.addEventListener('keydown',e=>{
 if(e.key==='Escape'&&selMode){document.getElementById('selConfirmPop').style.display='none';endSelectMode();}
 });
-/* Ctrl+P・全体印刷・選択印刷すべて：行数からA3横の高さいっぱいになるよう行高・文字サイズを計算 */
+/* 選択モード中は表内のクリック（セル編集など）を無効化 */
+document.addEventListener('click',e=>{
+if(selMode&&e.target.closest('#schWrap')){e.stopPropagation();e.preventDefault();}
+},true);
+/* Ctrl+P・全体印刷・選択印刷すべて：A3横の縦横いっぱいになるよう行高・日セル幅・文字サイズを計算 */
 window.addEventListener('beforeprint',()=>{
 if(!document.getElementById('p-sch').classList.contains('on'))return;
-const rows=Array.from(document.querySelectorAll('#schTable tbody tr')).filter(tr=>tr.querySelector('td.day')).length;
-fitPrintHeight(rows||1);
+const rows=selRows();
+const nDays=rows.length?rows[0].querySelectorAll('td.day').length:30;
+fitPrintPage(rows.length||1,nDays||1);
 });
 window.addEventListener('afterprint',()=>{
 if(!printOverride)return;
 printOverride=null;
 render();
 });
-function fitPrintHeight(n){
-const availMM=272;/* 297mm - 余白10mm - ヘッダー約15mm */
-const rowMM=Math.max(4.2,availMM/n);
-const rowPx=rowMM*3.78;
+function fitPrintPage(nRows,nDays){
+const pageH=287,pageW=410;/* A3横297×420mm - 余白5mm×2 */
+const leftMM=89;/* 左固定列（現場名〜備考）約335px */
+const headMM=15;/* ヘッダー3段 */
+const rowMM=Math.max(4.2,(pageH-headMM)/nRows);
+/* 日セル幅：用紙幅を超えると印刷が全体縮小されて下に余白ができるため、必ず収まる幅に */
+const dayMM=Math.max(1.2,Math.min(4.23,(pageW-leftMM-2)/nDays));
+const rowPx=rowMM*3.78,dayPx=dayMM*3.78;
 const fs=Math.min(18,Math.max(7,Math.round(rowPx*0.45)));
-document.documentElement.style.setProperty('--p-row-h',Math.min(rowMM,45).toFixed(2)+'mm');
+const dfs=Math.min(11,Math.max(4,Math.round(dayPx*0.5)));
+document.documentElement.style.setProperty('--p-row-h',Math.min(rowMM,60).toFixed(2)+'mm');
+document.documentElement.style.setProperty('--p-day-w',dayMM.toFixed(2)+'mm');
 document.documentElement.style.setProperty('--p-fs',fs+'px');
+document.documentElement.style.setProperty('--p-dfs',dfs+'px');
 }
 
 function completeTask(id){
