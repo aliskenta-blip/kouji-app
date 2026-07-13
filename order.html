@@ -1038,7 +1038,7 @@ async function renderUserMgt(){
   el.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <div style="font-size:12px;color:#888">全${allUsers.length}ユーザー</div>
-      <button class="btn bn btn-sm" onclick="exportUserData()">🔐 ユーザー情報をExcel保存</button>
+      <!-- ユーザー情報のExcel出力は削除（パスワードを画面外へ出さない・2026-07-13セキュリティ対応） -->
     </div>
     ${pending.length?`<div style="margin-bottom:16px">
       <div style="font-size:13px;font-weight:700;color:var(--orng);margin-bottom:8px">⏳ 承認待ち（${pending.length}件）</div>
@@ -1060,10 +1060,6 @@ async function renderUserMgt(){
               <button class="btn bg btn-sm" onclick="approveUser('${u.id}')">承認</button>
               <button class="btn br btn-sm" onclick="rejectUser('${u.id}')">却下</button>
             </div>
-          </div>
-          <div style="font-size:11px;color:#888;background:rgba(255,255,255,.6);border-radius:6px;padding:6px 10px">
-            🔑 PW: <code id="pw_${u.id}" style="letter-spacing:2px">••••••</code>
-            <span style="cursor:pointer;color:var(--nav2);margin-left:6px" onclick="togglePw('${u.id}','${u.pass}')">👁 表示</span>
           </div>
         </div>
       `).join('')}
@@ -1087,24 +1083,13 @@ async function renderUserMgt(){
             <button class="btn br btn-sm" onclick="removeUser('${u.id}')">削除</button>
           </div>`:'<span style="font-size:11px;color:var(--red)">🔑 管理者</span>'}
         </div>
-        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#888;background:#fff;border-radius:6px;padding:6px 10px;flex-wrap:wrap">
-          <span>🔑 PW: <code id="pw_${u.id}" style="letter-spacing:2px">••••••</code>
-          <span style="cursor:pointer;color:var(--nav2);margin-left:4px" onclick="togglePw('${u.id}','${u.pass}')">👁</span></span>
-          ${u.role!=='master'?`<span style="margin-left:auto"><button class="btn bo btn-sm" style="font-size:10px;padding:2px 8px" onclick="resetPw('${u.id}')">PW変更</button></span>`:''}
-        </div>
+        ${u.role!=='master'?`<div style="text-align:right"><button class="btn bo btn-sm" style="font-size:10px;padding:2px 8px" onclick="resetPw('${u.id}')" title="本人がパスワードを忘れたときに新しいパスワードを設定（既存PWの表示はできません）">🔑 PW再設定</button></div>`:''}
       </div>
     `).join('')}`;
 }
 
-function togglePw(uid,encoded){
-  const el=document.getElementById('pw_'+uid);if(!el)return;
-  if(el.dataset.shown==='1'){
-    el.textContent='••••••';el.dataset.shown='0';
-  } else {
-    try{el.textContent=atob(encoded);}catch(e){el.textContent='???';}
-    el.dataset.shown='1';
-  }
-}
+// ※パスワードの平文表示(togglePw)とExcel出力(exportUserData)は 2026-07-13 に削除。
+//   管理者ができるのは「追加・承認・削除・PW再設定(新規設定)」のみで、既存PWの閲覧・出力は不可。
 async function resetPw(uid){
   const newPw=prompt('新しいパスワードを入力してください（4文字以上）');
   if(!newPw||newPw.length<4){if(newPw!==null)alert('パスワードは4文字以上にしてください');return;}
@@ -1114,22 +1099,6 @@ async function resetPw(uid){
   addLog('edit',`${user?user.name:''}のパスワードを変更`);
   alert('パスワードを変更しました');
   renderUserMgt();
-}
-
-function exportUserData(){
-  if(typeof XLSX==='undefined'){alert('Excelライブラリ読み込み中です');return;}
-  const wb=XLSX.utils.book_new();
-  const headers=['名前','メールアドレス','パスワード','権限','ステータス','登録日','アバター色','アバターアイコン'];
-  const rows=allUsers.map(u=>[
-    u.name,u.email,atob(u.pass),roleName(u.role),
-    u.status==='approved'?'承認済':'承認待ち',
-    (u.created||'').slice(0,10),u.avColor||'',u.avIcon||''
-  ]);
-  const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
-  ws['!cols']=[{wch:14},{wch:24},{wch:16},{wch:16},{wch:10},{wch:12},{wch:10},{wch:6}];
-  XLSX.utils.book_append_sheet(wb,ws,'ユーザー情報');
-  const fname=`ユーザー情報_${new Date().toISOString().slice(0,10)}.xlsx`;
-  XLSX.writeFile(wb,fname);
 }
 
 async function approveUser(id){
@@ -4049,6 +4018,16 @@ function handleJsonFile(file){
 }
 
 // ── CSV ──
+// CSV数式インジェクション対策の共通サニタイズ:
+//   ・タブ・改行は空白に正規化
+//   ・先頭が = や @ のセル、および先頭が + - で純粋な数値でないセルは
+//     Excelで数式として実行されないよう先頭に ' を付ける（純粋な負数 -3000 等はそのまま）
+//   ・最後に " で囲み、内部の " は "" にエスケープ
+function csvSafe(v){
+  let s=(v??'').toString().replace(/[\t\r\n]+/g,' ');
+  if(/^[=@]/.test(s)||(/^[+\-]/.test(s)&&!/^[+\-][\d,.\s]*$/.test(s)))s="'"+s;
+  return `"${s.replace(/"/g,'""')}"`;
+}
 function doCSV(type){
   const yr=getYr(),mo=getMo(),mk=getMK(yr,mo);
   let cases=type==='all'?[...S.cases].sort((a,b)=>(a.seikyuu_t||'').localeCompare(b.seikyuu_t||'')):S.cases.filter(c=>cMo(c)===mk);
@@ -4070,7 +4049,7 @@ function doCSV(type){
       ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','',''])
     ];
   })];
-  const csv=rows.map(r=>r.map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const csv=rows.map(r=>r.map(csvSafe).join(',')).join('\n');
   const a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
   a.download=`発注管理_${type==='all'?'全件':yr+'年'+mo+'月'}_${new Date().toISOString().slice(0,10)}.csv`;
