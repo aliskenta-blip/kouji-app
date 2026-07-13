@@ -195,8 +195,7 @@ body.role-user .master-only{display:none!important}
   <div class="card"><div class="card-hdr ch-g">💾 バックアップ</div><div class="card-body">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <button class="btn bg btn-sm" onclick="exportBk()">📤 ファイル保存</button>
-      <button class="btn bb btn-sm" onclick="copyBk()">📋 コピー</button>
-      <button class="btn bo btn-sm" onclick="shareBk()">📤 共有</button>
+      <!-- 全データのコピー/共有ボタンは削除（利用者情報を含む全データを外部アプリへ渡さない・2026-07-13） -->
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       <button class="btn bx btn-sm" onclick="document.getElementById('bkFile').click()">📥 ファイルから復元</button>
@@ -1230,21 +1229,10 @@ function reopenSite(id){
 function loadAutoBk(){try{autoBkFreq=parseInt(localStorage.getItem('kouji_bkfreq'))||0;lastBkTime=localStorage.getItem('kouji_lastbk')||'';}catch(e){}const s=document.getElementById('autoBkFreq');if(s)s.value=autoBkFreq;renderBkStatus();}
 function saveAutoBk(){autoBkFreq=parseInt(document.getElementById('autoBkFreq').value)||0;try{localStorage.setItem('kouji_bkfreq',autoBkFreq);}catch(e){}renderBkStatus();}
 function renderBkStatus(){const el=document.getElementById('bkStatus');if(!el)return;el.innerHTML=`保存回数: <b>${saveCount}回</b>　自動BK: <b>${autoBkFreq===0?'手動のみ':'毎'+autoBkFreq+'回'}</b>　最終BK: <b>${lastBkTime||'未実施'}</b>　データ: <b>${D.reports.length}件</b>`;}
-function checkAutoBk(){if(autoBkFreq<=0)return;saveCount++;if(saveCount%autoBkFreq===0){if(window.innerWidth<768){navigator.clipboard.writeText(JSON.stringify(D)).then(()=>{updBkTime();}).catch(()=>{});}else{exportBk();}}renderBkStatus();}
+// ※copyBk/shareBk（全データをクリップボード・共有シート・LINE/メールへ渡す機能）は
+//   利用者情報を含むため 2026-07-13 に削除。自動バックアップもファイル保存に一本化。
+function checkAutoBk(){if(autoBkFreq<=0)return;saveCount++;if(saveCount%autoBkFreq===0){exportBk();}renderBkStatus();}
 function exportBk(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(D,null,2)],{type:'application/json'}));const now=new Date();a.download=`工事台帳BK_${now.toISOString().slice(0,10)}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}.json`;a.click();updBkTime();}
-function copyBk(){const txt=JSON.stringify(D);navigator.clipboard.writeText(txt).then(()=>{alert('クリップボードにコピーしました。\nLINEやメールに貼り付けて送信してください。');updBkTime();}).catch(()=>{
-  const ta=document.createElement('textarea');ta.value=txt;ta.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);alert('コピーしました');updBkTime();
-});}
-function shareBk(){
-  const txt=JSON.stringify(D);
-  const now=new Date();const fname=`工事台帳BK_${now.toISOString().slice(0,10)}.json`;
-  if(navigator.share){
-    const file=new File([txt],fname,{type:'application/json'});
-    navigator.share({title:'工事台帳バックアップ',files:[file]}).then(()=>updBkTime()).catch(()=>{
-      navigator.share({title:'工事台帳バックアップ',text:txt}).then(()=>updBkTime()).catch(()=>copyBk());
-    });
-  } else {copyBk();}
-}
 function pasteBk(){
   const txt=prompt('バックアップデータを貼り付けてください：');
   if(!txt)return;
