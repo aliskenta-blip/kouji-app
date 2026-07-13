@@ -989,8 +989,8 @@ function renderAccountInfo(){
     <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
       ${getAvatarHtml(currentUser,'xl')}
       <div>
-        <div style="font-size:18px;font-weight:800">${currentUser.name}</div>
-        <div style="font-size:12px;color:#888;margin-top:2px">${currentUser.email}</div>
+        <div style="font-size:18px;font-weight:800">${esc(currentUser.name)}</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">${esc(currentUser.email)}</div>
         <div style="margin-top:4px"><span style="color:${roleColor(currentUser.role)};font-weight:700;font-size:13px">${roleName(currentUser.role)}</span></div>
       </div>
     </div>
@@ -1561,8 +1561,8 @@ async function handlePdf(type){
 function renderPdfTags(){
   const hTag=document.getElementById('pdf_h_tag');
   const sTag=document.getElementById('pdf_s_tag');
-  hTag.innerHTML=pdfH?`<span class="pdf-tag" onclick="viewPdf('h')">📄 ${pdfH.name} <span class="pdf-rm" onclick="event.stopPropagation();pdfH=null;renderPdfTags()">×</span></span>`:'';
-  sTag.innerHTML=pdfS?`<span class="pdf-tag" onclick="viewPdf('s')">📄 ${pdfS.name} <span class="pdf-rm" onclick="event.stopPropagation();pdfS=null;renderPdfTags()">×</span></span>`:'';
+  hTag.innerHTML=pdfH?`<span class="pdf-tag" onclick="viewPdf('h')">📄 ${esc(pdfH.name)} <span class="pdf-rm" onclick="event.stopPropagation();pdfH=null;renderPdfTags()">×</span></span>`:'';
+  sTag.innerHTML=pdfS?`<span class="pdf-tag" onclick="viewPdf('s')">📄 ${esc(pdfS.name)} <span class="pdf-rm" onclick="event.stopPropagation();pdfS=null;renderPdfTags()">×</span></span>`:'';
 }
 function viewPdf(type){
   const d=type==='h'?pdfH:pdfS;if(!d)return;
@@ -1851,7 +1851,7 @@ function editKyoSelect(caseId,el){
     h+=`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;padding:6px;background:#f8f8f8;border-radius:6px">
       <select onchange="S.cases.find(x=>x.id==='${c.id}').kyousha_list[${ki}].name=this.value" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px">
         <option value="">— 選択 —</option>
-        ${S.masters.kyousha.map(v=>`<option value="${v}"${v===k.name?' selected':''}>${v}</option>`).join('')}
+        ${S.masters.kyousha.map(v=>`<option value="${esc(v)}"${v===k.name?' selected':''}>${esc(v)}</option>`).join('')}
       </select>
       <button onclick="S.cases.find(x=>x.id==='${c.id}').kyousha_list.splice(${ki},1);sv();this.closest('[style*=fixed]').remove();renderAll()" style="background:none;border:none;color:#e53935;font-size:18px;cursor:pointer">×</button>
     </div>`;
@@ -1943,7 +1943,7 @@ function renderMonthly(){
       <div style="display:none;padding:8px 12px">
         <table style="width:100%;border-collapse:collapse;font-size:12px">
           <tr style="background:#e8eaf6"><th style="text-align:left;padding:4px 8px">発注者</th><th style="text-align:center;padding:4px;width:40px">件数</th><th style="text-align:right;padding:4px 8px;width:100px">発注額計</th><th style="text-align:right;padding:4px 8px;width:100px">当月請求計</th><th style="text-align:right;padding:4px 8px;width:100px">入金計</th></tr>
-          ${clientKeys.map(cl=>{const d=byClient[cl];return`<tr style="border-bottom:1px solid #eee"><td style="padding:4px 8px;font-weight:700">${cl}</td><td style="text-align:center;padding:4px">${d.count}</td><td style="text-align:right;padding:4px 8px">¥${fmt(d.ordered)}</td><td style="text-align:right;padding:4px 8px;font-weight:700;color:#1565c0">¥${fmt(d.billed)}</td><td style="text-align:right;padding:4px 8px;color:#2e7d32">¥${fmt(d.nyukin)}</td></tr>`;}).join('')}
+          ${clientKeys.map(cl=>{const d=byClient[cl];return`<tr style="border-bottom:1px solid #eee"><td style="padding:4px 8px;font-weight:700">${esc(cl)}</td><td style="text-align:center;padding:4px">${d.count}</td><td style="text-align:right;padding:4px 8px">¥${fmt(d.ordered)}</td><td style="text-align:right;padding:4px 8px;font-weight:700;color:#1565c0">¥${fmt(d.billed)}</td><td style="text-align:right;padding:4px 8px;color:#2e7d32">¥${fmt(d.nyukin)}</td></tr>`;}).join('')}
           <tr style="border-top:2px solid #333;font-weight:700"><td style="padding:4px 8px">合計</td><td style="text-align:center;padding:4px">${cases.length}</td><td style="text-align:right;padding:4px 8px">¥${fmt(clientKeys.reduce((a,cl)=>a+byClient[cl].ordered,0))}</td><td style="text-align:right;padding:4px 8px;color:#1565c0">¥${fmt(ts)}</td><td style="text-align:right;padding:4px 8px;color:#2e7d32">¥${fmt(clientKeys.reduce((a,cl)=>a+byClient[cl].nyukin,0))}</td></tr>
         </table>
       </div>
@@ -1979,10 +1979,10 @@ function renderMonthly(){
   const odClient=overdues.filter(o=>o.type==='client');
   const odKyousha=overdues.filter(o=>o.type==='kyousha');
   if(odClient.length){
-    remind+=remindCard('#fce4ec','#e53935','#c62828',`⏰ 入金期限超過 ${odClient.length}件`,'',odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} ← ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join(''),'お客さんの入金期日（設定の入金条件で計算）を過ぎても入金が確認できていない案件です。催促の目安に。');
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`⏰ 入金期限超過 ${odClient.length}件`,'',odClient.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0c0c0;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${esc(o.place)} ← ${esc(o.client)}（${o.termStr}）</span><span style="font-weight:700;color:#c62828">${o.days}日超過</span></div>`).join(''),'お客さんの入金期日（設定の入金条件で計算）を過ぎても入金が確認できていない案件です。催促の目安に。');
   }
   if(odKyousha.length){
-    remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${o.place} → ${o.client}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''),'協力会社への支払期日（設定の支払条件で計算）を過ぎても、まだ支払っていない案件です。');
+    remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${esc(o.place)} → ${esc(o.client)}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''),'協力会社への支払期日（設定の支払条件で計算）を過ぎても、まだ支払っていない案件です。');
   }
 
   remEl.innerHTML=remind;
@@ -2030,7 +2030,7 @@ function renderMonthly(){
       const ke=`style="cursor:pointer" title="クリックで編集"`;
       return `<tr class="sub-r sub-${c.id}" style="display:none">
         <td></td><td colspan="8" style="padding-left:16px;font-size:10px">
-          ↳ <b style="color:var(--nav2)">${esc(k.name||'—')}</b> ${k.type?'<span style="color:#888">('+k.type+')</span>':''}
+          ↳ <b style="color:var(--nav2)">${esc(k.name||'—')}</b> ${k.type?'<span style="color:#888">('+esc(k.type)+')</span>':''}
         </td>
         <td></td><td></td><td></td><td></td><td></td>
         <td class="num" ${ke} onclick="editKyoCell('${c.id}',${ki},'mitsumori',this,'number')" style="font-size:10px;cursor:pointer">¥${fmt(fn(k.mitsumori))}</td>
@@ -2149,7 +2149,7 @@ function renderMonthly(){
           <div style="background:${r.miharai>0?'#fff3e0':'#f0f8f0'};border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">未払残計</div><div style="font-weight:700;color:${r.miharai>0?'#e65100':'#2e7d32'}">¥${fmt(r.miharai)}</div></div>
         </div>
         ${c.kouki_s||c.kouki_e?`<div style="font-size:11px;color:#555;margin-bottom:6px">📅 工期: ${c.kouki_s==='未定'?'未定':c.kouki_s||'?'} 〜 ${c.kouki_e==='未定'?'未定':c.kouki_e||'?'}</div>`:''}
-        ${r.cnt>0?`<div style="font-size:11px;background:#ebf3fb;border-radius:6px;padding:6px;margin-bottom:8px">協社: ${(c.kyousha_list||[]).map(k=>k.name+(k.seikyuu?'(¥'+fmt(fn(k.seikyuu))+')':'')).join(' / ')}</div>`:''}
+        ${r.cnt>0?`<div style="font-size:11px;background:#ebf3fb;border-radius:6px;padding:6px;margin-bottom:8px">協社: ${(c.kyousha_list||[]).map(k=>esc(k.name)+(k.seikyuu?'(¥'+fmt(fn(k.seikyuu))+')':'')).join(' / ')}</div>`:''}
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${mkCk2(c.shashin,c.id,'shashin','p','写真')}
           ${mkCk2(c.zando,c.id,'zando','p','残土')}
@@ -2212,10 +2212,10 @@ function renderMaster(){
   moSel.innerHTML='<option value="">全月</option>'+[...moSet].sort().map(m=>`<option value="${m}"${m===curMo?' selected':''}>${m}</option>`).join('');
   const clSet=new Set(S.cases.map(c=>c.client).filter(Boolean));
   const clSel=document.getElementById('af_cl');const curCl=clSel.value;
-  clSel.innerHTML='<option value="">全発注者</option>'+[...clSet].sort().map(c=>`<option value="${c}"${c===curCl?' selected':''}>${c}</option>`).join('');
+  clSel.innerHTML='<option value="">全発注者</option>'+[...clSet].sort().map(c=>`<option value="${esc(c)}"${c===curCl?' selected':''}>${esc(c)}</option>`).join('');
   const taSet=new Set(S.cases.map(c=>c.tantou).filter(Boolean));
   const taSel=document.getElementById('af_ta');const curTa=taSel.value;
-  taSel.innerHTML='<option value="">全担当</option>'+[...taSet].sort().map(t=>`<option value="${t}"${t===curTa?' selected':''}>${t}</option>`).join('');
+  taSel.innerHTML='<option value="">全担当</option>'+[...taSet].sort().map(t=>`<option value="${esc(t)}"${t===curTa?' selected':''}>${esc(t)}</option>`).join('');
 
   let ts=0,tn=0,tmi=0,tky=0,tksr=0,tsh=0,tmp=0,tar=0,totH=0;
   const ck=v=>v==='✓'?'<span style="color:#7b1fa2;font-weight:700">✓</span>':'';
@@ -2323,7 +2323,7 @@ function renderPrint(){
   const pe=`style="cursor:pointer" title="クリックで編集"`;
   document.getElementById('prBody').innerHTML=cases.length?cases.map((c,i)=>{
     const r=calc(c);totH+=fn(c.jisha_h);totS+=r.js;
-    const kyNames=(c.kyousha_list||[]).map(k=>k.name).filter(Boolean).join('、');
+    const kyNames=(c.kyousha_list||[]).map(k=>esc(k.name)).filter(Boolean).join('、');
     const kyAmts=(c.kyousha_list||[]).reduce((a,k)=>a+fn(k.seikyuu),0);
     const nyStatus=fn(c.nyukin)>=r.js&&r.js>0?'入金済':fn(c.nyukin)>0?'一部入金':'未入金';
     return `<tr class="${i%2?'alt':''}">
@@ -2394,7 +2394,7 @@ function batchFieldChg(idp){
     sEl.style.display=isChoice?'':'none';
     if(isChoice){
       const opts=field==='kouji_type'?(S.masters.kouji_type||[]).map(v=>[v,v]):BATCH_CHOICES[field];
-      sEl.innerHTML=opts.map(o=>`<option value="${o[0]}">${o[1]}</option>`).join('');
+      sEl.innerHTML=opts.map(o=>`<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('');
     }
   }
 }
@@ -2528,7 +2528,7 @@ function renderDash(){
   fyList.forEach(({c,x})=>{const cl=c.client||'（未設定）';const d=(clMap[cl]=clMap[cl]||{cnt:0,jh:0,js:0,ny:0,ksr:0,ar:0});d.cnt++;d.jh+=x.jh;d.js+=x.js;d.ny+=x.ny;d.ksr+=x.ksr;d.ar+=x.ar;});
   const clArr=Object.entries(clMap).sort((a,b)=>b[1].js-a[1].js);
   const clMaxV=Math.max(1,...clArr.map(([,d])=>d.js));
-  const clBody=clArr.length?clArr.map(([n,d])=>{const mi=Math.max(0,d.js-d.ny);return `<tr><td style="min-width:130px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,clMaxV)}%;height:100%;background:var(--nav2)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="${mi>0?'cl':'ca'}">¥${fmt(mi)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">データなし</td></tr>';
+  const clBody=clArr.length?clArr.map(([n,d])=>{const mi=Math.max(0,d.js-d.ny);return `<tr><td style="min-width:130px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,clMaxV)}%;height:100%;background:var(--nav2)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="${mi>0?'cl':'ca'}">¥${fmt(mi)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">データなし</td></tr>';
   const clCard=`<div class="card"><div class="card-hdr ch-nav">🏢 発注者別 年間分析（請求シェア順）</div><div class="twrap"><table style="min-width:640px"><thead><tr><th style="text-align:left">発注者</th><th>件数</th><th>発注額</th><th>請求額</th><th>入金</th><th>未収金</th><th>粗利</th><th>率</th></tr></thead><tbody>${clBody}</tbody></table></div></div>`;
 
   // ── 工種・区分別 集計 ──
@@ -2536,7 +2536,7 @@ function renderDash(){
   fyList.forEach(({c,x})=>{const kb=c.kubun||'（未分類）';const d=(kbMap[kb]=kbMap[kb]||{cnt:0,js:0,ksr:0,ar:0});d.cnt++;d.js+=x.js;d.ksr+=x.ksr;d.ar+=x.ar;});
   const kbArr=Object.entries(kbMap).sort((a,b)=>b[1].js-a[1].js);
   const kbMaxV=Math.max(1,...kbArr.map(([,d])=>d.js));
-  const kbBody=kbArr.length?kbArr.map(([n,d])=>`<tr><td style="min-width:120px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,kbMaxV)}%;height:100%;background:var(--purp)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.js)}</td><td class="num">¥${fmt(d.ksr)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
+  const kbBody=kbArr.length?kbArr.map(([n,d])=>`<tr><td style="min-width:120px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,kbMaxV)}%;height:100%;background:var(--purp)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.js)}</td><td class="num">¥${fmt(d.ksr)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
   const kbCard=`<div class="card"><div class="card-hdr ch-gry">🧱 工種・区分別 集計</div><div class="twrap"><table style="min-width:520px"><thead><tr><th style="text-align:left">区分</th><th>件数</th><th>請求額</th><th>協力原価</th><th>粗利</th><th>率</th></tr></thead><tbody>${kbBody}</tbody></table></div></div>`;
 
   // ── 担当者別・支店別 集計 ──
@@ -2544,7 +2544,7 @@ function renderDash(){
     const mp={};
     fyList.forEach(({c,x})=>{const k=keyFn(c)||'（未設定）';const d=(mp[k]=mp[k]||{cnt:0,jh:0,js:0,ny:0,ar:0});d.cnt++;d.jh+=x.jh;d.js+=x.js;d.ny+=x.ny;d.ar+=x.ar;});
     const arr=Object.entries(mp).sort((a,b)=>b[1].js-a[1].js);const mx=Math.max(1,...arr.map(([,d])=>d.js));
-    const body=arr.length?arr.map(([n,d])=>`<tr><td style="min-width:110px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,mx)}%;height:100%;background:${color}"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="num cp">¥${fmt(d.ar)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
+    const body=arr.length?arr.map(([n,d])=>`<tr><td style="min-width:110px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,mx)}%;height:100%;background:${color}"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="num cp">¥${fmt(d.ar)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
     return `<div class="card"><div class="card-hdr ch-nav">${icon}</div><div class="twrap"><table style="min-width:520px"><thead><tr><th style="text-align:left">${thLabel}</th><th>件数</th><th>発注額</th><th>請求額</th><th>入金</th><th>粗利</th></tr></thead><tbody>${body}</tbody></table></div></div>`;
   };
   const taCard=groupCard('👷 担当者別 集計','担当者','#2e75b6',c=>c.tantou);
@@ -2564,7 +2564,7 @@ function renderDash(){
   casesFY.forEach(c=>(c.kyousha_list||[]).forEach(k=>{if(!k.name)return;if(!kyMap[k.name])kyMap[k.name]={cnt:0,km:0,ks:0,sh:0};kyMap[k.name].cnt++;kyMap[k.name].km+=fn(k.mitsumori);kyMap[k.name].ks+=fn(k.seikyuu);kyMap[k.name].sh+=fn(k.shiharai);}));
   const kyArr=Object.entries(kyMap).sort((a,b)=>b[1].ks-a[1].ks);
   const kyMax=Math.max(1,...kyArr.map(([,d])=>d.ks));
-  const kyBody=kyArr.length?kyArr.map(([n,d])=>{const mp=Math.max(0,d.ks-d.sh);return `<tr><td style="min-width:130px"><b>${n}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.ks,kyMax)}%;height:100%;background:var(--orng)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.km)}</td><td class="num">¥${fmt(d.ks)}</td><td class="num">¥${fmt(d.sh)}</td><td class="${mp>0?'cw':'ca'}">¥${fmt(mp)}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">協力会社データなし</td></tr>';
+  const kyBody=kyArr.length?kyArr.map(([n,d])=>{const mp=Math.max(0,d.ks-d.sh);return `<tr><td style="min-width:130px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.ks,kyMax)}%;height:100%;background:var(--orng)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.km)}</td><td class="num">¥${fmt(d.ks)}</td><td class="num">¥${fmt(d.sh)}</td><td class="${mp>0?'cw':'ca'}">¥${fmt(mp)}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">協力会社データなし</td></tr>';
   const kyCard=`<div class="card"><div class="card-hdr ch-org">🤝 業者別 集計・分析（請求シェア順）</div><div class="twrap"><table style="min-width:560px"><thead><tr><th style="text-align:left">協力会社</th><th>件数</th><th>見積</th><th>請求</th><th>支払済</th><th>未払残</th></tr></thead><tbody>${kyBody}</tbody></table></div></div>`;
 
   // ── 支払予定・資金繰り（全期間の未収/未払を支払条件で見込み） ──
@@ -2713,7 +2713,7 @@ function printShiharaiList(){
   const names=Object.keys(map).sort((a,b)=>map[b].tot-map[a].tot);
   const grand=names.reduce((a,n)=>a+map[n].tot,0);
   const jisha=S.masters.jisha_name||'';const today=new Date().toLocaleDateString('ja-JP');
-  const blocks=names.map(n=>{const d=map[n];const rows=d.rows.map(r=>`<tr><td>${r.place}</td><td>${r.kouji}</td><td>${r.type}</td><td class="c">${r.due||''}</td><td class="r">${fmt(r.amt)}</td></tr>`).join('');
+  const blocks=names.map(n=>{const d=map[n];const rows=d.rows.map(r=>`<tr><td>${esc(r.place)}</td><td>${esc(r.kouji)}</td><td>${esc(r.type)}</td><td class="c">${r.due||''}</td><td class="r">${fmt(r.amt)}</td></tr>`).join('');
     return `<h2>${n}　<span style="font-size:12px">未払残 合計 ¥${fmt(d.tot)}</span></h2><table><thead><tr><th>現場</th><th>工事名</th><th>工種</th><th>支払月</th><th>未払残</th></tr></thead><tbody>${rows}</tbody></table>`;}).join('');
   const w=window.open('','_blank','width=900,height=800');
   if(!w){alert('ポップアップがブロックされました。許可してください。');return;}
@@ -3044,7 +3044,7 @@ function updateSels(){
   const clSel=document.getElementById('f_cl');
   if(clSel){
     const curCl=clSel.value;
-    clSel.innerHTML='<option value="">— 選択 —</option>'+S.masters.client.map(v=>`<option value="${v}"${v===curCl?' selected':''}>${v}</option>`).join('');
+    clSel.innerHTML='<option value="">— 選択 —</option>'+S.masters.client.map(v=>`<option value="${esc(v)}"${v===curCl?' selected':''}>${esc(v)}</option>`).join('');
     clSel.value=curCl;
     clSel.onchange=function(){onClientChange();};
   }
@@ -3052,7 +3052,7 @@ function updateSels(){
   const kbSel=document.getElementById('f_kb');
   if(kbSel){
     const cur=kbSel.value;
-    kbSel.innerHTML='<option value="">— 選択 —</option>'+S.masters.kubun.map(v=>`<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
+    kbSel.innerHTML='<option value="">— 選択 —</option>'+S.masters.kubun.map(v=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(v)}</option>`).join('');
     kbSel.value=cur;
   }
   // 支店・担当はリンクでフィルタ
@@ -3063,7 +3063,7 @@ function updateSels(){
     const s=document.getElementById(sid);if(!s)return;
     const cur=s.value;
     const kt=S.masters.kouji_type||[];
-    const opt=(v,mark)=>`<option value="${v}"${v===cur?' selected':''}${GYOSHU_HELP[v]?` title="${GYOSHU_HELP[v].replace(/"/g,'&quot;')}"`:''}>${mark}${v}</option>`;
+    const opt=(v,mark)=>`<option value="${esc(v)}"${v===cur?' selected':''}${GYOSHU_HELP[v]?` title="${GYOSHU_HELP[v].replace(/"/g,'&quot;')}"`:''}>${mark}${esc(v)}</option>`;
     const kyoka=AILE_KYOKA.filter(v=>kt.includes(v));
     const others=kt.filter(v=>!AILE_KYOKA_SET.has(v)&&v!==GYOSHU_NOPERMIT);
     const blankLabel=sid==='kr_type'?'すべての業種':'— 選択 —';
@@ -3076,7 +3076,7 @@ function updateSels(){
   });
   document.querySelectorAll('.ky-sel').forEach(s=>{
     const cur=s.value;
-    s.innerHTML='<option value="">— 選択 —</option>'+S.masters.kyousha.map(v=>`<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
+    s.innerHTML='<option value="">— 選択 —</option>'+S.masters.kyousha.map(v=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(v)}</option>`).join('');
     s.value=cur;
   });
 }
@@ -3099,7 +3099,7 @@ function updateBranchSel(){
     const branches=Object.keys(link);
     if(branches.length>0) opts=branches;
   }
-  brSel.innerHTML='<option value="">— 選択 —</option>'+opts.map(v=>`<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
+  brSel.innerHTML='<option value="">— 選択 —</option>'+opts.map(v=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(v)}</option>`).join('');
   brSel.value=opts.includes(cur)?cur:'';
   brSel.onchange=function(){updateTantouSel();};
 }
@@ -3122,7 +3122,7 @@ function updateTantouSel(){
       if(all.length>0) opts=all;
     }
   }
-  taSel.innerHTML='<option value="">— 選択 —</option>'+opts.map(v=>`<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
+  taSel.innerHTML='<option value="">— 選択 —</option>'+opts.map(v=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(v)}</option>`).join('');
   taSel.value=opts.includes(cur)?cur:'';
 }
 
@@ -3138,9 +3138,9 @@ function renderClientLinkUI(){
     Object.entries(branches).forEach(([br,tantous])=>{
       if(!Array.isArray(tantous)||!tantous.length)return;
       linkList+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #f0f0f0;flex-wrap:wrap">
-        <span style="background:var(--nav);color:#fff;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:700">${cl}</span>
+        <span style="background:var(--nav);color:#fff;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:700">${esc(cl)}</span>
         <span style="color:#888">→</span>
-        <span style="background:var(--gray3);color:var(--gray);padding:2px 10px;border-radius:6px;font-size:12px;font-weight:700">${br}</span>
+        <span style="background:var(--gray3);color:var(--gray);padding:2px 10px;border-radius:6px;font-size:12px;font-weight:700">${esc(br)}</span>
         <span style="color:#888">→</span>
         <span style="font-size:12px;color:var(--nav)">${tantous.join('、')}</span>
         <button onclick="delLinkSet('${cl.replace(/'/g,"\\'")}','${br.replace(/'/g,"\\'")}')" style="margin-left:auto;background:none;border:none;color:#e53935;cursor:pointer;font-size:16px;padding:0 4px">×</button>
@@ -3157,17 +3157,17 @@ function renderClientLinkUI(){
       <div style="font-size:13px;font-weight:700;color:var(--nav);margin-bottom:10px">＋ セット追加</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div class="fg"><label>発注者</label>
-          <select id="lnk_cl"><option value="">—選択—</option>${S.masters.client.map(v=>`<option value="${v}">${v}</option>`).join('')}</select>
+          <select id="lnk_cl"><option value="">—選択—</option>${S.masters.client.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select>
         </div>
         <div class="fg"><label>支店</label>
-          <select id="lnk_br"><option value="">—選択—</option>${S.masters.branch.map(v=>`<option value="${v}">${v}</option>`).join('')}</select>
+          <select id="lnk_br"><option value="">—選択—</option>${S.masters.branch.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')}</select>
         </div>
       </div>
       <div style="margin-bottom:10px">
         <label style="font-size:11px;font-weight:700;color:#555;display:block;margin-bottom:6px">担当者（チェックで選択）</label>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
           ${S.masters.tantou.map(t=>`<label style="display:flex;align-items:center;gap:4px;padding:4px 8px;border:1.5px solid #ddd;border-radius:6px;font-size:12px;cursor:pointer;background:#fff">
-            <input type="checkbox" class="lnk_ta_chk" value="${t}" style="width:15px;height:15px;cursor:pointer"> ${t}
+            <input type="checkbox" class="lnk_ta_chk" value="${esc(t)}" style="width:15px;height:15px;cursor:pointer"> ${esc(t)}
           </label>`).join('')||'<span style="color:#aaa;font-size:12px">担当者が未登録です</span>'}
         </div>
       </div>
@@ -3216,7 +3216,7 @@ function renderKE(){
           <div class="fg"><label>協社名</label>
             <select class="ky-sel" onchange="KD[${i}].name=this.value">
               <option value="">— 選択 —</option>
-              ${S.masters.kyousha.map(v=>`<option value="${v}"${v===k.name?' selected':''}>${v}</option>`).join('')}
+              ${S.masters.kyousha.map(v=>`<option value="${esc(v)}"${v===k.name?' selected':''}>${esc(v)}</option>`).join('')}
             </select>
           </div>
           <div class="fg"><label>工種・作業</label><input type="text" value="${k.type||''}" placeholder="掘削・舗装等" oninput="KD[${i}].type=this.value"></div>
