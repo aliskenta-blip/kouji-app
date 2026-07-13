@@ -829,7 +829,7 @@ function getAvatarHtml(user,size){
   const sz=size||'';
   const bg=user.avColor||AV_COLORS[0];
   const ic=user.avIcon||user.name.charAt(0);
-  return `<div class="avatar ${sz}" style="background:${bg}">${ic}</div>`;
+  return `<div class="avatar ${sz}" style="background:${esc(bg)}">${esc(ic)}</div>`;
 }
 
 // Activity log
@@ -1048,8 +1048,8 @@ async function renderUserMgt(){
             <div style="display:flex;align-items:center;gap:10px">
               ${getAvatarHtml(u,'')}
               <div>
-                <div style="font-weight:700;font-size:14px">${u.name}</div>
-                <div style="font-size:11px;color:#888">${u.email}　登録: ${(u.created||'').slice(0,10)}</div>
+                <div style="font-weight:700;font-size:14px">${esc(u.name)}</div>
+                <div style="font-size:11px;color:#888">${esc(u.email)}　登録: ${(u.created||'').slice(0,10)}</div>
               </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
@@ -1071,8 +1071,8 @@ async function renderUserMgt(){
           <div style="display:flex;align-items:center;gap:10px">
             ${getAvatarHtml(u,'')}
             <div>
-              <div style="font-weight:700;font-size:13px">${u.name} <span style="font-size:11px;color:${roleColor(u.role)};font-weight:700;margin-left:6px">${roleName(u.role)}</span></div>
-              <div style="font-size:11px;color:#888">${u.email}</div>
+              <div style="font-weight:700;font-size:13px">${esc(u.name)} <span style="font-size:11px;color:${roleColor(u.role)};font-weight:700;margin-left:6px">${roleName(u.role)}</span></div>
+              <div style="font-size:11px;color:#888">${esc(u.email)}</div>
             </div>
           </div>
           ${u.role!=='master'?`<div style="display:flex;gap:6px;align-items:center">
@@ -1106,22 +1106,22 @@ async function approveUser(id){
   const role=roleEl?roleEl.value:'viewer';
   allUsers=allUsers.map(u=>u.id===id?{...u,status:'approved',role}:u);
   await saveUsers();renderUserMgt();
-  const u=allUsers.find(x=>x.id===id);addLog('edit',`${u?u.name:''}を承認（権限:${roleName(role)}）`);
+  const u=allUsers.find(x=>x.id===id);addLog('edit',`${esc(u?u.name:'')}を承認（権限:${roleName(role)}）`);
 }
 async function rejectUser(id){
   if(!confirm('このユーザーの申請を却下（削除）しますか？'))return;
-  const u=allUsers.find(x=>x.id===id);addLog('del',`${u?u.name:''}の申請を却下`);
+  const u=allUsers.find(x=>x.id===id);addLog('del',`${esc(u?u.name:'')}の申請を却下`);
   allUsers=allUsers.filter(u=>u.id!==id);
   await saveUsers();renderUserMgt();
 }
 async function changeRole(id,role){
   allUsers=allUsers.map(u=>u.id===id?{...u,role}:u);
   await saveUsers();renderUserMgt();
-  const u=allUsers.find(x=>x.id===id);addLog('edit',`${u?u.name:''}の権限を${roleName(role)}に変更`);
+  const u=allUsers.find(x=>x.id===id);addLog('edit',`${esc(u?u.name:'')}の権限を${roleName(role)}に変更`);
 }
 async function removeUser(id){
   if(!confirm('このユーザーを削除しますか？'))return;
-  const u=allUsers.find(x=>x.id===id);addLog('del',`${u?u.name:''}を削除`);
+  const u=allUsers.find(x=>x.id===id);addLog('del',`${esc(u?u.name:'')}を削除`);
   allUsers=allUsers.filter(u=>u.id!==id);
   await saveUsers();renderUserMgt();
 }
@@ -1159,6 +1159,9 @@ const SK='hpro3';
 let S={cases:[],masters:{client:[],tantou:[],kyousha:[],kubun:[],branch:[],kouji_type:[],client_links:{},client_terms:{},kyousha_terms:{},jisha_name:''}};
 let _syncHash='';
 // ストレージ安全化
+// HTMLエスケープ（XSS対策の共通関数・2026-07-13追加）
+//   DB値・取引先名・ファイル名などの外部入力をinnerHTMLへ入れる前に必ず通す
+function esc(s){return (s??'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function safeLS(op,key,val){
   try{
     if(op==='get')return localStorage.getItem(key);
@@ -1629,7 +1632,7 @@ function tgCk(id,field,el){
   c.kanryo=isDone(c)?'✓':'';
   sv();
   const fieldNames={shashin:'写真',zando:'残土伝票',nyukin_c:'入金済',kanryo:'完了',seikyuu_c:'請求済'};
-  addLog('check',`${c.place||''}の「${fieldNames[field]||field}」を${c[field]==='✓'?'✓':'解除'}`);
+  addLog('check',`${esc(c.place||'')}の「${fieldNames[field]||field}」を${c[field]==='✓'?'✓':'解除'}`);
   renderMonthly();
 }
 function mkCk2(val,id,field,type,lbl){
@@ -1649,7 +1652,7 @@ function editCell(id,field,el,type){
   else{inp.value=cur;if(type==='number')inp.inputMode='numeric';}
   inp.style.cssText='width:100%;min-width:60px;padding:3px;border:2px solid #1565c0;border-radius:4px;font-size:12px;background:#fff;color:#333';
   const reRender=()=>{try{renderMonthly();}catch(e){}try{renderMaster();}catch(e){}try{renderPrint();}catch(e){}};
-  const finish=()=>{let nv=inp.value;if(isMoney&&nv){nv=String(Math.round(parseFloat(nv)*10000));}if(nv!==String(cur)){c[field]=nv;sv();addLog('edit',`${c.place||''}の項目を変更`);}reRender();};
+  const finish=()=>{let nv=inp.value;if(isMoney&&nv){nv=String(Math.round(parseFloat(nv)*10000));}if(nv!==String(cur)){c[field]=nv;sv();addLog('edit',`${esc(c.place||'')}の項目を変更`);}reRender();};
   inp.onblur=finish;
   inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();finish();}if(e.key==='Escape')reRender();};
   el.innerHTML='';
@@ -1765,7 +1768,7 @@ function editKyoBillings(caseId,ki,el){
     const sum=bl.reduce((a,b)=>a+fn(b.amount),0);
     const rem=Math.max(0,fn(k.mitsumori)-sum);
     let h=`<div id="kbPopHdr" style="position:sticky;top:0;z-index:2;padding:10px 14px;background:#e65100;color:#fff;display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none;touch-action:none">
-      <span style="font-weight:700;font-size:13px">📋 ${k.name} 出来高請求 <span style="font-size:10px;opacity:.85;font-weight:400">✋移動</span></span>
+      <span style="font-weight:700;font-size:13px">📋 ${esc(k.name)} 出来高請求 <span style="font-size:10px;opacity:.85;font-weight:400">✋移動</span></span>
       <span onclick="this.closest('[style*=fixed]').remove();renderAll()" style="cursor:pointer;font-size:24px;line-height:1;padding:0 6px" title="閉じる">×</span>
     </div><div style="padding:14px">`;
     h+=`<div style="font-size:12px;margin-bottom:8px;padding:8px;background:#fff3e0;border-radius:6px">見積額: <b>¥${fmt(fn(k.mitsumori))}</b></div>`;
@@ -1957,15 +1960,15 @@ function renderMonthly(){
   let remind='';
   if(prevMisu.length){
     const totalMisu=prevMisu.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=remindCard('#fff8e1','#f9a825','#e65100',`⚠ 未収金繰越（前月以前）${prevMisu.length}件`,`合計 ¥${fmt(totalMisu)}`,prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join(''),'前の月までに請求したのに、まだ入金されていない案件です。入金を確認したら各案件の「入済」にチェックしてください。');
+    remind+=remindCard('#fff8e1','#f9a825','#e65100',`⚠ 未収金繰越（前月以前）${prevMisu.length}件`,`合計 ¥${fmt(totalMisu)}`,prevMisu.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0e0b0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${esc(c.place||'')} ${esc(c.client||'')} ${esc(c.kouji||'')}</span><span style="font-weight:700;color:#c62828">未収¥${fmt(calc(c).misu)}</span></div>`).join(''),'前の月までに請求したのに、まだ入金されていない案件です。入金を確認したら各案件の「入済」にチェックしてください。');
   }
   if(moreCases.length){
     const totalMore=moreCases.reduce((a,c)=>a+calc(c).misu,0);
-    remind+=remindCard('#fce4ec','#e53935','#c62828',`🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalMore)}`,moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join(''),'請求済にしたが入金が確認できず、次の月へ繰り越した案件です。今月あらためて請求・入金確認をしてください。');
+    remind+=remindCard('#fce4ec','#e53935','#c62828',`🚨 請求漏れ ${moreCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalMore)}`,moreCases.map(c=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #f0c0c0" onclick="editCase('${c.id}')"><span>📝 ${cMo(c)} ${esc(c.place||'')} ${esc(c.client||'')} ${esc(c.kouji||'')}</span><span style="font-weight:700;color:#c62828">¥${fmt(calc(c).misu)}</span></div>`).join(''),'請求済にしたが入金が確認できず、次の月へ繰り越した案件です。今月あらためて請求・入金確認をしてください。');
   }
   if(remainCases.length){
     const totalRemain=remainCases.reduce((a,c)=>a+calc(c).remaining,0);
-    remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${c.place||''} ${c.client||''} ${c.kouji||''}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''),'発注額のうち、まだ請求していない残りがある案件です。出来高請求の漏れ防止に。クリックで請求を入力できます。');
+    remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${esc(c.place||'')} ${esc(c.client||'')} ${esc(c.kouji||'')}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''),'発注額のうち、まだ請求していない残りがある案件です。出来高請求の漏れ防止に。クリックで請求を入力できます。');
   }
 
   let remEl=document.getElementById('mRemind');
@@ -2027,7 +2030,7 @@ function renderMonthly(){
       const ke=`style="cursor:pointer" title="クリックで編集"`;
       return `<tr class="sub-r sub-${c.id}" style="display:none">
         <td></td><td colspan="8" style="padding-left:16px;font-size:10px">
-          ↳ <b style="color:var(--nav2)">${k.name||'—'}</b> ${k.type?'<span style="color:#888">('+k.type+')</span>':''}
+          ↳ <b style="color:var(--nav2)">${esc(k.name||'—')}</b> ${k.type?'<span style="color:#888">('+k.type+')</span>':''}
         </td>
         <td></td><td></td><td></td><td></td><td></td>
         <td class="num" ${ke} onclick="editKyoCell('${c.id}',${ki},'mitsumori',this,'number')" style="font-size:10px;cursor:pointer">¥${fmt(fn(k.mitsumori))}</td>
@@ -2041,8 +2044,8 @@ function renderMonthly(){
     }).join('');
     const kouki=c.kouki_s==='未定'||c.kouki_e==='未定'?'未定':(c.kouki_s||c.kouki_e?`${(c.kouki_s||'').slice(5)}〜${(c.kouki_e||'').slice(5)}`:'');
     const pdfs=[];
-    if(c.pdf_hacchu)pdfs.push(`<span class="pdf-tag" onclick="event.stopPropagation();viewCasePdf('${c.id}','h')" title="発注書PDF: ${c.pdf_hacchu.name}" style="cursor:pointer;font-size:9px;background:#eef6ff;border:1px solid #cfe3ff;border-radius:4px;padding:0 4px;margin-left:4px;color:#2456a6;white-space:nowrap">📄発注</span>`);
-    if(c.pdf_seikyuu)pdfs.push(`<span class="pdf-tag" onclick="event.stopPropagation();viewCasePdf('${c.id}','s')" title="請求書PDF: ${c.pdf_seikyuu.name}" style="cursor:pointer;font-size:9px;background:#f1f8e9;border:1px solid #dcedc8;border-radius:4px;padding:0 4px;margin-left:4px;color:#558b2f;white-space:nowrap">📄請求</span>`);
+    if(c.pdf_hacchu)pdfs.push(`<span class="pdf-tag" onclick="event.stopPropagation();viewCasePdf('${c.id}','h')" title="発注書PDF: ${esc(c.pdf_hacchu.name)}" style="cursor:pointer;font-size:9px;background:#eef6ff;border:1px solid #cfe3ff;border-radius:4px;padding:0 4px;margin-left:4px;color:#2456a6;white-space:nowrap">📄発注</span>`);
+    if(c.pdf_seikyuu)pdfs.push(`<span class="pdf-tag" onclick="event.stopPropagation();viewCasePdf('${c.id}','s')" title="請求書PDF: ${esc(c.pdf_seikyuu.name)}" style="cursor:pointer;font-size:9px;background:#f1f8e9;border:1px solid #dcedc8;border-radius:4px;padding:0 4px;margin-left:4px;color:#558b2f;white-space:nowrap">📄請求</span>`);
     const shikou=Math.max(0,r.js-r.km);
     const seikyuuDate=c.seikyuu_c_date?new Date(c.seikyuu_c_date):null;
     const daysSinceSeikyuu=seikyuuDate?Math.floor((new Date()-seikyuuDate)/(1000*60*60*24)):0;
@@ -2074,11 +2077,11 @@ function renderMonthly(){
       <td style="white-space:nowrap;font-size:10px;padding:2px">
         <input type="month" value="${c.kouki_s||''}" onchange="updField('${c.id}','kouki_s',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">〜<input type="month" value="${c.kouki_e||''}" onchange="updField('${c.id}','kouki_e',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">
       </td>
-      <td ${ec} onclick="editCell('${c.id}','place',this)">${c.place||''}</td>
-      <td ${ec} onclick="editCell('${c.id}','client',this)">${c.client||''}</td>
-      <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${c.tantou||''}</td>
-      <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${c.kouji||''}${pdfs.join('')}</td>
-      <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${c.kubun||''}</td>
+      <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}</td>
+      <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
+      <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
+      <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${pdfs.join('')}</td>
+      <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(bm)}</td>
       <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">${r.js>r.jh?`<span style="color:#c62828;font-weight:700" title="累計請求が発注額を超えています。金額を確認してください">▲¥${fmt(r.js-r.jh)}超過</span>`:'¥'+fmt(r.remaining)}</td>
@@ -2100,7 +2103,7 @@ function renderMonthly(){
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
       <td class="ctr">${chakkouCk}</td>
       <td class="ctr">${doneCk}</td>
-      <td style="cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${(c.biko||'').replace(/"/g,'&quot;')}　クリックでメモ編集" onclick="editMemo('${c.id}',this)">${c.biko?'📝':'＋'}${isMorei?'<span style="color:#c62828;font-size:9px;font-weight:700"> ⚠'+daysSinceSeikyuu+'日</span>':''}</td>
+      <td style="cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.biko||'')}　クリックでメモ編集" onclick="editMemo('${c.id}',this)">${c.biko?'📝':'＋'}${isMorei?'<span style="color:#c62828;font-size:9px;font-weight:700"> ⚠'+daysSinceSeikyuu+'日</span>':''}</td>
       <td class="ctr" style="white-space:nowrap">
         ${c.seikyuu_c!=='✓'?`<button class="btn bx btn-sm edit-only" onclick="miSeikyuu('${c.id}')" title="完工できず来月に繰越">未請</button>`:''}
         ${c.seikyuu_c==='✓'&&c.nyukin_c!=='✓'?`<button class="btn bx btn-sm edit-only" onclick="togMorei('${c.id}')" title="請求済だが着金未確認→次月へ" style="font-size:9px;color:#c62828">請求漏</button>`:''}
@@ -2130,15 +2133,15 @@ function renderMonthly(){
     const r=calc(c);
     return `<div class="card" style="margin-bottom:10px">
       <div class="card-hdr ch-nav">
-        <div><div style="font-weight:800;font-size:14px">${c.place||'（未入力）'}</div>
-        <div style="font-size:11px;opacity:.8">${c.date||''} ${c.client||''} ${c.tantou?'/ '+c.tantou:''}</div></div>
+        <div><div style="font-weight:800;font-size:14px">${esc(c.place||'（未入力）')}</div>
+        <div style="font-size:11px;opacity:.8">${c.date||''} ${esc(c.client||'')} ${c.tantou?'/ '+esc(c.tantou):''}</div></div>
         <div style="display:flex;gap:4px">
           <button class="btn bo btn-sm edit-only" onclick="editCase('${c.id}')">編集</button>
           <button class="btn br btn-sm del-only" onclick="delCase('${c.id}')">削</button>
         </div>
       </div>
       <div class="card-body">
-        ${c.kouji?`<div style="font-size:12px;color:#666;margin-bottom:8px">${c.kubun?'【'+c.kubun+'】':''} ${c.kouji}</div>`:''}
+        ${c.kouji?`<div style="font-size:12px;color:#666;margin-bottom:8px">${c.kubun?'【'+esc(c.kubun)+'】':''} ${esc(c.kouji)}</div>`:''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:10px">
           <div style="background:#f0f8f0;border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">自社請求（税込）</div><div style="font-weight:700">¥${fmt(r.js)}</div></div>
           <div style="background:${r.misu>0?'#fff0f0':'#f0f8f0'};border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">未収金</div><div style="font-weight:700;color:${r.misu>0?'#c62828':'#2e7d32'}">¥${fmt(r.misu)}</div></div>
@@ -2158,7 +2161,7 @@ function renderMonthly(){
           ${mkCk2(c.zan_s,c.id,'zan_s','g','残請求')}
           ${mkCk2(c.mi_s,c.id,'mi_s','g','未請求')}
         </div>
-        ${c.biko?`<div style="font-size:11px;color:#888;border-top:1px solid #eee;padding-top:6px;margin-top:6px">📝 ${c.biko}</div>`:''}
+        ${c.biko?`<div style="font-size:11px;color:#888;border-top:1px solid #eee;padding-top:6px;margin-top:6px">📝 ${esc(c.biko)}</div>`:''}
       </div>
     </div>`;
   }).join(''):`<div class="empty">この月のデータなし<br><small>右下＋から追加</small></div>`;
@@ -2221,8 +2224,8 @@ function renderMaster(){
     return `<tr class="${i%2?'alt':''}">
       <td class="ctr no-print"><input type="checkbox" class="ma-ck" data-id="${c.id}" onchange="maUpdateBatch()" style="width:16px;height:16px"></td>
       <td class="ctr">${cMo(c)}</td><td class="ctr">${c.date||''}</td>
-      <td>${c.place||''}</td><td>${c.client||''}</td><td class="ctr">${c.tantou||''}</td>
-      <td>${c.kouji||''}</td><td class="ctr">${c.kubun||''}</td>
+      <td>${esc(c.place||'')}</td><td>${esc(c.client||'')}</td><td class="ctr">${esc(c.tantou||'')}</td>
+      <td>${esc(c.kouji||'')}</td><td class="ctr">${esc(c.kubun||'')}</td>
       <td class="ctr"><span class="sekou ${c.jisha_sekou==='✓'?(r.cnt>0?'sk-joint':'sk-self'):(r.cnt>0?'sk-other':'')}" style="font-size:9px">${c.jisha_sekou==='✓'?(r.cnt>0?'合同':'自社'):(r.cnt>0?'単独':'—')}</span></td>
       <td class="num" style="font-weight:700">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" style="cursor:pointer" onclick="editBillings('${c.id}',this)">¥${fmt(r.js)}</td>
@@ -2238,7 +2241,7 @@ function renderMaster(){
       <td class="ctr">${ck(c.seikyuu_c)}</td><td class="ctr">${ck(c.nyukin_c)}</td>
       <td class="ctr">${ck(c.shashin)}</td><td class="ctr">${ck(c.zando)}</td>
       <td class="ctr">${ck(isDone(c)?'✓':'')}</td>
-      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${c.biko||''}</td>
+      <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${esc(c.biko||'')}</td>
       <td class="ctr" style="white-space:nowrap"><button class="btn bo btn-sm edit-only" onclick="editCase('${c.id}')">編</button> <button class="btn br btn-sm del-only" onclick="delCase('${c.id}')">削</button></td>
     </tr>`;
   }).join('')||`<tr><td colspan="27" class="empty">データなし</td></tr>`;
@@ -2327,12 +2330,12 @@ function renderPrint(){
       <td class="ctr no-print"><input type="checkbox" class="pr-ck" data-id="${c.id}" onchange="updateBatchBar()" style="width:16px;height:16px"></td>
       <td class="ctr">${i+1}</td>
       <td class="ctr" ${pe} onclick="editCell('${c.id}','date',this,'month')">${c.date||''}</td>
-      <td ${pe} onclick="editCell('${c.id}','place',this)">${c.place||''}</td>
-      <td ${pe} onclick="editCell('${c.id}','client',this)">${c.client||''}</td>
-      <td class="ctr" ${pe} onclick="editCell('${c.id}','branch',this)">${c.branch||''}</td>
-      <td class="ctr" ${pe} onclick="editCell('${c.id}','tantou',this)">${c.tantou||''}</td>
-      <td ${pe} onclick="editCell('${c.id}','kouji',this)">${c.kouji||''}</td>
-      <td class="ctr" ${pe} onclick="editCell('${c.id}','kubun',this)">${c.kubun||''}</td>
+      <td ${pe} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}</td>
+      <td ${pe} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
+      <td class="ctr" ${pe} onclick="editCell('${c.id}','branch',this)">${esc(c.branch||'')}</td>
+      <td class="ctr" ${pe} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
+      <td ${pe} onclick="editCell('${c.id}','kouji',this)">${esc(c.kouji||'')}</td>
+      <td class="ctr" ${pe} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
       <td class="num" ${pe} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${pe} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(r.js)}</td>
       <td class="ctr" ${pe} onclick="editCell('${c.id}','seikyuu_t',this,'month')">${c.seikyuu_t||''}</td>
@@ -2550,7 +2553,7 @@ function renderDash(){
   // ── 発注残高・進捗管理 ──
   const prog=S.cases.filter(c=>calc(c).remaining>0).map(c=>({c,r:calc(c)})).sort((a,b)=>b.r.remaining-a.r.remaining);
   const progBody=prog.length?prog.map(({c,r})=>{const p=pct(r.js,r.jh);return `<div style="padding:8px 0;border-bottom:1px solid #eee;cursor:pointer" onclick="editBillings('${c.id}',this)">
-    <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px"><span style="font-weight:700">${c.place||''} ${c.kouji||''} <span style="color:#999;font-weight:400">${c.client||''}</span></span><span style="font-weight:700;color:#1565c0;white-space:nowrap">残 ¥${fmt(r.remaining)}</span></div>
+    <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px"><span style="font-weight:700">${esc(c.place||'')} ${esc(c.kouji||'')} <span style="color:#999;font-weight:400">${esc(c.client||'')}</span></span><span style="font-weight:700;color:#1565c0;white-space:nowrap">残 ¥${fmt(r.remaining)}</span></div>
     <div style="display:flex;height:14px;border-radius:5px;overflow:hidden;background:#e0e0e0"><div style="width:${p}%;background:#1565c0"></div></div>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:#888;margin-top:2px"><span>請求 ¥${fmt(r.js)} / 発注 ¥${fmt(r.jh)}</span><span>進捗 ${fmtP(p)}</span></div>
   </div>`;}).join(''):'<div class="empty" style="padding:14px">未請求残なし ✓</div>';
@@ -2593,10 +2596,10 @@ function renderDash(){
 
   // ── 未収金・未払残 / 現場チェック（全期間） ──
   const alerts=S.cases.filter(c=>calc(c).misu>0||calc(c).miharai>0).sort((a,b)=>calc(b).misu-calc(a).misu);
-  const alertBody=alerts.length?alerts.map(c=>{const r=calc(c);return `<tr style="cursor:pointer" onclick="editCase('${c.id}')"><td class="ctr">${c.seikyuu_t||''}</td><td>${c.place||''}</td><td>${c.client||''}</td><td class="${r.misu>0?'cl':''}">¥${fmt(r.misu)}</td><td class="${r.miharai>0?'cw':''}">¥${fmt(r.miharai)}</td><td class="ctr">${isDone(c)?'<span class="badge bd-g">完了</span>':'<span class="badge bd-r">未完了</span>'}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">未収金・未払残なし ✓</td></tr>';
+  const alertBody=alerts.length?alerts.map(c=>{const r=calc(c);return `<tr style="cursor:pointer" onclick="editCase('${c.id}')"><td class="ctr">${c.seikyuu_t||''}</td><td>${esc(c.place||'')}</td><td>${esc(c.client||'')}</td><td class="${r.misu>0?'cl':''}">¥${fmt(r.misu)}</td><td class="${r.miharai>0?'cw':''}">¥${fmt(r.miharai)}</td><td class="ctr">${isDone(c)?'<span class="badge bd-g">完了</span>':'<span class="badge bd-r">未完了</span>'}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">未収金・未払残なし ✓</td></tr>';
   const unchk=S.cases.filter(c=>c.shashin!=='✓'||c.zando!=='✓'||c.kakunin!=='✓'||c.mail!=='✓');
   const ck2=v=>v==='✓'?'<span class="badge bd-g">✓</span>':'<span class="badge bd-r">未</span>';
-  const chkBody=unchk.length?unchk.slice(0,20).map(c=>`<tr><td class="ctr">${c.seikyuu_t||''}</td><td>${c.place||''}</td><td class="ctr">${ck2(c.shashin)}</td><td class="ctr">${ck2(c.zando)}</td><td class="ctr">${ck2(c.kakunin)}</td><td class="ctr">${ck2(c.mail)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">全件チェック済 ✓</td></tr>';
+  const chkBody=unchk.length?unchk.slice(0,20).map(c=>`<tr><td class="ctr">${c.seikyuu_t||''}</td><td>${esc(c.place||'')}</td><td class="ctr">${ck2(c.shashin)}</td><td class="ctr">${ck2(c.zando)}</td><td class="ctr">${ck2(c.kakunin)}</td><td class="ctr">${ck2(c.mail)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">全件チェック済 ✓</td></tr>';
   const bottom=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px">
     <div class="card"><div class="card-hdr ch-red">⚠️ 未収金・未払残（全期間）</div><div class="twrap"><table style="min-width:340px"><thead><tr><th>請求月</th><th>場所</th><th>発注者</th><th>未収金</th><th>未払残</th><th>完了</th></tr></thead><tbody>${alertBody}</tbody></table></div></div>
     <div class="card"><div class="card-hdr ch-org">📷 現場チェック未完了</div><div class="twrap"><table style="min-width:340px"><thead><tr><th>請求月</th><th>場所</th><th>写真</th><th>残土</th><th>確認</th><th>メール</th></tr></thead><tbody>${chkBody}</tbody></table></div></div>
@@ -2604,18 +2607,18 @@ function renderDash(){
 
   // ── 赤字・低粗利アラート（粗利率15%未満。協力会社のある案件のみ） ──
   const lp=S.cases.filter(c=>{const r=calc(c);const isSelf=c.jisha_sekou==='✓';const applicable=r.cnt>0&&(r.hasJuchu||!isSelf)&&(r.ksr>0||r.km>0)&&fn(c.jisha_h)>0;return applicable&&projArariRate(c)<0.15;}).map(c=>{const rate=projArariRate(c);return {c,rate,gp:Math.round(fn(c.jisha_h)*rate)};}).sort((a,b)=>a.rate-b.rate);
-  const lpBody=lp.length?lp.map(({c,rate,gp})=>{const red=gp<0;return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eee;cursor:pointer" onclick="editCase('${c.id}')"><span style="font-size:12px">${red?'🔴':'🟡'} ${c.place||''} ${c.kouji||''} <span style="color:#999">${c.client||''}</span></span><span style="font-weight:700;color:${red?'#c62828':'#e65100'};white-space:nowrap">粗利¥${fmt(gp)}（${fmtP(rate*100)}）</span></div>`;}).join(''):'<div class="empty" style="padding:14px">赤字・低粗利の案件はありません ✓</div>';
+  const lpBody=lp.length?lp.map(({c,rate,gp})=>{const red=gp<0;return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eee;cursor:pointer" onclick="editCase('${c.id}')"><span style="font-size:12px">${red?'🔴':'🟡'} ${esc(c.place||'')} ${esc(c.kouji||'')} <span style="color:#999">${esc(c.client||'')}</span></span><span style="font-weight:700;color:${red?'#c62828':'#e65100'};white-space:nowrap">粗利¥${fmt(gp)}（${fmtP(rate*100)}）</span></div>`;}).join(''):'<div class="empty" style="padding:14px">赤字・低粗利の案件はありません ✓</div>';
   const lpCard=`<div class="card"><div class="card-hdr ch-red">⚠️ 赤字・低粗利アラート（粗利率15%未満 / ${lp.length}件）</div><div class="card-body" style="max-height:300px;overflow-y:auto">${lpBody}</div></div>`;
 
   // ── 入金予定チェックリスト（〜今月。通帳照合→まとめて消込） ──
   const curM=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
   const ny=S.cases.map(c=>({c,m:calc(c).misu,due:nyuyoteiYM(c)})).filter(x=>x.m>0&&x.due&&x.due<=curM).sort((a,b)=>(a.due||'').localeCompare(b.due||''));
-  const nyBody=ny.length?ny.map(({c,m,due})=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eee"><span style="font-size:12px;cursor:pointer" onclick="editCase('${c.id}')"><b>${due}</b> ${c.client||''} ${c.place||''} ${c.kouji||''}</span><span style="display:flex;align-items:center;gap:6px;white-space:nowrap"><b style="color:#c62828">¥${fmt(m)}</b><button class="btn bg btn-sm" onclick="markPaidFull('${c.id}')">入金済</button></span></div>`).join(''):'<div class="empty" style="padding:14px">今月までの入金予定はありません ✓</div>';
+  const nyBody=ny.length?ny.map(({c,m,due})=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eee"><span style="font-size:12px;cursor:pointer" onclick="editCase('${c.id}')"><b>${due}</b> ${esc(c.client||'')} ${esc(c.place||'')} ${esc(c.kouji||'')}</span><span style="display:flex;align-items:center;gap:6px;white-space:nowrap"><b style="color:#c62828">¥${fmt(m)}</b><button class="btn bg btn-sm" onclick="markPaidFull('${c.id}')">入金済</button></span></div>`).join(''):'<div class="empty" style="padding:14px">今月までの入金予定はありません ✓</div>';
   const nyCard=`<div class="card"><div class="card-hdr ch-grn">💰 入金予定チェックリスト（〜今月 / ${ny.length}件・¥${fmt(ny.reduce((a,x)=>a+x.m,0))}）</div><div class="card-body" style="max-height:340px;overflow-y:auto">${nyBody}</div></div>`;
 
   // ── 最近の操作 ──
   const recent=actLog.slice(0,8);
-  const logBody=recent.length?recent.map(l=>{const badgeCls={add:'add',edit:'edit',del:'del',check:'check'}[l.action]||'edit';const badgeLbl={add:'追加',edit:'編集',del:'削除',check:'チェック'}[l.action]||l.action;const t=new Date(l.time);const tss=`${(t.getMonth()+1)}/${t.getDate()} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;return `<div class="log-item"><div class="avatar sm" style="background:${l.avColor||'#2e75b6'}">${l.avIcon||l.userName.charAt(0)}</div><div class="log-body"><div style="display:flex;align-items:center;gap:6px"><span class="log-user">${l.userName}</span><span class="log-time">${tss}</span></div><div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${l.detail||''}</div></div></div>`;}).join(''):'<div class="empty">操作ログなし</div>';
+  const logBody=recent.length?recent.map(l=>{const badgeCls={add:'add',edit:'edit',del:'del',check:'check'}[l.action]||'edit';const badgeLbl={add:'追加',edit:'編集',del:'削除',check:'チェック'}[l.action]||l.action;const t=new Date(l.time);const tss=`${(t.getMonth()+1)}/${t.getDate()} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;return `<div class="log-item"><div class="avatar sm" style="background:${esc(l.avColor||'#2e75b6')}">${esc(l.avIcon||l.userName.charAt(0))}</div><div class="log-body"><div style="display:flex;align-items:center;gap:6px"><span class="log-user">${esc(l.userName)}</span><span class="log-time">${tss}</span></div><div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${esc(l.detail||'')}</div></div></div>`;}).join(''):'<div class="empty">操作ログなし</div>';
   const logCard=`<div class="card"><div class="card-hdr ch-nav">📝 最近の操作</div><div class="card-body" style="max-height:240px;overflow-y:auto">${logBody}</div></div>`;
 
   // ── バックアップ未実施の警告（データはブラウザ内のため消失リスク） ──
@@ -2697,7 +2700,7 @@ function markPaidFull(id){
   if((c.billings||[]).length){(c.billings).forEach(b=>{if(fn(b.amount)>0&&fn(b.nyukin)<fn(b.amount)){b.nyukin=b.amount;if(!b.nyukin_d)b.nyukin_d=today;}});syncBillings(id);}
   else{c.nyukin=String(js);if(!c.nyukin_d)c.nyukin_d=today;}
   c.nyukin_c='✓';
-  sv();addLog('check',`${c.place||''}を入金済（消込）`);renderAll();
+  sv();addLog('check',`${esc(c.place||'')}を入金済（消込）`);renderAll();
 }
 // ── 協力会社への支払（振込）リスト印刷 ──
 function printShiharaiList(){
@@ -3551,11 +3554,11 @@ function saveCase(cont){
     const old=S.cases.find(c=>c.id===editId)||{};
     CK.forEach(f=>{base[f]=old[f]||'';});
     S.cases=S.cases.map(c=>c.id===editId?base:c);
-    addLog('edit',`${base.place||''}（${base.client||''}）を編集`);
+    addLog('edit',`${esc(base.place||'')}（${esc(base.client||'')}）を編集`);
   } else {
     CK.forEach(f=>{base[f]='';});
     S.cases.push(base);
-    addLog('add',`${base.place||''}（${base.client||''}）を追加`);
+    addLog('add',`${esc(base.place||'')}（${esc(base.client||'')}）を追加`);
   }
   sv();
   // 工事経歴書テンプレート保存
@@ -3576,7 +3579,7 @@ function delCase(id){
   if(!canDelete()){alert('削除権限がありません');return;}
   if(!confirm('削除しますか？'))return;
   const c=S.cases.find(c=>c.id===id);
-  addLog('del',`${c?c.place:''}（${c?c.client:''}）を削除`);
+  addLog('del',`${esc(c?c.place:'')}（${esc(c?c.client:'')}）を削除`);
   S.cases=S.cases.filter(c=>c.id!==id);sv();renderAll();
 }
 function updField(id,field,val){const c=S.cases.find(x=>x.id===id);if(!c)return;c[field]=val;sv();}
@@ -3587,8 +3590,8 @@ function togChakkou(id){
   const mk=getMK(getYr(),getMo());
   const ks=(c.kouki_s||'').slice(0,7);
   const on=!!ks&&ks!=='未定'&&ks<=mk;   // すでに着工済み（当月以前）か
-  if(on){ c.kouki_s=''; addLog('check',`${c.place||''}の「着工（工期開始）」を解除`); }
-  else { c.kouki_s=mk; addLog('check',`${c.place||''}の「着工（工期開始）」を${mk}に設定`); }
+  if(on){ c.kouki_s=''; addLog('check',`${esc(c.place||'')}の「着工（工期開始）」を解除`); }
+  else { c.kouki_s=mk; addLog('check',`${esc(c.place||'')}の「着工（工期開始）」を${mk}に設定`); }
   sv();renderMonthly();
 }
 // 入金チェック（月毎で完結）：表示中の月の請求分だけを入金済/未入金に切り替える。他の月には影響しない
@@ -3602,7 +3605,7 @@ function togNyukinMonth(id){
     const allPaid=mbs.every(b=>fn(b.nyukin)>=fn(b.amount));
     mbs.forEach(b=>{ if(allPaid){b.nyukin='0';b.nyukin_d='';} else {b.nyukin=b.amount;b.nyukin_d=new Date().toISOString().slice(0,10);} });
     syncBillings(id);
-    addLog('check',`${c.place||''} ${mk}分の入金を${allPaid?'未入金':'入金済'}に`);
+    addLog('check',`${esc(c.place||'')} ${mk}分の入金を${allPaid?'未入金':'入金済'}に`);
   } else {
     // billings未生成(旧データ)：当月＝記入月/請求月なら jisha_s 全体の入金をトグル
     const cm=(c.seikyuu_t||c.date||'').slice(0,7);
@@ -3610,7 +3613,7 @@ function togNyukinMonth(id){
       const paid=fn(c.nyukin)>=fn(c.jisha_s);
       c.nyukin=paid?'0':String(fn(c.jisha_s));c.nyukin_d=paid?'':new Date().toISOString().slice(0,10);
       c.nyukin_c=paid?'':'✓';c.kanryo=isDone(c)?'✓':'';sv();
-      addLog('check',`${c.place||''} ${mk}分の入金を${paid?'未入金':'入金済'}に`);
+      addLog('check',`${esc(c.place||'')} ${mk}分の入金を${paid?'未入金':'入金済'}に`);
     } else { alert('この月には請求（出来高）がありません。「請求額」欄から請求を登録してください。');return; }
   }
   renderMonthly();
@@ -3635,7 +3638,7 @@ function togMorei(id){
   c.date=next;
   c.more_flag='✓';
   c.seikyuu_c='';c.nyukin_c='';c.seikyuu_c_date='';   // 繰越先では請済/入済チェックを空に
-  sv();addLog('edit',`${c.place||''}を請求漏れ→${next}に移動`);renderAll();
+  sv();addLog('edit',`${esc(c.place||'')}を請求漏れ→${next}に移動`);renderAll();
 }
 function clearMorei(id){
   if(!canEdit())return;
@@ -3649,7 +3652,7 @@ function clearMorei(id){
   c.date=prev;
   c.more_flag='';
   c.more_prev='';
-  sv();addLog('edit',`${c.place||''}を請求漏れ解除→${prev}に戻す`);renderAll();
+  sv();addLog('edit',`${esc(c.place||'')}を請求漏れ解除→${prev}に戻す`);renderAll();
 }
 function editKoukiSel(id,el){
   if(!canEdit())return;
@@ -3690,7 +3693,7 @@ function miSeikyuu(id){
   c.date=next;
   c.seikyuu_c='';c.nyukin_c='';c.seikyuu_c_date='';   // 繰越先では請済/入済チェックを空に
   sv();
-  addLog('edit',`${c.place||''}を未請求→${next}に繰越`);
+  addLog('edit',`${esc(c.place||'')}を未請求→${next}に繰越`);
   renderAll();
 }
 
@@ -3785,17 +3788,7 @@ function doExcelBackup(){
   ws3['!cols']=[{wch:18},{wch:14},{wch:10},{wch:40}];
   XLSX.utils.book_append_sheet(wb,ws3,'操作ログ');
 
-  // Sheet4: ユーザー情報（マスターのみ）
-  if(isMaster()){
-    const uHeaders=['名前','メール','パスワード','権限','ステータス','登録日'];
-    const uRows=allUsers.map(u=>[
-      u.name,u.email,atob(u.pass),roleName(u.role),
-      u.status==='approved'?'承認済':'承認待ち',(u.created||'').slice(0,10)
-    ]);
-    const ws4=XLSX.utils.aoa_to_sheet([uHeaders,...uRows]);
-    ws4['!cols']=[{wch:14},{wch:24},{wch:16},{wch:16},{wch:10},{wch:12}];
-    XLSX.utils.book_append_sheet(wb,ws4,'ユーザー情報');
-  }
+  // ※Sheet4(ユーザー情報+平文パスワード)は 2026-07-13 に削除。認証情報はバックアップへ出さない。
 
   // ダウンロード
   const now=new Date();
@@ -3968,9 +3961,9 @@ function showImportPreview(cases){
     if(isDup)dupCount++;else newCount++;
     return `<tr class="${isDup?'':''}${i%2?'alt':''}" style="${isDup?'opacity:.4;text-decoration:line-through':''}">
       <td>${isDup?'⛔':'✅'}</td>
-      <td>${c.place}</td><td>${c.client}</td><td>${c.tantou}</td>
-      <td>${c.kouji}</td><td>${c.kubun}</td>
-      <td>${(c.kyousha_list||[]).map(k=>k.name).join(',')}</td>
+      <td>${esc(c.place)}</td><td>${esc(c.client)}</td><td>${esc(c.tantou)}</td>
+      <td>${esc(c.kouji)}</td><td>${esc(c.kubun)}</td>
+      <td>${esc((c.kyousha_list||[]).map(k=>k.name).join(','))}</td>
       <td class="num">¥${fmt(fn(c.jisha_h))}</td><td class="num" style="cursor:pointer" onclick="editBillings('${c.id}',this)">¥${fmt(r.js)}</td>
       <td>${c.jisha_sekou==='✓'?'自社':'単独'}</td>
     </tr>`;
@@ -4009,7 +4002,7 @@ function handleJsonFile(file){
     try{
       const arr=JSON.parse(text);
       if(Array.isArray(arr)){
-        document.getElementById('jsonDropZone').innerHTML=`<div style="color:#2e7d32;font-weight:700">✅ ${file.name}（${arr.length}件）読み込み済み</div>`;
+        document.getElementById('jsonDropZone').innerHTML=`<div style="color:#2e7d32;font-weight:700">✅ ${esc(file.name)}（${arr.length}件）読み込み済み</div>`;
         showImportPreview(arr);
       }
     }catch(ex){}
@@ -4157,7 +4150,7 @@ function renderJyuchu(){
   const isTaxExcl=(vg('kr_tax')||'税込')==='税抜';
   const cases=krJyuchuList();let tot=0;
   const rows=cases.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;
-    return `<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="ctr">${krYM(c.kouki_s,'jyuchu')}</td><td class="ctr">${krYM(c.kouki_e,'jyuchu')}</td><td class="num">¥${fmt(a)}</td><td>${c.biko||''}</td></tr>`;}).join('');
+    return `<tr><td class="ctr">${i+1}</td><td>${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${esc(c.genba||c.place||'')}</td><td class="ctr">${krYM(c.kouki_s,'jyuchu')}</td><td class="ctr">${krYM(c.kouki_e,'jyuchu')}</td><td class="num">¥${fmt(a)}</td><td>${esc(c.biko||'')}</td></tr>`;}).join('');
   el.innerHTML=`<div class="card"><div class="card-hdr ch-grn"><span>🏗️ 工事受注表（着工前・受注見込み）</span><span style="font-size:11px;opacity:.85">完了を除く・${cases.length}件・${isTaxExcl?'税抜':'税込'}</span></div>
   <div style="padding:8px 14px;font-size:11px;color:#666">※「完了」未チェック・受注金額あり・未請求で、工期開始がまだ先（または未定）の受注工事を表示。銀行提出用。着工して請求が立つ、または「完了」にチェックすると自動で一覧から外れます。</div>
   <div class="twrap"><table style="min-width:780px"><thead><tr><th>No</th><th style="text-align:left">受注先（注文者）</th><th style="text-align:left">工事名</th><th style="text-align:left">工事場所</th><th>着工予定</th><th>完成予定</th><th>請負金額</th><th style="text-align:left">備考</th></tr></thead>
@@ -4170,7 +4163,7 @@ function renderKanryo(){
   const yr=vg('kr_year')||'';
   const cases=krKanryoList();let tot=0;
   const rows=cases.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;
-    return `<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="ctr">${krYM(c.kouki_s,'kanryo')}</td><td class="ctr">${krYM(c.kouki_e,'kanryo')}</td><td class="num">¥${fmt(a)}</td></tr>`;}).join('');
+    return `<tr><td class="ctr">${i+1}</td><td>${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${esc(c.genba||c.place||'')}</td><td class="ctr">${krYM(c.kouki_s,'kanryo')}</td><td class="ctr">${krYM(c.kouki_e,'kanryo')}</td><td class="num">¥${fmt(a)}</td></tr>`;}).join('');
   el.innerHTML=`<div class="card"><div class="card-hdr ch-nav"><span>✅ 完了工事表</span><span style="font-size:11px;opacity:.85">${yr?yr+'年完成・':''}${cases.length}件・${isTaxExcl?'税抜':'税込'}</span></div>
   <div style="padding:8px 14px;font-size:11px;color:#666">※「完了」にチェックした工事を表示。対象年度で絞り込みできます（完成月の年で判定）。</div>
   <div class="twrap"><table style="min-width:740px"><thead><tr><th>No</th><th style="text-align:left">注文者</th><th style="text-align:left">工事名</th><th style="text-align:left">工事場所</th><th>着工</th><th>完成</th><th>請負金額</th></tr></thead>
@@ -4197,12 +4190,12 @@ function printSimpleReport(kind){
   if(kind==='jyuchu'){
     cs=krJyuchuList();title='工 事 受 注 表';sub='（着工前・受注見込み工事　'+(isTaxExcl?'税抜':'税込')+'）';
     headHtml='<th>No</th><th>受注先（注文者）</th><th>工事名</th><th>工事場所</th><th>着工予定</th><th>完成予定</th><th>請負金額</th><th>備考</th>';
-    rowsHtml=cs.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;return `<tr><td class="c">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="c">${krYM(c.kouki_s,'jyuchu')}</td><td class="c">${krYM(c.kouki_e,'jyuchu')}</td><td class="r">${fmt(a)}</td><td>${c.biko||''}</td></tr>`;}).join('');
+    rowsHtml=cs.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;return `<tr><td class="c">${i+1}</td><td>${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${esc(c.genba||c.place||'')}</td><td class="c">${krYM(c.kouki_s,'jyuchu')}</td><td class="c">${krYM(c.kouki_e,'jyuchu')}</td><td class="r">${fmt(a)}</td><td>${esc(c.biko||'')}</td></tr>`;}).join('');
     footColspan=6;footExtra='<td></td>';
   }else{
     cs=krKanryoList();const yr=vg('kr_year')||'';title='完 了 工 事 表';sub='（'+(yr?yr+'年完成・':'')+(isTaxExcl?'税抜':'税込')+'）';
     headHtml='<th>No</th><th>注文者</th><th>工事名</th><th>工事場所</th><th>着工</th><th>完成</th><th>請負金額</th>';
-    rowsHtml=cs.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;return `<tr><td class="c">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="c">${krYM(c.kouki_s,'kanryo')}</td><td class="c">${krYM(c.kouki_e,'kanryo')}</td><td class="r">${fmt(a)}</td></tr>`;}).join('');
+    rowsHtml=cs.map((c,i)=>{const a=krAmt(c,isTaxExcl);tot+=a;return `<tr><td class="c">${i+1}</td><td>${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${esc(c.genba||c.place||'')}</td><td class="c">${krYM(c.kouki_s,'kanryo')}</td><td class="c">${krYM(c.kouki_e,'kanryo')}</td><td class="r">${fmt(a)}</td></tr>`;}).join('');
     footColspan=6;
   }
   const w=window.open('','_blank','width=1000,height=800');
@@ -4273,7 +4266,7 @@ function renderGyoshuShukei(){
       <div class="card-hdr" style="background:${over.length?'#c62828':'#e0a800'};color:#fff">⚠ 管工事（無許可）チェック</div>
       <div class="card-body" style="font-size:12px">
         年間合計 <b>¥${fmt(kan.sum)}</b>（${kan.cnt}件）／ 最高単価 <b>¥${fmt(maxAmt)}</b>（税込）
-        ${over.length?`<div style="color:#c62828;font-weight:700;margin-top:6px">🚨 税込500万円以上が ${over.length}件（無許可営業の恐れ）：<br>${over.map(c=>`・${c.client||''} ${c.kouji||''}（¥${fmt(fn(c.jisha_h))}）`).join('<br>')}</div>`:`<div style="color:#2e7d32;margin-top:6px">✓ 税込500万円以上の管工事はありません（軽微の範囲内）。</div>`}
+        ${over.length?`<div style="color:#c62828;font-weight:700;margin-top:6px">🚨 税込500万円以上が ${over.length}件（無許可営業の恐れ）：<br>${over.map(c=>`・${esc(c.client||'')} ${esc(c.kouji||'')}（¥${fmt(fn(c.jisha_h))}）`).join('<br>')}</div>`:`<div style="color:#2e7d32;margin-top:6px">✓ 税込500万円以上の管工事はありません（軽微の範囲内）。</div>`}
       </div></div>`;
   }
   const sumRows=sortedKeys.map(k=>{
@@ -4284,7 +4277,7 @@ function renderGyoshuShukei(){
     const g=groups[k];
     const rows=g.list.slice().sort((a,b)=>krYen(b,isTaxExcl)-krYen(a,isTaxExcl)).map((c,i)=>{
       const amt=krYen(c,isTaxExcl);
-      return `<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td style="text-align:right">¥${fmt(amt)}</td><td class="ctr">${c.moto_shita||''}</td><td class="ctr">${toReiwa(c.kouki_s)}</td><td class="ctr">${toReiwa(c.kouki_e)}</td></tr>`;
+      return `<tr><td class="ctr">${i+1}</td><td>${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${esc(c.genba||c.place||'')}</td><td style="text-align:right">¥${fmt(amt)}</td><td class="ctr">${c.moto_shita||''}</td><td class="ctr">${toReiwa(c.kouki_s)}</td><td class="ctr">${toReiwa(c.kouki_e)}</td></tr>`;
     }).join('');
     return `<div class="card" style="margin-bottom:10px"><div class="card-hdr ch-nav"><span>${k}</span><span style="font-size:11px;opacity:.85">${g.cnt}件・¥${fmt(g.sum)}</span></div>
       <div class="twrap"><table style="min-width:680px;font-size:11px"><thead><tr style="background:#eef"><th>No</th><th style="text-align:left">注文者</th><th style="text-align:left">工事名</th><th style="text-align:left">現場所在地</th><th>請負金額</th><th>元/下</th><th>着工</th><th>完成</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
@@ -4327,7 +4320,7 @@ function printGyoshuShukei(){
   const jisha=S.masters.jisha_name||'';const today=new Date().toLocaleDateString('ja-JP');
   let sum=sortedKeys.map(k=>{const g=groups[k];return `<tr><td>${k}</td><td class="c">${g.cnt}</td><td class="r">${fmt(g.moto)}</td><td class="r">${fmt(g.shita)}</td><td class="r">${fmt(g.sum)}</td></tr>`;}).join('');
   let detail=sortedKeys.map(k=>{const g=groups[k];
-    const rows=g.list.slice().sort((a,b)=>krYen(b,isTaxExcl)-krYen(a,isTaxExcl)).map((c,i)=>`<tr><td class="c">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.genba||c.place||''}</td><td class="r">${fmt(krYen(c,isTaxExcl))}</td><td class="c">${c.moto_shita||''}</td><td class="c">${toReiwa(c.kouki_s)}</td><td class="c">${toReiwa(c.kouki_e)}</td></tr>`).join('');
+    const rows=g.list.slice().sort((a,b)=>krYen(b,isTaxExcl)-krYen(a,isTaxExcl)).map((c,i)=>`<tr><td class="c">${i+1}</td><td>${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${esc(c.genba||c.place||'')}</td><td class="r">${fmt(krYen(c,isTaxExcl))}</td><td class="c">${c.moto_shita||''}</td><td class="c">${toReiwa(c.kouki_s)}</td><td class="c">${toReiwa(c.kouki_e)}</td></tr>`).join('');
     return `<h3>${k}（${g.cnt}件・計 ${fmt(g.sum)}）</h3><table><thead><tr><th>No</th><th>注文者</th><th>工事名</th><th>現場所在地</th><th>請負金額</th><th>元/下</th><th>着工</th><th>完成</th></tr></thead><tbody>${rows}</tbody></table>`;
   }).join('');
   const w=window.open('','_blank','width=1000,height=800');
@@ -4420,7 +4413,7 @@ function krMiseiHtml(yr,isTaxExcl){
     return !ke||ke>end;   // 年度末時点で未完成（工期終了が未入力 or 年度末より後）
   }).sort((a,b)=>fn(b.jisha_h)-fn(a.jisha_h));
   if(!list.length)return '';
-  const rows=list.map((c,i)=>`<tr><td class="ctr">${i+1}</td><td>${c.client||''}</td><td>${c.kouji||''}</td><td>${c.kouji_type||''}</td><td>${c.genba||c.place||''}</td><td style="text-align:right">¥${fmt(krYen(c,isTaxExcl))}</td><td class="ctr">${toReiwa(c.kouki_s)}</td><td class="ctr">${(c.kouki_e==='未定'||!c.kouki_e)?'未定':toReiwa(c.kouki_e)}</td></tr>`).join('');
+  const rows=list.map((c,i)=>`<tr><td class="ctr">${i+1}</td><td>${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${esc(c.kouji_type||'')}</td><td>${esc(c.genba||c.place||'')}</td><td style="text-align:right">¥${fmt(krYen(c,isTaxExcl))}</td><td class="ctr">${toReiwa(c.kouki_s)}</td><td class="ctr">${(c.kouki_e==='未定'||!c.kouki_e)?'未定':toReiwa(c.kouki_e)}</td></tr>`).join('');
   return `<div class="card" style="margin-bottom:14px;border:1.5px dashed #888"><div class="card-hdr" style="background:#777;color:#fff">未成工事（完成工事高には合算しない・別掲）</div>
     <div style="padding:6px 12px;font-size:10px;color:#666">※年度末時点で未完成の工事。決算届では完成工事高と分けて記載します。</div>
     <div class="twrap"><table style="min-width:760px;font-size:11px"><thead><tr style="background:#eee"><th>No</th><th style="text-align:left">注文者</th><th style="text-align:left">工事名</th><th>業種</th><th style="text-align:left">現場</th><th>請負金額</th><th>着工</th><th>完成予定</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
@@ -4447,11 +4440,11 @@ function krSheetHtml(b,mode,tax){
     const amt=sen(r.amt);const motoAmt=r.isMoto?amt:'';
     const star=(mode==='keishin'&&r.uragaki)?'<span title="裏付け要" style="color:#c62828">★</span>':'';
     return `<tr>
-      <td>${star}${r.c.client||''}</td>
-      <td>${r.c.kouji||''}</td>
+      <td>${star}${esc(r.c.client||'')}</td>
+      <td>${esc(r.c.kouji||'')}</td>
       <td style="text-align:center">${r.c.moto_shita||''}</td>
       <td style="text-align:center">${r.c.jv||''}</td>
-      <td>${r.c.genba||r.c.place||''}</td>
+      <td>${esc(r.c.genba||r.c.place||'')}</td>
       <td>${r.c.haichi_gishi||''}</td>
       <td style="text-align:center">${r.c.gishi_type||''}</td>
       <td style="text-align:right">${amt?fmt(amt):''}</td>
@@ -4515,11 +4508,11 @@ function printKeireki(){
       const ks=toR(c.kouki_s),ke=toR(c.kouki_e);const gishi=c.gishi_type||'';
       const star=(b.mode==='keishin'&&r.uragaki)?'★':'';
       ent.push(`<tr>
-        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:70px">${star}${c.client||''}</td>
-        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:100px">${c.kouji||''}</td>
+        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:70px">${star}${esc(c.client||'')}</td>
+        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:100px">${esc(c.kouji||'')}</td>
         <td rowspan="2" class="c ed" contenteditable="true">${c.moto_shita||''}</td>
         <td rowspan="2" class="c ed" contenteditable="true">${c.jv||''}</td>
-        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:80px">${c.genba||c.place||''}</td>
+        <td rowspan="2" class="vt ed" contenteditable="true" style="min-width:80px">${esc(c.genba||c.place||'')}</td>
         <td rowspan="2" class="vt ed" contenteditable="true">${c.haichi_gishi||''}</td>
         <td rowspan="2" class="c ed" contenteditable="true">${gishi==='主任'?'<span style="font-size:9px">☑主任 □監理</span>':gishi==='監理'?'<span style="font-size:9px">□主任 ☑監理</span>':''}</td>
         <td class="r ed" contenteditable="true">${amt?amt.toLocaleString():''}</td>
@@ -4704,7 +4697,7 @@ function exportKerekiWord(){
     b.rows.forEach(row=>{
       const c=row.c;const amt=sen(row.amt);const motoAmt=row.isMoto?amt:0;const g=c.gishi_type||'';
       const star=(mode==='keishin'&&row.uragaki)?'★':'';
-      rows+=`<tr><td>${star}${c.client||''}</td><td>${c.kouji||''}</td><td>${c.moto_shita||''}</td><td>${c.jv||''}</td><td>${c.genba||c.place||''}</td><td>${c.haichi_gishi||''}</td><td>${g==='主任'?'☑主任□監理':g==='監理'?'□主任☑監理':''}</td><td style="text-align:right">${amt?amt.toLocaleString():''} 千円</td><td style="text-align:right">${motoAmt?motoAmt.toLocaleString():''} 千円</td><td></td><td>${toR(c.kouki_s)}</td><td>${toR(c.kouki_e)}</td></tr>`;
+      rows+=`<tr><td>${star}${esc(c.client||'')}</td><td>${esc(c.kouji||'')}</td><td>${c.moto_shita||''}</td><td>${c.jv||''}</td><td>${esc(c.genba||c.place||'')}</td><td>${c.haichi_gishi||''}</td><td>${g==='主任'?'☑主任□監理':g==='監理'?'□主任☑監理':''}</td><td style="text-align:right">${amt?amt.toLocaleString():''} 千円</td><td style="text-align:right">${motoAmt?motoAmt.toLocaleString():''} 千円</td><td></td><td>${toR(c.kouki_s)}</td><td>${toR(c.kouki_e)}</td></tr>`;
     });
     if(b.other){
       rows+=`<tr><td>その他</td><td>（${b.other.count}件 一括）</td><td></td><td></td><td></td><td></td><td></td><td style="text-align:right">${sen(b.other.sum).toLocaleString()} 千円</td><td style="text-align:right">${b.other.moto?sen(b.other.moto).toLocaleString()+' 千円':''}</td><td></td><td></td><td></td></tr>`;
@@ -4755,10 +4748,10 @@ function renderLog(){
     const t=new Date(l.time);
     const ts=`${t.getFullYear()}/${(t.getMonth()+1).toString().padStart(2,'0')}/${t.getDate().toString().padStart(2,'0')} ${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;
     return `<div class="log-item">
-      <div class="avatar sm" style="background:${l.avColor||'#2e75b6'};margin-top:2px">${l.avIcon||l.userName.charAt(0)}</div>
+      <div class="avatar sm" style="background:${esc(l.avColor||'#2e75b6')};margin-top:2px">${esc(l.avIcon||l.userName.charAt(0))}</div>
       <div class="log-body">
-        <div class="log-user">${l.userName}</div>
-        <div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${l.detail||''}</div>
+        <div class="log-user">${esc(l.userName)}</div>
+        <div class="log-action"><span class="log-badge ${badgeCls}">${badgeLbl}</span>${esc(l.detail||'')}</div>
         <div class="log-time">${ts}</div>
       </div>
     </div>`;
