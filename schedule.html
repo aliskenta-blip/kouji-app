@@ -877,9 +877,44 @@ ld();init();
 </script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script>
 try{firebase.initializeApp({apiKey:"AIzaSyDeJ-AkYOGK68t8ccW3kOuEeJtRftZ0RQQ",authDomain:"kouji-app-b0746.firebaseapp.com",databaseURL:"https://kouji-app-b0746-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"kouji-app-b0746",storageBucket:"kouji-app-b0746.firebasestorage.app",messagingSenderId:"18106982549",appId:"1:18106982549:web:4bcce86d94806720f77b9c"});
-const fbRef=firebase.database().ref('kouji_schedule');let _saving=false;
+  // ===== 端末ログイン（情報保護: ログインした端末だけ読み書き可） =====
+  const _auth=firebase.auth();
+  window._fbTryLogin=async function(){
+    const em=(document.getElementById('fbl-mail')||{}).value||'';
+    const pw=(document.getElementById('fbl-pass')||{}).value||'';
+    const er=document.getElementById('fbl-err');
+    if(!em.trim()||!pw){if(er)er.textContent='メールとパスワードを入れてください';return;}
+    try{if(er)er.textContent='確認中…';await _auth.signInWithEmailAndPassword(em.trim(),pw);location.reload();}
+    catch(e){const c=(e&&e.code)||'';let m='ログインできません';
+      if(/too-many/.test(c))m='試行回数制限中です。15〜30分待つか、Firebaseでこのユーザーを削除→再作成してください';
+      else if(/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c))m='メールまたはパスワードが違います';
+      else if(/network/.test(c))m='通信エラー。電波を確認してください';
+      else m='ログインできません: '+c;
+      if(er)er.textContent=m;}
+  };
+  function _showLogin(){
+    if(document.getElementById('fbl-ov'))return;
+    const d=document.createElement('div');d.id='fbl-ov';
+    d.style.cssText='position:fixed;inset:0;background:#f5f6f8;z-index:99999;display:flex;align-items:center;justify-content:center';
+    d.innerHTML='<div style="background:#fff;border-radius:14px;padding:26px 22px;box-shadow:0 8px 30px rgba(0,0,0,.12);width:300px">'
+      +'<div style="font-weight:800;font-size:16px;margin-bottom:4px">🔒 端末の認証</div>'
+      +'<div style="font-size:12px;color:#888;margin-bottom:14px">情報保護のため、この端末で1回だけログインしてください（次回からは不要です）</div>'
+      +'<input id="fbl-mail" type="email" placeholder="メールアドレス" autocomplete="username" style="width:100%;box-sizing:border-box;padding:11px;border:1.5px solid #ddd;border-radius:9px;font-size:14px;margin-bottom:8px">'
+      +'<input id="fbl-pass" type="password" placeholder="パスワード" autocomplete="current-password" style="width:100%;box-sizing:border-box;padding:11px;border:1.5px solid #ddd;border-radius:9px;font-size:14px;margin-bottom:8px" onkeydown="if(event.key===\'Enter\')_fbTryLogin()">'
+      +'<div id="fbl-err" style="font-size:11px;color:#d33;min-height:14px;margin-bottom:6px"></div>'
+      +'<button onclick="_fbTryLogin()" style="width:100%;padding:12px;border:none;border-radius:9px;background:#2563eb;color:#fff;font-size:14px;font-weight:700;cursor:pointer">ログイン</button></div>';
+    document.body.appendChild(d);
+  }
+  let _fbBootDone=false;
+  _auth.onAuthStateChanged(u=>{
+    if(u){const ov=document.getElementById('fbl-ov');if(ov)ov.remove();if(!_fbBootDone){_fbBootDone=true;_fbBoot();}}
+    else _showLogin();
+  });
+  function _fbBoot(){
+  const fbRef=firebase.database().ref('kouji_schedule');let _saving=false;
 function fixD(){
 if(!D.info)D.info={};
 if(!D.teams)D.teams=[];
@@ -896,6 +931,7 @@ if(t.dekidaka===undefined)t.dekidaka=false;
 fbRef.child('data').on('value',snap=>{if(_saving)return;const v=snap.val();if(v){try{const cur=JSON.stringify(D);if(cur!==v){D=JSON.parse(v);fixD();init();}}catch(e){}}});
 window._fbSvSch=function(){_saving=true;fbRef.child('data').set(JSON.stringify(D)).then(()=>{_saving=false;}).catch(()=>{_saving=false;});};
 (async()=>{try{const snap=await fbRef.child('data').once('value');if(snap.val()){D=JSON.parse(snap.val());fixD();}else if(D.tasks.length>0){await fbRef.child('data').set(JSON.stringify(D));}init();console.log('✅ Firebase connected - schedule');}catch(e){console.log('Firebase error:',e);}})();
+  }  // _fbBoot end
 }catch(e){console.log('Firebase skipped:',e.message);}
 </script>
 </body>
