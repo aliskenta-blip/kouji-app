@@ -703,6 +703,10 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <div class="fg"><label>担当</label><select id="f_ta"></select></div>
     <div class="fg"><label>工事区分</label><select id="f_kb"></select></div>
     <div class="fg" style="grid-column:span 2"><label>工事名・枝番</label><input type="text" id="f_kj" lang="ja" style="ime-mode:active" autocomplete="off"></div>
+    <div class="fg" style="grid-column:span 2"><label>見積番号（kouji-cost）</label>
+      <input type="text" id="f_mno" placeholder="2026-0003" autocomplete="off" maxlength="9" oninput="chkMno()">
+      <div id="f_mno_msg" style="font-size:11px;color:#888;margin-top:3px">kouji-cost で採番された見積番号（YYYY-NNNN）を転記。見積を経ない案件は空欄のままでOK</div>
+    </div>
   </div>
   <div class="st">📄 工事経歴書用</div>
   <div class="grid g2">
@@ -1364,6 +1368,7 @@ const COL_TIPS={
   tantou:'社内の担当者',
   kouji:'工事の名前・枝番',
   kubun:'工事の種類分け（造成・給排水・舗装など）',
+  mitsumori_no:'kouji-cost で採番された見積番号（YYYY-NNNN）。全システム共通のキー',
   jisha_h:'お客さんから受注した契約金額（発注金額）',
   jisha_s:'お客さんへ請求した金額。クリックで月ごとの出来高を入力',
   misu:'請求したのにまだ入金されていない金額（累計請求−累計入金）',
@@ -1891,7 +1896,7 @@ function renderMonthly(){
   const srch=(vg('srch_m')||'').toLowerCase();
   document.getElementById('mTitle').textContent=`${yr}年 ${mo}月 発注一覧`;
   let cases=S.cases.filter(c=>(c.date||'').slice(0,7)===mk);
-  if(srch)cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun].some(v=>(v||'').toLowerCase().includes(srch)));
+  if(srch)cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch)));
   // 表示対象を拡張（KPI・発注者別集計にも反映させるためここで cases に追加）：
   //  ①前月以前の記入で残高あり（未請求残 or 未収金 or 請求漏れ）＝繰越　②当月に請求 or 入金がある現場（出来高請求）
   {
@@ -1999,7 +2004,7 @@ function renderMonthly(){
     <th title="工事の期間（着工〜完成）。クリックで編集">工期</th>
     ${sortTh('place','場所',mt)}
     ${sortTh('client','発注者',mt)}${sortTh('tantou','担当',mt)}
-    ${sortTh('kouji','工事名',mt)}${sortTh('kubun','区分',mt)}
+    ${sortTh('kouji','工事名',mt)}${sortTh('mitsumori_no','見積番号',mt)}${sortTh('kubun','区分',mt)}
     ${sM('jisha_h','発注額')}${sM('jisha_s','請求額')}${sM('remaining','未請求残')}${sM('misu','未収金')}
     <th title="施工形態。自社＝自社施工 / 単独＝外注のみ / 合同＝自社＋外注">施工</th>
     ${sM('km','協見積')}${sM('ksr','協請求')}<th class="s" title="協力会社へ請求した月">協請月</th><th class="s" title="協力会社へ支払う（振込）月">協振込</th>
@@ -2029,7 +2034,7 @@ function renderMonthly(){
       const kmi=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));
       const ke=`style="cursor:pointer" title="クリックで編集"`;
       return `<tr class="sub-r sub-${c.id}" style="display:none">
-        <td></td><td colspan="8" style="padding-left:16px;font-size:10px">
+        <td></td><td colspan="9" style="padding-left:16px;font-size:10px">
           ↳ <b style="color:var(--nav2)">${esc(k.name||'—')}</b> ${k.type?'<span style="color:#888">('+esc(k.type)+')</span>':''}
         </td>
         <td></td><td></td><td></td><td></td><td></td>
@@ -2081,6 +2086,7 @@ function renderMonthly(){
       <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${pdfs.join('')}</td>
+      <td class="ctr" style="font-size:10px;white-space:nowrap;color:#555" title="kouji-cost の見積番号">${esc(c.mitsumori_no||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(bm)}</td>
@@ -2114,11 +2120,11 @@ function renderMonthly(){
     </tr>`;
     return mainRow+subRows;
   });
-  document.getElementById('mBody').innerHTML=rows.join('')||`<tr><td colspan="32" class="empty">この月のデータなし<br><small>「＋ 案件追加」から入力してください</small></td></tr>`;
+  document.getElementById('mBody').innerHTML=rows.join('')||`<tr><td colspan="33" class="empty">この月のデータなし<br><small>「＋ 案件追加」から入力してください</small></td></tr>`;
 
   const tr2=tot.js>0?tot.ar/tot.js*100:0;
   document.getElementById('mFoot').innerHTML=`<tr class="tot">
-    <td colspan="9">合計（${cases.length}件）</td>
+    <td colspan="10">合計（${cases.length}件）</td>
     <td class="num big">¥${fmt(tot.jh)}</td><td class="num">¥${fmt(tot.js)}</td><td class="num">¥${fmt(tot.rem)}</td><td class="num">¥${fmt(tot.mi)}</td>
     <td></td>
     <td class="num big">¥${fmt(tot.km)}</td><td class="num">¥${fmt(tot.ks)}</td><td></td><td></td>
@@ -2142,6 +2148,7 @@ function renderMonthly(){
       </div>
       <div class="card-body">
         ${c.kouji?`<div style="font-size:12px;color:#666;margin-bottom:8px">${c.kubun?'【'+esc(c.kubun)+'】':''} ${esc(c.kouji)}</div>`:''}
+        ${c.mitsumori_no?`<div style="font-size:11px;color:#555;margin-bottom:8px">📄 見積番号: <b>${esc(c.mitsumori_no)}</b></div>`:''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:10px">
           <div style="background:#f0f8f0;border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">自社請求（税込）</div><div style="font-weight:700">¥${fmt(r.js)}</div></div>
           <div style="background:${r.misu>0?'#fff0f0':'#f0f8f0'};border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">未収金</div><div style="font-weight:700;color:${r.misu>0?'#c62828':'#2e7d32'}">¥${fmt(r.misu)}</div></div>
@@ -2190,7 +2197,7 @@ function renderMaster(){
   if(fst==='misu') cases=cases.filter(c=>calc(c).misu>0);
   if(fst==='miharai') cases=cases.filter(c=>calc(c).miharai>0);
   if(fst==='done') cases=cases.filter(c=>isDone(c));
-  if(ftx) cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.biko].some(v=>(v||'').toLowerCase().includes(ftx)));
+  if(ftx) cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.biko,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(ftx)));
 
   // ソート適用
   cases=sortCases(cases,'master');
@@ -2200,7 +2207,7 @@ function renderMaster(){
   document.getElementById('aHead').innerHTML=`<tr>
     <th class="no-print"><input type="checkbox" id="maAllCk" onchange="maToggleAll(this.checked)" style="width:16px;height:16px"></th>
     ${sortTh('month','請求月',t)}${sortTh('date','記入月',t)}${sortTh('place','場所',t)}
-    ${sortTh('client','発注者',t)}${sortTh('tantou','担当',t)}${sortTh('kouji','工事名',t)}${sortTh('kubun','区分',t)}
+    ${sortTh('client','発注者',t)}${sortTh('tantou','担当',t)}${sortTh('kouji','工事名',t)}${sortTh('mitsumori_no','見積番号',t)}${sortTh('kubun','区分',t)}
     <th>施工</th>${sortTh('jisha_h','発注額',t)}${sortTh('jisha_s','請求額',t)}${sortTh('nyukin','入金済',t)}${sortTh('misu','未収金',t)}
     ${sortTh('km','協力見積',t)}${sortTh('ksr','協力請求',t)}${sortTh('ksh','支払済',t)}${sortTh('miharai','未払残',t)}
     ${sortTh('arari','粗利',t)}<th>率</th><th>㎥</th>
@@ -2225,7 +2232,9 @@ function renderMaster(){
       <td class="ctr no-print"><input type="checkbox" class="ma-ck" data-id="${c.id}" onchange="maUpdateBatch()" style="width:16px;height:16px"></td>
       <td class="ctr">${cMo(c)}</td><td class="ctr">${c.date||''}</td>
       <td>${esc(c.place||'')}</td><td>${esc(c.client||'')}</td><td class="ctr">${esc(c.tantou||'')}</td>
-      <td>${esc(c.kouji||'')}</td><td class="ctr">${esc(c.kubun||'')}</td>
+      <td>${esc(c.kouji||'')}</td>
+      <td class="ctr" style="font-size:11px;white-space:nowrap" title="kouji-cost の見積番号">${esc(c.mitsumori_no||'')}</td>
+      <td class="ctr">${esc(c.kubun||'')}</td>
       <td class="ctr"><span class="sekou ${c.jisha_sekou==='✓'?(r.cnt>0?'sk-joint':'sk-self'):(r.cnt>0?'sk-other':'')}" style="font-size:9px">${c.jisha_sekou==='✓'?(r.cnt>0?'合同':'自社'):(r.cnt>0?'単独':'—')}</span></td>
       <td class="num" style="font-weight:700">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" style="cursor:pointer" onclick="editBillings('${c.id}',this)">¥${fmt(r.js)}</td>
@@ -2244,10 +2253,10 @@ function renderMaster(){
       <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${esc(c.biko||'')}</td>
       <td class="ctr" style="white-space:nowrap"><button class="btn bo btn-sm edit-only" onclick="editCase('${c.id}')">編</button> <button class="btn br btn-sm del-only" onclick="delCase('${c.id}')">削</button></td>
     </tr>`;
-  }).join('')||`<tr><td colspan="27" class="empty">データなし</td></tr>`;
+  }).join('')||`<tr><td colspan="28" class="empty">データなし</td></tr>`;
 
   const tr2=ts>0?tar/ts*100:0;
-  document.getElementById('aFoot').innerHTML=`<tr class="tot"><td colspan="9">合計（${cases.length}件）</td>
+  document.getElementById('aFoot').innerHTML=`<tr class="tot"><td colspan="10">合計（${cases.length}件）</td>
     <td class="num" style="font-weight:700">¥${fmt(totH)}</td><td class="num">¥${fmt(ts)}</td><td class="num">¥${fmt(tn)}</td><td class="num">¥${fmt(tmi)}</td>
     <td class="num" style="font-weight:700">¥${fmt(tky)}</td><td class="num">¥${fmt(tksr)}</td><td class="num">¥${fmt(tsh)}</td><td class="num">¥${fmt(tmp)}</td>
     <td class="num" style="font-weight:700">¥${fmt(tar)}</td><td class="ctr">${fmtP(tr2)}</td><td colspan="8"></td>
@@ -3305,11 +3314,27 @@ function onGyoshuChange(){
   }
   el.innerHTML=html;
 }
+// ── 見積番号（kouji-cost で採番された全システム共通キー） ──
+// 形式チェック（YYYY-NNNN）のみ。kouji-cost 側との存在照合はしない（DBが別のため）
+const MNO_RE=/^\d{4}-\d{4}$/;
+const MNO_HINT='kouji-cost で採番された見積番号（YYYY-NNNN）を転記。見積を経ない案件は空欄のままでOK';
+const mnoOk=v=>!v||MNO_RE.test(v);      // 空欄は可（見積を経ない案件があるため）
+function chkMno(){
+  const el=document.getElementById('f_mno');if(!el)return true;
+  const v=(el.value||'').trim(),ok=mnoOk(v),msg=document.getElementById('f_mno_msg');
+  el.style.borderColor=v?(ok?'#2e7d32':'#c62828'):'';
+  if(msg){
+    msg.textContent=v?(ok?'✓ 形式OK':'⚠ 形式が違います（例: 2026-0003）'):MNO_HINT;
+    msg.style.color=v?(ok?'#2e7d32':'#c62828'):'#888';
+  }
+  return ok;
+}
 function openAdd(){
   if(!canEdit()){alert('入力権限がありません');return;}
   editId=null;KD=[];pdfH=null;pdfS=null;formBillings=[];
   document.getElementById('mdlT').textContent='案件追加';
-  ['f_dt','f_pl','f_kj','f_jh','f_nd','f_ny','f_m3','f_bk','f_kouki_s','f_kouki_e','f_haichi','f_genba'].forEach(id=>vs(id,''));
+  ['f_dt','f_pl','f_kj','f_mno','f_jh','f_nd','f_ny','f_m3','f_bk','f_kouki_s','f_kouki_e','f_haichi','f_genba'].forEach(id=>vs(id,''));
+  chkMno();
   ['f_kouki_s_mitei','f_kouki_e_mitei'].forEach(id=>{document.getElementById(id).checked=false;});
   ['f_kouki_s','f_kouki_e'].forEach(id=>{document.getElementById(id).disabled=false;});
   document.getElementById('f_jisha_sekou').checked=false;
@@ -3477,6 +3502,7 @@ function editCase(id){
   document.getElementById('mdlT').textContent='案件編集';
   document.getElementById('btnSaveCont').style.display='none';
   vs('f_dt',(c.date||'').slice(0,7));vs('f_pl',c.place);vs('f_kj',c.kouji);
+  vs('f_mno',c.mitsumori_no||'');chkMno();   // 既存レコードは未設定＝空欄のままで可
   vs('f_jh',fn(c.jisha_h)?parseFloat((fn(c.jisha_h)/10000).toFixed(4)):'');
   vs('f_nd',c.nyukin_d);vs('f_ny',fn(c.nyukin)?parseFloat((fn(c.nyukin)/10000).toFixed(4)):'');vs('f_m3',c.m3);vs('f_bk',c.biko);
   // 旧データ互換：billingsが空でjisha_sがある場合
@@ -3524,6 +3550,14 @@ function saveCase(cont){
     onGyoshuChange();
     return;
   }
+  // 見積番号は空欄可。入力されている場合だけ形式（YYYY-NNNN）を確認する
+  const _mno=(vg('f_mno')||'').trim();
+  if(!mnoOk(_mno)){
+    alert('見積番号の形式が違います。\nkouji-cost の採番と同じ「YYYY-NNNN」で入力してください（例: 2026-0003）。\n\n見積を経ない案件は空欄のままで保存できます。');
+    chkMno();
+    const _mn=document.getElementById('f_mno');if(_mn){try{_mn.focus();}catch(e){}}
+    return;
+  }
   // 管工事（無許可）は税込500万円以上 受注不可
   const _amt=Math.round(parseFloat(vg('f_jh')||0)*10000);
   if(_gy===GYOSHU_NOPERMIT&&_amt>=TH.keibi){
@@ -3533,7 +3567,7 @@ function saveCase(cont){
   const base={
     id:editId||uid(),month:getMK(getYr(),getMo()),
     date:vg('f_dt')||new Date().toISOString().slice(0,7),place:vg('f_pl'),client:vg('f_cl'),branch:vg('f_br'),
-    tantou:vg('f_ta'),kubun:vg('f_kb'),kouji:vg('f_kj'),
+    tantou:vg('f_ta'),kubun:vg('f_kb'),kouji:vg('f_kj'),mitsumori_no:_mno,
     jisha_h:String(Math.round(parseFloat(vg('f_jh')||0)*10000)),
     billings:JSON.parse(JSON.stringify(formBillings)),
     jisha_s:String(formBillings.reduce((a,b)=>a+fn(b.amount),0)),
@@ -4031,7 +4065,8 @@ function doCSV(type){
     '写真','残土','確認','メール','入金','完了','残請求','未請求','備考',
     '協社1名','協社1見積','協社1請求','協社1支払',
     '協社2名','協社2見積','協社2請求','協社2支払',
-    '協社3名','協社3見積','協社3請求','協社3支払'];
+    '協社3名','協社3見積','協社3請求','協社3支払',
+    '見積番号'];   // 既存の列位置に依存する処理・Excelを壊さないよう末尾に追加すること
   const rows=[h,...cases.map(c=>{
     const r=calc(c);const ks=c.kyousha_list||[];
     return [c.seikyuu_t,c.date,c.place,c.client,c.branch,c.tantou,c.kouji,c.kubun,
@@ -4039,7 +4074,8 @@ function doCSV(type){
       c.seikyuu_t,fn(c.nyukin),r.misu,r.ksh,r.miharai,r.arari,fmtP(r.arariRate),fn(c.m3),
       c.kouki_s||'',c.kouki_e||'',
       c.shashin,c.zando,c.kakunin,c.mail,c.nyukin_c,c.kanryo,c.zan_s,c.mi_s,c.biko,
-      ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','',''])
+      ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','','']),
+      c.mitsumori_no||''
     ];
   })];
   const csv=rows.map(r=>r.map(csvSafe).join(',')).join('\n');
