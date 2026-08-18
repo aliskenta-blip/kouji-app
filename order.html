@@ -791,6 +791,44 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 <script>
 // ── 認証（マルチユーザー・権限管理） ──
 const AUTH_SK='hpro3_users';
+
+// ============================================================
+// 起動の土台（2026-08 追加）
+//   ★このアプリの正はFirebase。localStorageは「使えたら使うだけの控え」。
+//     Edge の Tracking Prevention などでサイトの保存領域が丸ごと止められると
+//     localStorage は読み書きとも黙って失敗する（safeLS が握りつぶす）。
+//     そこで「ローカルが空＝データ0件」と判定してはいけない。
+//     0件と断定してよいのは「Firebaseから確実に読めて、それが0件だった」ときだけ。
+// ============================================================
+// Firebaseの初期読み込みが終わるのを待つ。返り値 {ok, users, data, reason}
+//   ok:false は「まだ読めていない／読めなかった」＝0件と断定できない状態
+window._fbState=null;
+window._fbWaiters=[];
+window._fbSettle=function(st){
+  if(window._fbState)return;
+  window._fbState=st;
+  const ws=window._fbWaiters;window._fbWaiters=[];
+  ws.forEach(f=>{try{f(st);}catch(e){}});
+};
+window._fbWait=function(ms){
+  if(window._fbState)return Promise.resolve(window._fbState);
+  return new Promise(res=>{
+    let done=false;
+    const fin=st=>{if(done)return;done=true;res(st);};
+    window._fbWaiters.push(fin);
+    // 待ちっぱなしにしない（Firebase未構成・通信不能でも画面は進める）
+    setTimeout(()=>fin({ok:false,reason:'timeout'}),ms||15000);
+  });
+};
+// localStorage が本当に使えるか（Tracking Prevention で止まっていないか）
+let _lsOk=null;
+function lsAvailable(){
+  if(_lsOk!==null)return _lsOk;
+  try{localStorage.setItem('__t','1');localStorage.removeItem('__t');_lsOk=true;}
+  catch(e){_lsOk=false;}
+  return _lsOk;
+}
+
 let authMode='login';
 let currentUser=null;
 let allUsers=[];
@@ -863,10 +901,12 @@ async function loadUsers(){
   try{const d=safeLS("get",AUTH_SK);if(d)return JSON.parse(d);}catch(e){}
   return [];
 }
-async function saveUsers(){
+async function saveUsers(opt){
+  // Firebase未使用時の保存。Firebase有効時は _fbBoot が上書きする（人数が減る書き込みを止める版）
   const j=JSON.stringify(allUsers);
   try{await window.storage.set(AUTH_SK,j,true);}catch(e){}
   safeLS("set",AUTH_SK,j);
+  return true;
 }
 
 function isMaster(){return currentUser&&currentUser.role==='master';}
@@ -916,7 +956,8 @@ async function doAuth(){
       created:new Date().toISOString()
     };
     allUsers.push(user);
-    await saveUsers();
+    const okSave=await saveUsers();
+    if(!okSave){err.textContent='保存できませんでした。画面を再読み込みしてやり直してください';return;}
 
     if(isFirst){
       currentUser=user;
@@ -1116,7 +1157,7 @@ async function rejectUser(id){
   if(!confirm('このユーザーの申請を却下（削除）しますか？'))return;
   const u=allUsers.find(x=>x.id===id);addLog('del',`${esc(u?u.name:'')}の申請を却下`);
   allUsers=allUsers.filter(u=>u.id!==id);
-  await saveUsers();renderUserMgt();
+  await saveUsers({allowShrink:true});renderUserMgt();   // 意図的に減らす
 }
 async function changeRole(id,role){
   allUsers=allUsers.map(u=>u.id===id?{...u,role}:u);
@@ -1127,10 +1168,15 @@ async function removeUser(id){
   if(!confirm('このユーザーを削除しますか？'))return;
   const u=allUsers.find(x=>x.id===id);addLog('del',`${esc(u?u.name:'')}を削除`);
   allUsers=allUsers.filter(u=>u.id!==id);
-  await saveUsers();renderUserMgt();
+  await saveUsers({allowShrink:true});renderUserMgt();   // 意図的に減らす
 }
 
 async function initAuth(){
+  // ★Firebaseの初期読み込みを待ってから判定する。
+  //   待たずにlocalStorageだけで判定すると、新しいPC（＝ローカルが空）や
+  //   Tracking Prevention でlocalStorageが止まっている端末で、
+  //   既存ユーザーがいるのに「マスター管理者の作成」が出てしまう。
+  const fb=await window._fbWait(15000);
   allUsers=await loadUsers();
   await loadLog();
   // 保存済みセッションで自動ログイン
@@ -1143,8 +1189,28 @@ async function initAuth(){
       safeLS("del",'hpro3_session');
     }
   }catch(e){}
+  if(!lsAvailable()){
+    // ブラウザがサイトの保存領域を止めている（Edge の Tracking Prevention など）。
+    // データはクラウドにあるので使えるが、ログイン状態は保持できない。
+    const sub=document.getElementById('authSub');
+    if(sub)sub.innerHTML=sub.textContent
+      +'<br><span style="color:#e65100">※この端末はブラウザの設定でログイン状態を保持できません。開くたびにログインが必要です。</span>';
+  }
   if(allUsers.length===0){
-    // 初回：マスター管理者の作成画面
+    if(!fb.ok&&window._fbConfigured){
+      // ★Firebaseから読めていない＝「ユーザー0人」と断定できない。
+      //   ここで初期セットアップを出すと、押した人がマスターとして登録され、
+      //   その1人でユーザー一覧が上書きされる事故につながる（実際に起きかけた）。
+      document.getElementById('authTitle').textContent='⚠ 接続できません';
+      document.getElementById('authSub').textContent=
+        'ユーザー情報を読み込めませんでした。通信を確かめて、画面を再読み込みしてください。';
+      document.getElementById('authBtn').textContent='🔄 再読み込み';
+      document.getElementById('authBtn').setAttribute('onclick','location.reload()');
+      document.getElementById('authToggle').style.display='none';
+      console.error('[order] users を読めないため初期セットアップを出しません',fb);
+      return;
+    }
+    // 本当に0人（Firebaseから読めて0件、またはFirebase未使用）：マスター管理者の作成
     authMode='register';
     document.getElementById('authTitle').textContent='👑 マスター管理者の作成';
     document.getElementById('authSub').textContent='最初のアカウントが管理者になります';
@@ -1153,7 +1219,11 @@ async function initAuth(){
     document.getElementById('fg_avatar').style.display='';
     document.getElementById('fg_remember').style.display='none';
     document.getElementById('authBtn').textContent='管理者アカウント作成';
-    document.getElementById('authToggle').style.display='none';
+    // ★ログインへの導線は隠さない。隠すと、既存アカウントを持っている人が
+    //   新しいPCで詰む（画面上にログインへ戻る手段が無くなる）。
+    const tg=document.getElementById('authToggle');
+    tg.textContent='既にアカウントがある方はこちら';
+    tg.style.display='';
     renderAvPicker(AV_COLORS[0],AV_ICONS[0]);
   }
 }
@@ -4821,9 +4891,10 @@ document.addEventListener('DOMContentLoaded',async()=>{
   document.getElementById('moSel').value=new Date().getMonth()+1;
   renderAll();
   loadAutoBkSetting();
-  // データ消失検出：案件もマスターも空なら復元を促す
-  const hasData=S.cases.length>0||S.masters.client.length>0||S.masters.tantou.length>0;
-  if(!hasData){
+  maybeShowRestorePrompt();
+  // データ消失検出。★ここではまだ判定しない（Firebaseから読む前だから）。
+  //   maybeShowRestorePrompt() が「Firebaseから確実に読めて0件」のときだけ出す。
+  if(false){
     showRestorePrompt();
   }
 });
@@ -4853,6 +4924,28 @@ async function doAutoSave(){
   }catch(e){console.log('auto-save failed',e);}
 }
 
+// データが本当に無いときだけ復元を促す。
+//   ★「ローカルが空」では判定しない。新しいPCや、ブラウザがサイトの保存領域を
+//     止めている端末（Edge の Tracking Prevention など）では常に空に見えるため。
+//     ここで誤って出すと「新規で始める」を押させることになり、危険度が高い。
+//   出してよいのは次のどちらか:
+//     ・Firebaseから確実に読めて、それが0件だった
+//     ・Firebaseを使わない構成で、ローカルが0件だった
+function hasAnyData(){
+  return S.cases.length>0||S.masters.client.length>0||S.masters.tantou.length>0;
+}
+async function maybeShowRestorePrompt(){
+  if(document.getElementById('restorePrompt'))return;
+  if(hasAnyData())return;
+  const fb=window._fbState||await window._fbWait(20000);
+  if(window._fbConfigured&&!fb.ok){
+    console.warn('[order] データを読めていないので復元の案内は出しません',fb);
+    return;
+  }
+  if(hasAnyData())return;   // 待っている間に届いたかもしれない
+  showRestorePrompt();
+}
+
 function showRestorePrompt(){
   const d=document.createElement('div');
   d.id='restorePrompt';
@@ -4869,7 +4962,7 @@ function showRestorePrompt(){
       <input type="file" id="restoreFile" accept=".json,.xlsx" style="margin-bottom:8px;font-size:12px">
       <br><button onclick="doRestoreFromPrompt()" style="padding:10px 24px;border-radius:8px;border:none;background:#e65100;color:#fff;font-size:14px;font-weight:700;cursor:pointer">📥 復元する</button>
     </div>
-    <button onclick="document.getElementById('restorePrompt').remove()" style="padding:8px 20px;border-radius:8px;border:1.5px solid #ddd;background:#fff;color:#666;font-size:13px;cursor:pointer">新規で始める</button>
+    <button onclick="document.getElementById('restorePrompt').remove()" style="padding:8px 20px;border-radius:8px;border:1.5px solid #ddd;background:#fff;color:#666;font-size:13px;cursor:pointer">このまま閉じる（データは消えません）</button>
   </div>`;
   document.body.appendChild(d);
 }
@@ -4951,6 +5044,7 @@ try{
     messagingSenderId:"18106982549",
     appId:"1:18106982549:web:4bcce86d94806720f77b9c"
   });
+  window._fbConfigured=true;   // ★Firebaseが正。読めるまで「0件」と判定しない
   // ===== 端末ログイン（情報保護: ログインした端末だけ読み書き可） =====
   const _auth=firebase.auth();
   window._fbTryLogin=async function(){
@@ -5003,6 +5097,9 @@ try{
       try{
         const parsed=JSON.parse(v);
         if(JSON.stringify(S)!==v){S=parsed;_syncHash=v;try{renderAll();}catch(e){}}
+        // ★データが届いたら「データが見つかりません」は用済み。出たままにしない
+        const rp=document.getElementById('restorePrompt');
+        if(rp&&(S.cases.length>0||S.masters.client.length>0))rp.remove();
       }catch(e){}
     }
   });
@@ -5035,10 +5132,36 @@ try{
   };
   // saveUsers上書き
   const origSaveUsers=saveUsers;
-  saveUsers=async function(){
+  saveUsers=async function(opt){
+    const allowShrink=!!(opt&&opt.allowShrink);
     const j=JSON.stringify(allUsers);
-    try{await fbRef.child('users').set(j);}catch(e){}
-    safeLS('set','hpro3_auth',j);
+    // ★usersノードは .set() で全置換になる。読めていない状態や、こちらの手元が
+    //   古い状態で書くと既存ユーザーが消える（新PCで初期セットアップ画面が出た
+    //   まま「管理者アカウント作成」を押すと、その1人だけに置き換わる経路があった）。
+    //   そこで書く前に必ず現在値を読み、人数が減る書き込みは止める。
+    //   削除・却下だけは意図的に減らすので allowShrink で明示的に許可する。
+    let cur=null;
+    try{
+      const snap=await fbRef.child('users').once('value');
+      cur=snap.val()?JSON.parse(snap.val()):[];
+    }catch(e){
+      console.error('[order] users を読めないため保存を中止',e);
+      alert('ユーザー情報を確認できないため保存を中止しました。\n通信を確かめて、画面を再読み込みしてからやり直してください。');
+      return false;
+    }
+    if(!allowShrink&&Array.isArray(cur)&&cur.length>allUsers.length){
+      console.error('[order] users が減る保存を中止',{現在:cur.length,書こうとした:allUsers.length});
+      alert('ユーザー情報が最新ではありません（登録済み '+cur.length+'人／手元 '+allUsers.length+'人）。\n'
+        +'既存のユーザーが消えるのを防ぐため、保存を中止しました。\n画面を再読み込みしてからやり直してください。');
+      return false;
+    }
+    try{await fbRef.child('users').set(j);}catch(e){
+      console.error('[order] users の保存に失敗',e);
+      alert('ユーザー情報を保存できませんでした。通信を確かめてください。');
+      return false;
+    }
+    safeLS('set',AUTH_SK,j);   // ★キーをそろえる（以前は 'hpro3_auth' に書いていて読み出せなかった）
+    return true;
   };
   // loadUsers上書き
   const origLoadUsers=loadUsers;
@@ -5074,7 +5197,8 @@ try{
       }
       // メインデータ
       const snap=await fbRef.child('data').once('value');
-      if(snap.val()){
+      const hadData=!!snap.val();
+      if(hadData){
         S=JSON.parse(snap.val());_syncHash=snap.val();
       }else if(S.cases.length>0||S.masters.client.length>0){
         const j=JSON.stringify(S);_syncHash=j;
@@ -5082,10 +5206,23 @@ try{
       }
       try{renderAll();}catch(e){}
       console.log('✅ Firebase sync complete: '+S.cases.length+'件');
-    }catch(e){console.log('Firebase reload error:',e);}
+      // ★ここまで来て初めて「読めた」と言える。0件の断定はこの後だけ許す
+      window._fbSettle({ok:true,users:true,data:hadData});
+      try{maybeShowRestorePrompt();}catch(e){}
+    }catch(e){
+      console.log('Firebase reload error:',e);
+      window._fbSettle({ok:false,reason:'read-error'});
+    }
   })();
   }  // _fbBoot end
-}catch(e){console.log('Firebase init skipped:',e.message);}
+}catch(e){
+  console.log('Firebase init skipped:',e.message);
+  // Firebaseを使わない構成。従来どおりローカルだけで判断する
+  window._fbConfigured=false;
+  if(window._fbSettle)window._fbSettle({ok:false,reason:'no-firebase'});
+}
+// 端末認証が終わっていない間も待ち続けない（ログイン画面の裏で固まらないように）
+setTimeout(()=>{if(window._fbSettle&&!window._fbState)window._fbSettle({ok:false,reason:'not-signed-in'});},20000);
 </script>
 </body>
 </html>
