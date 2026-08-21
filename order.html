@@ -3670,7 +3670,9 @@ function saveCase(cont){
   if(editId){
     const old=S.cases.find(c=>c.id===editId)||{};
     CK.forEach(f=>{base[f]=old[f]||'';});
-    S.cases=S.cases.map(c=>c.id===editId?base:c);
+    // 編集はマージ。base にも CK にも無い項目（date_orig / more_hist / more_prev 等）を
+    // 丸ごと差し替えで落とさない。今後追加する項目も自動的に保持される
+    S.cases=S.cases.map(c=>c.id===editId?Object.assign({},c,base):c);
     addLog('edit',`${esc(base.place||'')}（${esc(base.client||'')}）を編集`);
   } else {
     CK.forEach(f=>{base[f]='';});
