@@ -2699,23 +2699,31 @@ function renderDash(){
   </div>`;
   // ── 受注高・完成工事高・繰越工事高（D-021）──
   const kk=kurikoshiStats(dashFY);
-  const kkBox=(l,v,sub,col)=>`<div style="flex:1 1 150px;min-width:150px;background:#f8f9fc;border:1px solid #e3e7ef;border-radius:8px;padding:9px 11px">
+  // disp を渡すと金額の代わりにその文字を出す（計算そのものは変えない）
+  const kkBox=(l,v,sub,col,disp)=>`<div style="flex:1 1 150px;min-width:150px;background:#f8f9fc;border:1px solid #e3e7ef;border-radius:8px;padding:9px 11px">
     <div style="font-size:11px;font-weight:700;color:#555">${l}</div>
-    <div style="font-size:17px;font-weight:800;color:${col}">¥${fmt(v)}</div>
+    <div style="font-size:17px;font-weight:800;color:${col}">${disp||('¥'+fmt(v))}</div>
     <div style="font-size:10px;color:#888;margin-top:2px">${sub}</div></div>`;
+  // 前期繰越が負＝アプリ導入前から進行していた工事を導入月で登録したため、前期の受注が無い。
+  // 計算は正しいがデータの前提が満たされていないので、金額を出さず検算もしない
+  const kkNoPrev=kk.prevKuri<0;
+  const kkNoPrevMsg='前期の受注データがありません（アプリ導入前の工事のため）。この年度は検算できません。';
   const kkCard=`<div class="card"><div class="card-hdr ch-nav">📐 受注高・完成工事高・繰越工事高（${fyLabel(dashFY)}）</div><div class="card-body">
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${kkBox('前期繰越工事高',kk.prevKuri,'前期までの受注 − 前期までの請求','#616161')}
+      ${kkBox('前期繰越工事高',kk.prevKuri,kkNoPrev?kkNoPrevMsg:'前期までの受注 − 前期までの請求','#616161',kkNoPrev?'—':'')}
       ${kkBox('当期 受注高',kk.ju,'この年度に受注した契約金額','var(--nav)')}
       ${kkBox('当期 完成工事高',kk.kan,'この年度に請求した金額（経審に使う数字）','#1565c0')}
       ${kkBox('次期繰越工事高',kk.nextKuri,'受注済みでまだ請求していない残り','#e65100')}
     </div>
-    <div style="margin-top:10px;padding:9px 11px;background:#f5f7fa;border-radius:8px;font-size:11px;color:#555;line-height:1.9">
+    ${kkNoPrev?`<div style="margin-top:10px;padding:9px 11px;background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;font-size:11px;color:#bf360c;line-height:1.9">
+      📌 ${kkNoPrevMsg}<br>
+      　　<span style="color:#555">当期受注高・当期完成工事高はそのまま使えます。受注高は<b>初回記入月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。</span>
+    </div>`:`<div style="margin-top:10px;padding:9px 11px;background:#f5f7fa;border-radius:8px;font-size:11px;color:#555;line-height:1.9">
       📌 検算：<b>前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越</b><br>
       　　　　¥${fmt(kk.prevKuri)} ＋ ¥${fmt(kk.ju)} − ¥${fmt(kk.kan)} ＝ <b>¥${fmt(kk.nextKuri)}</b><br>
       　　　　この式が実感と合わないときは、発注額の入力漏れか請求の付け忘れがあります。<br>
       　　　　受注高は<b>初回記入月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。
-    </div>
+    </div>`}
   </div></div>`;
   const lg=(c,t)=>`<span style="white-space:nowrap"><span style="display:inline-block;width:11px;height:11px;background:${c};border-radius:2px;vertical-align:middle"></span> ${t}</span>`;
   const funnel=`<div class="card"><div class="card-hdr ch-nav">🔗 発注 → 請求 → 入金 の流れ</div><div class="card-body">
