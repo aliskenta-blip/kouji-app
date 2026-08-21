@@ -1582,6 +1582,23 @@ function calc(c){
   const remaining=Math.max(0,jh-js);
   return {js,jh,ny,km,ksr,ksh,misu,miharai,arari,arariRate,cnt:ks.length,isEstimate,remaining,hasJuchu};
 }
+// 自社受注額（juchu）が一部の協社だけ未入力か。空の協社は粗利計算から原価ごと
+// 除外されるため、粗利が過大に出る。全社入力済み／全社空のときは正常なので対象外
+//（全社空＝中間マージン方式ではない通常の案件）
+function juchuGapOf(list){
+  const ks=list||[];
+  const withJ=ks.filter(k=>fn(k.juchu)>0).length;
+  const empty=ks.filter(k=>fn(k.juchu)<=0);
+  if(!(withJ>0&&empty.length>0))return null;
+  const cost=empty.reduce((a,k)=>a+(fn(k.seikyuu)>0?fn(k.seikyuu):fn(k.mitsumori)),0);
+  return {total:ks.length,withJ:withJ,emptyCnt:empty.length,cost:cost};
+}
+function juchuGapMsg(g){
+  return `⚠ 自社受注額が入っているのは ${g.total}社中 ${g.withJ}社だけです。`
+    +`空の${g.emptyCnt}社は<b>原価ごと粗利の計算から外れます</b>`
+    +(g.cost>0?`（いまの粗利は原価 <b>¥${fmt(g.cost)}</b> が抜けた数字です）`:'')
+    +`。入れるなら全ての協社に入れてください。`;
+}
 // 粗利を表示してよい案件か。月別・マスター一覧・受発注一覧で同じ条件を使う
 function showArariOf(c){
   const r=calc(c);
@@ -2164,6 +2181,7 @@ function renderMonthly(){
     const isNewOrder=orig===mk;
     tot.jh+=isNewOrder?fn(c.jisha_h):0;tot.js+=bm;tot.km+=isNewOrder?r.km:0;tot.ks+=r.ksr;
     tot.ny+=nyMonth;tot.nyPrev+=nyPrev;tot.rem+=r.remaining;tot.mi+=r.misu;tot.sh+=r.ksh;tot.mp+=r.miharai;tot.ar+=arariMonth;tot.m3+=fn(c.m3);
+    const juchuGap=juchuGapOf(c.kyousha_list);   // 自社受注額が一部だけ未入力か
     const subRows=(c.kyousha_list||[]).map((k,ki)=>{
       const kmi=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));
       const ke=`style="cursor:pointer" title="クリックで編集"`;
@@ -2187,7 +2205,8 @@ function renderMonthly(){
         <td class="num ${kMargin===null?'':(kMargin>=0?'cp':'cl')}" style="font-size:10px;font-weight:700" title="${kMargin===null?'自社受注額が未入力です。この外注は粗利の計算から原価ごと除外されます':'この外注の粗利＝自社受注額 '+fmt(kJv)+' − 原価 '+fmt(kCost)}">${kMargin===null?'—':'¥'+fmt(kMargin)}</td>
         <td colspan="10"></td>
       </tr>`;
-    }).join('');
+    }).join('')
+    +(juchuGap?`<tr class="sub-r sub-${c.id}" style="display:none"><td colspan="33" style="background:#fff3e0;border-left:3px solid #ef6c00;padding:6px 10px 6px 26px;font-size:11px;color:#bf360c;line-height:1.7">${juchuGapMsg(juchuGap)}</td></tr>`:'');
     const kouki=c.kouki_s==='未定'||c.kouki_e==='未定'?'未定':(c.kouki_s||c.kouki_e?`${(c.kouki_s||'').slice(5)}〜${(c.kouki_e||'').slice(5)}`:'');
     const pdfs=[];
     if(c.pdf_hacchu)pdfs.push(`<span class="pdf-tag" onclick="event.stopPropagation();viewCasePdf('${c.id}','h')" title="発注書PDF: ${esc(c.pdf_hacchu.name)}" style="cursor:pointer;font-size:9px;background:#eef6ff;border:1px solid #cfe3ff;border-radius:4px;padding:0 4px;margin-left:4px;color:#2456a6;white-space:nowrap">📄発注</span>`);
@@ -2246,7 +2265,7 @@ function renderMonthly(){
       <td class="${r.miharai>0?'cw':'ca'}" style="cursor:pointer" onclick="togSub('${c.id}')">¥${fmt(r.miharai)}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
-      <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}</td>
+      <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
       <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）">${showArari?fmtP(projArariRate(c)*100)+(r.isEstimate?' 予':''):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
@@ -3412,9 +3431,15 @@ function delLinkSet(cl,br){
 }
 
 // ── 協社エントリ ──
+// 協社明細の上に出す注意帯。条件を満たさないときは中身を空にする（入れ物は残す）
+function keJuchuWarnHtml(){
+  const g=juchuGapOf(KD);
+  if(!g)return '';
+  return `<div style="background:#fff3e0;border:1.5px solid #ef6c00;border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:12px;color:#bf360c;line-height:1.7">${juchuGapMsg(g)}</div>`;
+}
 function renderKE(){
   const el=document.getElementById('kEntries');if(!el)return;
-  el.innerHTML=KD.map((k,i)=>`
+  el.innerHTML=`<div id="keJuchuWarn">${keJuchuWarnHtml()}</div>`+KD.map((k,i)=>`
     <div class="ki">
       <div class="ki-hdr"><b>協社 ${i+1}</b><div style="display:flex;gap:4px"><button class="btn bp btn-sm" onclick="printChumonKE(${i})" title="この協力会社への注文書を発行">🖨️注文書</button><button class="btn br btn-sm" onclick="rmKE(${i})">削除</button></div></div>
       <div class="ki-body">
@@ -3446,6 +3471,7 @@ function renderKE(){
   KD.forEach((k,i)=>setTimeout(()=>{renderKdBillings(i);renderKEArari(i);},10));
 }
 function renderKEArari(i){
+  const w=document.getElementById('keJuchuWarn');if(w)w.innerHTML=keJuchuWarnHtml();   // 入力に追従させる
   const el=document.getElementById('ke_arari_'+i);if(!el)return;
   const k=KD[i]||{};
   const jv=fn(k.juchu);
