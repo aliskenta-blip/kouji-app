@@ -1458,7 +1458,7 @@ const COL_TIPS={
   nyukin:'当月に入金された金額',
   arari:'粗利（外注分の自社受注額−外注原価）',
   arariRate:'粗利率',
-  m3:'数量（㎥）。工事経歴書に使用',
+  m3:'残土数量（㎥）。請求の証憑に使用（工事経歴書の出力には使っていません）',
   seikyuu_c:'請求書を出したらチェック（請求済）',
   nyukin_c:'入金を確認したらチェック（入金済）',
   kanryo:'発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します',
@@ -2047,7 +2047,7 @@ function renderMonthly(){
     if(c.more_flag==='✓'){tmore+=r.misu;tmoreCnt++;} // 請求もれ（請求漏れフラグの未収金）
   });
   document.getElementById('mKpi').innerHTML=`
-    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）"><div class="kl">当月請求（税込）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${cases.length}件</div></div>
+    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${cases.length}件</div></div>
     <div class="kpi g" title="この月に入金された金額の合計"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
     <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）"><div class="kl">未収金</div><div class="kv">¥${fmt(tmi)}</div></div>
     <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）"><div class="kl">未請求残</div><div class="kv">¥${fmt(trem)}</div></div>
@@ -2167,6 +2167,11 @@ function renderMonthly(){
     const subRows=(c.kyousha_list||[]).map((k,ki)=>{
       const kmi=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));
       const ke=`style="cursor:pointer" title="クリックで編集"`;
+      // この外注1件の粗利＝自社受注額−原価（原価は協社請求があればそれ、無ければ見積）。
+      // 自社受注額が未入力の協社は粗利計算から原価ごと除外されるので「—」にする
+      const kJv=fn(k.juchu);
+      const kCost=fn(k.seikyuu)>0?fn(k.seikyuu):fn(k.mitsumori);
+      const kMargin=kJv>0?(kJv-kCost):null;
       return `<tr class="sub-r sub-${c.id}" style="display:none">
         <td></td><td colspan="9" style="padding-left:16px;font-size:10px">
           ↳ <b style="color:var(--nav2)">${esc(k.name||'—')}</b> ${k.type?'<span style="color:#888">('+esc(k.type)+')</span>':''}
@@ -2178,7 +2183,9 @@ function renderMonthly(){
         <td class="ctr" style="font-size:9px;cursor:pointer" onclick="editKyoMonth('${c.id}',${ki},'shiharai_t',this)">${k.shiharai_t||'—'}</td>
         <td class="${kmi>0?'cl':'ca'}" style="font-size:10px">¥${fmt(kmi)}</td>
         <td class="num" ${ke} onclick="editKyoCell('${c.id}',${ki},'shiharai',this,'number')" style="font-size:10px;cursor:pointer">¥${fmt(fn(k.shiharai))}</td>
-        <td colspan="12"></td>
+        <td></td>
+        <td class="num ${kMargin===null?'':(kMargin>=0?'cp':'cl')}" style="font-size:10px;font-weight:700" title="${kMargin===null?'自社受注額が未入力です。この外注は粗利の計算から原価ごと除外されます':'この外注の粗利＝自社受注額 '+fmt(kJv)+' − 原価 '+fmt(kCost)}">${kMargin===null?'—':'¥'+fmt(kMargin)}</td>
+        <td colspan="10"></td>
       </tr>`;
     }).join('');
     const kouki=c.kouki_s==='未定'||c.kouki_e==='未定'?'未定':(c.kouki_s||c.kouki_e?`${(c.kouki_s||'').slice(5)}〜${(c.kouki_e||'').slice(5)}`:'');
@@ -2591,6 +2598,30 @@ function caseFYContrib(c,fySet){
   const ar=js*projArariRate(c);                                   // 当年度粗利＝当年度請求×率（率ベース）
   return {js,ny,ksr,jh,ar,mi:Math.max(0,js-ny),inFY:(js>0||ny>0||ksr>0||jh>0)};
 }
+// 受注月＝初回記入月（date_orig を優先）。未請の繰越で記入月が動いても二重に数えない
+function juchuMonthOf(c){ return (c.date_orig||c.date||'').slice(0,7); }
+// 受注高・完成工事高・繰越工事高（D-021）。
+//  受注高    ＝ その事業年度に受注した契約金額
+//  完成工事高＝ その事業年度に請求した金額（★発生月 b.month ベース。経審に出す数字）
+//  繰越工事高＝ 受注済みでまだ請求していない残り
+// 前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越 が必ず成り立つ形にする
+function kurikoshiStats(startY){
+  const fyS=getMK(startY,3), fyE=getMK(startY+1,2);   // 3月〜翌2月
+  let prevJu=0,prevKan=0,ju=0,kan=0;
+  (S.cases||[]).forEach(c=>{
+    const jm=juchuMonthOf(c), jh=fn(c.jisha_h);
+    if(jm){ if(jm<fyS)prevJu+=jh; else if(jm<=fyE)ju+=jh; }
+    const bl=(c.billings&&c.billings.length)?c.billings
+      :(fn(c.jisha_s)>0?[{month:(c.seikyuu_t||c.date||'').slice(0,7),amount:c.jisha_s}]:[]);
+    bl.forEach(b=>{
+      const m=(b.month||'').slice(0,7), a=fn(b.amount);
+      if(!m)return;
+      if(m<fyS)prevKan+=a; else if(m<=fyE)kan+=a;
+    });
+  });
+  const prevKuri=prevJu-prevKan;
+  return {prevKuri,ju,kan,nextKuri:prevKuri+ju-kan};
+}
 function fyMonthKeys(startY){const a=[];for(let i=0;i<12;i++){const mn=3+i;const y=mn<=12?startY:startY+1;const m=mn<=12?mn:mn-12;a.push(getMK(y,m));}return a;}
 function fyLabel(startY){return `${startY}年3月 〜 ${startY+1}年2月期`;}
 function dashFYShift(d){if(dashFY==null)dashFY=curFYStart();dashFY+=d;renderDash();}
@@ -2634,7 +2665,7 @@ function renderDash(){
   // ── 6つの合計KPI ──
   const kpi=`<div class="kpis">
     <div class="kpi b"><div class="kl">発注金額 合計</div><div class="kv">¥${fmt(tjh)}</div><div class="ks">受注した工事の総額</div></div>
-    <div class="kpi"><div class="kl">請求金額 合計</div><div class="kv">¥${fmt(tjs)}</div><div class="ks">発注の ${fmtP(pct(tjs,tjh))}</div></div>
+    <div class="kpi" title="売上の発生月ベース。請求漏れで翌月の請求リストへ送っても、この数字は動きません（工事経歴書・月次PLと同じ基準）"><div class="kl">請求金額 合計（発生ベース）</div><div class="kv">¥${fmt(tjs)}</div><div class="ks">発注の ${fmtP(pct(tjs,tjh))}</div></div>
     <div class="kpi g"><div class="kl">入金金額 合計</div><div class="kv">¥${fmt(tny)}</div><div class="ks">請求の ${fmtP(pct(tny,tjs))}</div></div>
     <div class="kpi r"><div class="kl">未収金 合計</div><div class="kv">¥${fmt(tmi)}</div><div class="ks">請求 − 入金</div></div>
     <div class="kpi o"><div class="kl">協力会社 請求合計</div><div class="kv">¥${fmt(tky)}</div><div class="ks">外注原価</div></div>
@@ -2647,6 +2678,26 @@ function renderDash(){
     <div><div style="font-size:12px;font-weight:700;color:#555">${label}</div><div style="font-size:16px;font-weight:800;color:var(--nav)">¥${fmt(amount)}</div>${sub?`<div style="font-size:10px;color:#888">${sub}</div>`:''}</div>
     <div style="display:flex;height:30px;border-radius:6px;overflow:hidden;background:#eceff1">${segs.map(seg).join('')}</div>
   </div>`;
+  // ── 受注高・完成工事高・繰越工事高（D-021）──
+  const kk=kurikoshiStats(dashFY);
+  const kkBox=(l,v,sub,col)=>`<div style="flex:1 1 150px;min-width:150px;background:#f8f9fc;border:1px solid #e3e7ef;border-radius:8px;padding:9px 11px">
+    <div style="font-size:11px;font-weight:700;color:#555">${l}</div>
+    <div style="font-size:17px;font-weight:800;color:${col}">¥${fmt(v)}</div>
+    <div style="font-size:10px;color:#888;margin-top:2px">${sub}</div></div>`;
+  const kkCard=`<div class="card"><div class="card-hdr ch-nav">📐 受注高・完成工事高・繰越工事高（${fyLabel(dashFY)}）</div><div class="card-body">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${kkBox('前期繰越工事高',kk.prevKuri,'前期までの受注 − 前期までの請求','#616161')}
+      ${kkBox('当期 受注高',kk.ju,'この年度に受注した契約金額','var(--nav)')}
+      ${kkBox('当期 完成工事高',kk.kan,'この年度に請求した金額（経審に使う数字）','#1565c0')}
+      ${kkBox('次期繰越工事高',kk.nextKuri,'受注済みでまだ請求していない残り','#e65100')}
+    </div>
+    <div style="margin-top:10px;padding:9px 11px;background:#f5f7fa;border-radius:8px;font-size:11px;color:#555;line-height:1.9">
+      📌 検算：<b>前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越</b><br>
+      　　　　¥${fmt(kk.prevKuri)} ＋ ¥${fmt(kk.ju)} − ¥${fmt(kk.kan)} ＝ <b>¥${fmt(kk.nextKuri)}</b><br>
+      　　　　この式が実感と合わないときは、発注額の入力漏れか請求の付け忘れがあります。<br>
+      　　　　受注高は<b>初回記入月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。
+    </div>
+  </div></div>`;
   const lg=(c,t)=>`<span style="white-space:nowrap"><span style="display:inline-block;width:11px;height:11px;background:${c};border-radius:2px;vertical-align:middle"></span> ${t}</span>`;
   const funnel=`<div class="card"><div class="card-hdr ch-nav">🔗 発注 → 請求 → 入金 の流れ</div><div class="card-body">
     ${frow('発注金額',tjh,'契約した総額（100%）',[{w:pct(tjh,base),c:'var(--nav)',l:'発注'}])}
@@ -2777,7 +2828,7 @@ function renderDash(){
     <button class="btn bo btn-sm" onclick="exportBackup()" style="white-space:nowrap">💾 今すぐバックアップ</button>
   </div>`:'';
 
-  root.innerHTML=bkWarn+head+kpi+funnel+nyCard+lpCard+trend+clCard+kbCard+taCard+brCard+progCard+kyCard+cfCard+bottom+logCard;
+  root.innerHTML=bkWarn+head+kpi+kkCard+funnel+nyCard+lpCard+trend+clCard+kbCard+taCard+brCard+progCard+kyCard+cfCard+bottom+logCard;
  }catch(e){
   const root=document.getElementById('dashRoot');
   if(root)root.innerHTML='<div class="card"><div class="card-body" style="color:#c62828">ダッシュボードの表示でエラーが発生しました（データには影響ありません）。<br><small>'+(e&&e.message||e)+'</small></div></div>';
@@ -3376,7 +3427,7 @@ function renderKE(){
           </div>
           <div class="fg"><label>工種・作業</label><input type="text" value="${k.type||''}" placeholder="掘削・舗装等" oninput="KD[${i}].type=this.value"></div>
           <div class="fg"><label>見積金額（万円）</label><input type="number" value="${fn(k.mitsumori)?parseFloat((fn(k.mitsumori)/10000).toFixed(4)):''}" placeholder="" inputmode="decimal" step="0.1" oninput="KD[${i}].mitsumori=String(Math.round(parseFloat(this.value||0)*10000))"></div>
-          <div class="fg"><label>自社受注額（万円）<span style="font-size:9px;color:#888">この外注分の自社売上→粗利計算に使用</span></label><input type="number" value="${fn(k.juchu)?parseFloat((fn(k.juchu)/10000).toFixed(4)):''}" placeholder="外注分の自社受注額" inputmode="decimal" step="0.1" oninput="KD[${i}].juchu=String(Math.round(parseFloat(this.value||0)*10000));renderKEArari(${i})"></div>
+          <div class="fg"><label>この外注に対応する自社の受注額（万円）<span style="font-size:9px;color:#888">粗利＝この金額−外注原価。入れるなら全ての協社に入れること</span></label><input type="number" value="${fn(k.juchu)?parseFloat((fn(k.juchu)/10000).toFixed(4)):''}" placeholder="外注分の自社受注額" inputmode="decimal" step="0.1" oninput="KD[${i}].juchu=String(Math.round(parseFloat(this.value||0)*10000));renderKEArari(${i})"></div>
           <div class="fg"><label>この外注の粗利</label><div id="ke_arari_${i}" style="padding:8px;font-weight:700;font-size:13px"></div></div>
           <div class="fg"><label>📋 出来高請求</label>
             <div id="kd_bl_${i}" style="font-size:11px;margin-bottom:6px"></div>
