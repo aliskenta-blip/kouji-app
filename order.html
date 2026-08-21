@@ -1385,6 +1385,9 @@ function syncBillings(caseId){
   if(ends.length)c.kouki_e=ends[ends.length-1];
   // 案件全体フラグを billings から自動同期（請済＝請求あり／入済＝全額入金）。月毎チェックと整合させる
   c.seikyuu_c=fn(c.jisha_s)>0?'✓':'';
+  // 請済✓なら請求日も必ず持たせる（片方だけ残ると支払サイトの期限超過判定が基準日を失う）
+  if(c.seikyuu_c==='✓'){ if(!c.seikyuu_c_date)c.seikyuu_c_date=new Date().toISOString().slice(0,10); }
+  else { c.seikyuu_c_date=''; }
   c.nyukin_c=(fn(c.jisha_s)>0&&fn(c.nyukin)>=fn(c.jisha_s))?'✓':'';
   c.kanryo=isDone(c)?'✓':'';   // 累計が発注額に到達＋全額入金で完工
   sv();
@@ -1586,19 +1589,24 @@ function projArariRate(c){
   if(cost<=0)return 0;                        // 協力原価が未入力＝粗利不明→0（率100%表示のバグ防止）
   return jh>0?((jh-cost)/jh):0;
 }
+// ── 請求月の二層化 ────────────────────────────────────────────────
+//  b.month       = 売上の発生月。月次PL・工事経歴書・完成工事高の基準。請求漏れでは動かさない
+//  b.claim_month = 請求管理月。アプリの月別入力・発注者別当月請求計・入金消込の基準。請求漏れで動く
+//  未設定なら発生月と同じ扱い＝既存データは自動的に現行動作のまま
+function claimMonth(b){ return ((b&&(b.claim_month||b.month))||'').slice(0,7); }
 function getBilledMonth(c,ym){
   const bl=c.billings||[];
   if(!bl.length)return ((c.seikyuu_t||c.date||'').slice(0,7)===ym)?fn(c.jisha_s):0;   // 旧データ(billings未生成)は請求月/記入月に計上
-  return bl.filter(b=>(b.month||'')===ym).reduce((a,b)=>a+fn(b.amount),0);
+  return bl.filter(b=>claimMonth(b)===ym).reduce((a,b)=>a+fn(b.amount),0);
 }
 function getNyukinMonth(c,ym){
   const bl=c.billings||[];
   if(!bl.length)return ((c.seikyuu_t||c.date||'').slice(0,7)===ym)?fn(c.nyukin):0;
-  return bl.filter(b=>(b.month||'')===ym).reduce((a,b)=>a+fn(b.nyukin),0);
+  return bl.filter(b=>claimMonth(b)===ym).reduce((a,b)=>a+fn(b.nyukin),0);
 }
 function getNyukinPrev(c,ym){
   const bl=c.billings||[];
-  return bl.filter(b=>(b.month||'')<ym).reduce((a,b)=>a+fn(b.nyukin),0);
+  return bl.filter(b=>claimMonth(b)<ym).reduce((a,b)=>a+fn(b.nyukin),0);
 }
 // 完工（全て完了）＝発注額まで請求済 かつ 未収金なし（全額入金済）
 function isDone(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0&&r.misu<=0;}
@@ -2181,7 +2189,7 @@ function renderMonthly(){
       <td class="ctr">${doneCk}</td>
       <td style="cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.biko||'')}　クリックでメモ編集" onclick="editMemo('${c.id}',this)">${c.biko?'📝':'＋'}${isMorei?'<span style="color:#c62828;font-size:9px;font-weight:700"> ⚠'+daysSinceSeikyuu+'日</span>':''}</td>
       <td class="ctr" style="white-space:nowrap">
-        ${c.seikyuu_c!=='✓'?`<button class="btn bx btn-sm edit-only" onclick="miSeikyuu('${c.id}')" title="完工できず来月に繰越">未請</button>`:''}
+        ${(r.remaining>0&&bm<=0)?`<button class="btn bx btn-sm edit-only" onclick="miSeikyuu('${c.id}')" title="この月は未請求。未請求残を来月へ繰越">未請</button>`:''}
         ${c.seikyuu_c==='✓'&&c.nyukin_c!=='✓'?`<button class="btn bx btn-sm edit-only" onclick="togMorei('${c.id}')" title="請求済だが着金未確認→次月へ" style="font-size:9px;color:#c62828">請求漏</button>`:''}
         ${c.more_flag==='✓'?`<button class="btn bx btn-sm edit-only" onclick="clearMorei('${c.id}')" title="請求漏れ解除" style="font-size:9px">漏解除</button>`:''}
         <button class="btn bo btn-sm edit-only" onclick="editCase('${c.id}')">編</button>
@@ -3704,7 +3712,7 @@ function togNyukinMonth(id){
   const c=S.cases.find(x=>x.id===id);if(!c)return;
   const mk=getMK(getYr(),getMo());
   const bl=c.billings||[];
-  const mbs=bl.filter(b=>(b.month||'').slice(0,7)===mk&&fn(b.amount)>0);
+  const mbs=bl.filter(b=>claimMonth(b)===mk&&fn(b.amount)>0);   // 入金消込は請求管理月で拾う
   if(mbs.length){
     const allPaid=mbs.every(b=>fn(b.nyukin)>=fn(b.amount));
     mbs.forEach(b=>{ if(allPaid){b.nyukin='0';b.nyukin_d='';} else {b.nyukin=b.amount;b.nyukin_d=new Date().toISOString().slice(0,10);} });
@@ -3728,35 +3736,58 @@ function shiftYM(ym,delta){
   while(m>12){m-=12;y++;}while(m<1){m+=12;y--;}
   return y+'-'+String(m).padStart(2,'0');
 }
+// 請求漏れ：請求書は出したが入金が確認できない現場を、翌月の請求リストへ送る。
+// ★売上の発生月（b.month）は動かさない。請求管理月（b.claim_month）だけを動かす。
+//   6月に出した請求は6月の売上のまま（原価も6月に出ている）／6月の当月請求計からだけ外れて7月に乗る。
 function togMorei(id){
   if(!canEdit())return;
-  const c=S.cases.find(x=>x.id===id);if(!c)return;
-  const cur=(c.date||'').slice(0,7);
-  if(!cur){alert('記入月が未設定です');return;}
-  const next=shiftYM(getMK(getYr(),getMo()),1);   // 押した（表示中の）月の次月へ繰越
-  if(!confirm(`「${c.place||''} ${c.kouji||''}」を請求漏れとして${next}に移動しますか？`))return;
-  // 請求した金額（billings）も一緒に翌月へ繰越す
-  (c.billings||[]).forEach(b=>{if((b.month||'')===cur)b.month=next;});
-  if((c.seikyuu_t||'')===cur)c.seikyuu_t=next;
-  c.more_prev=cur;       // 解除時に戻す月（請求漏れを押した月）を記憶
-  c.date=next;
+  const c=S.cases.find(x=>x.id===id); if(!c)return;
+  const cur=getMK(getYr(),getMo());      // ★表示中の月が基準（記入月ではない）
+  const next=shiftYM(cur,1);
+  const target=(c.billings||[]).filter(b=>claimMonth(b)===cur&&fn(b.amount)>0);
+  if(!target.length){ alert(`${cur} に請求がありません。請求漏れにできるのは請求済みの月だけです。`); return; }
+  const amt=target.reduce((a,b)=>a+fn(b.amount),0);
+  if(!confirm(`「${c.place||''} ${c.kouji||''}」の ${cur} 分 ¥${fmt(amt)} を請求漏れとして ${next} の請求リストへ移しますか？
+
+※${cur} の売上（月次PL）は動きません。`))return;
+
+  target.forEach(b=>{ b.claim_month=next; });   // ★b.month は触らない
   c.more_flag='✓';
-  c.seikyuu_c='';c.nyukin_c='';c.seikyuu_c_date='';   // 繰越先では請済/入済チェックを空に
-  sv();addLog('edit',`${esc(c.place||'')}を請求漏れ→${next}に移動`);renderAll();
+  c.more_hist=Array.isArray(c.more_hist)?c.more_hist:[];
+  c.more_hist.push({from:cur,to:next});
+  c.nyukin_c='';
+  syncBillings(id);
+  addLog('edit',`${esc(c.place||'')} ${cur}分を請求漏れ→${next}の請求リストへ`);
+  renderAll();
 }
 function clearMorei(id){
   if(!canEdit())return;
-  const c=S.cases.find(x=>x.id===id);if(!c)return;
-  const curM=(c.date||'').slice(0,7);
-  const prev=c.more_prev||shiftYM(curM,-1);   // 請求漏れを最後に押した月（前月）へ戻す
-  if(!confirm(`「${c.place||''} ${c.kouji||''}」の請求漏れを解除して${prev}に戻しますか？`))return;
-  // 繰越していた請求額も元の月へ戻す
-  (c.billings||[]).forEach(b=>{if((b.month||'')===curM)b.month=prev;});
-  if((c.seikyuu_t||'')===curM)c.seikyuu_t=prev;
-  c.date=prev;
-  c.more_flag='';
-  c.more_prev='';
-  sv();addLog('edit',`${esc(c.place||'')}を請求漏れ解除→${prev}に戻す`);renderAll();
+  const c=S.cases.find(x=>x.id===id); if(!c)return;
+  const hist=Array.isArray(c.more_hist)?c.more_hist:[];
+  const last=hist.length?hist[hist.length-1]:null;
+  if(!last){
+    // 旧仕様（b.month ごと動かしていた時代）で立てたフラグの巻き戻し。新規の請求漏れは必ず more_hist を持つ
+    const curM=(c.date||'').slice(0,7);
+    const prev=c.more_prev||'';
+    if(!prev){ alert('戻し先の記録がありません。工期セルまたは請求欄から手で直してください。'); return; }
+    if(!confirm(`「${c.place||''} ${c.kouji||''}」の請求漏れ（旧方式）を解除して ${prev} に戻しますか？`))return;
+    (c.billings||[]).forEach(b=>{if((b.month||'')===curM)b.month=prev;});
+    if((c.seikyuu_t||'')===curM)c.seikyuu_t=prev;
+    c.date=prev; c.more_flag=''; c.more_prev='';
+    sv();addLog('edit',`${esc(c.place||'')}の請求漏れ（旧方式）を解除→${prev}へ`);renderAll();
+    return;
+  }
+  if(!confirm(`請求漏れを解除して ${last.from} の請求リストへ戻しますか？`))return;
+  // 一度だけ動かした分は claim_month を消して発生月に戻す。二段繰越は一段だけ戻す
+  (c.billings||[]).forEach(b=>{
+    if(claimMonth(b)===last.to){ b.claim_month=(last.from===(b.month||'').slice(0,7))?'':last.from; }
+  });
+  hist.pop();
+  c.more_hist=hist;
+  if(!hist.length)c.more_flag='';
+  syncBillings(id);
+  addLog('edit',`${esc(c.place||'')}の請求漏れを解除→${last.from}へ`);
+  renderAll();
 }
 function editKoukiSel(id,el){
   if(!canEdit())return;
@@ -3787,16 +3818,24 @@ function saveKoukiSel(id){
   sv();renderAll();
 }
 
+// 未請：発注書は記入したが工事が完了せず、請求を来月へずらす。請求書はまだ出していない。
+// ★まだ売上が発生していないので b.month ごと動かす（請求漏れとは別物。共通化しないこと）。
 function miSeikyuu(id){
   if(!canEdit())return;
-  const c=S.cases.find(c=>c.id===id);if(!c)return;
-  const cur=c.date||'';
-  if(!cur){alert('記入月が未設定です');return;}
-  const next=shiftYM(getMK(getYr(),getMo()),1);   // 押した（表示中の）月の次月へ繰越
-  if(!confirm(`「${c.place||''} ${c.kouji||''}」を${next}に繰越しますか？`))return;
+  const c=S.cases.find(x=>x.id===id); if(!c)return;
+  const cur=getMK(getYr(),getMo());
+  const next=shiftYM(cur,1);
+  if(!confirm(`「${c.place||''} ${c.kouji||''}」を ${next} へ繰越しますか？`))return;
+
+  // 当月の請求（未請求のまま入力されていた分）があれば発生月ごと翌月へ
+  (c.billings||[]).forEach(b=>{
+    if(claimMonth(b)===cur){ b.month=next; if(b.claim_month)b.claim_month=next; }
+  });
+  if((c.seikyuu_t||'')===cur)c.seikyuu_t=next;
+  if(!c.date_orig)c.date_orig=c.date||'';   // 初回記入月を保持（繰越で c.date が上書きされ続けるため）
   c.date=next;
-  c.seikyuu_c='';c.nyukin_c='';c.seikyuu_c_date='';   // 繰越先では請済/入済チェックを空に
-  sv();
+  c.seikyuu_c='';c.seikyuu_c_date='';c.nyukin_c='';
+  syncBillings(id);
   addLog('edit',`${esc(c.place||'')}を未請求→${next}に繰越`);
   renderAll();
 }
