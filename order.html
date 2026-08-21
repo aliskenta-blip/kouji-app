@@ -3975,10 +3975,13 @@ function doExcelBackup(){
     '協社3名','協社3見積','協社3請求','協社3支払'];
   const caseRows=S.cases.map(c=>{
     const r=calc(c);const ks=c.kyousha_list||[];
+    // 粗利は画面と同じ条件。対象外は空欄にする（0 だと「粗利ゼロ」と読めてしまうため）
+    const shA=showArariOf(c);
     return [c.seikyuu_t,c.date,c.place,c.client,c.branch,c.tantou,c.kouji,c.kubun,
       fn(c.jisha_h),fn(c.jisha_s),r.km,r.ksr,r.cnt,
-      c.seikyuu_t,fn(c.nyukin),r.misu,r.ksh,r.miharai,r.arari,
-      r.arariRate>0?Math.round(r.arariRate*10)/10+'%':'0%',fn(c.m3),
+      c.seikyuu_t,fn(c.nyukin),r.misu,r.ksh,r.miharai,
+      shA?r.arari:'',
+      shA?Math.round(projArariRate(c)*1000)/10+'%':'',fn(c.m3),
       c.kouki_s||'',c.kouki_e||'',
       c.shashin||'',c.zando||'',c.kakunin||'',c.mail||'',c.nyukin_c||'',c.kanryo||'',c.zan_s||'',c.mi_s||'',c.biko||'',
       ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','',''])
@@ -4262,9 +4265,12 @@ function doCSV(type){
     '見積番号'];   // 既存の列位置に依存する処理・Excelを壊さないよう末尾に追加すること
   const rows=[h,...cases.map(c=>{
     const r=calc(c);const ks=c.kyousha_list||[];
+    // 粗利は画面と同じ条件。対象外は空欄にする（0 だと「粗利ゼロ」と読めてしまうため）
+    const shA=showArariOf(c);
     return [c.seikyuu_t,c.date,c.place,c.client,c.branch,c.tantou,c.kouji,c.kubun,
       fn(c.jisha_h),fn(c.jisha_s),r.km,r.ksr,r.cnt,r.jShikou,
-      c.seikyuu_t,fn(c.nyukin),r.misu,r.ksh,r.miharai,r.arari,fmtP(r.arariRate),fn(c.m3),
+      c.seikyuu_t,fn(c.nyukin),r.misu,r.ksh,r.miharai,
+      shA?r.arari:'',shA?fmtP(projArariRate(c)*100):'',fn(c.m3),
       c.kouki_s||'',c.kouki_e||'',
       c.shashin,c.zando,c.kakunin,c.mail,c.nyukin_c,c.kanryo,c.zan_s,c.mi_s,c.biko,
       ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','','']),
