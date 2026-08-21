@@ -1279,10 +1279,7 @@ function renderFormBillings(){
       <button onclick="formBillings.splice(${i},1);renderFormBillings()" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
     </div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;font-size:11px">
-      <label style="display:flex;align-items:center;gap:2px">工期<input type="month" value="${b.kouki_s||''}" onchange="formBillings[${i}].kouki_s=this.value" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:100px"></label>
-      <span style="color:#888">〜</span>
-      <input type="month" value="${b.kouki_e||''}" onchange="formBillings[${i}].kouki_e=this.value" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:100px">
-      <label style="display:flex;align-items:center;gap:2px;margin-left:6px">入金<input type="number" value="${fn(b.nyukin)?parseFloat((fn(b.nyukin)/10000).toFixed(2)):''}" onchange="formBillings[${i}].nyukin=String(Math.round(parseFloat(this.value||0)*10000))" placeholder="万" inputmode="decimal" step="0.1" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:55px"></label>
+      <label style="display:flex;align-items:center;gap:2px">入金<input type="number" value="${fn(b.nyukin)?parseFloat((fn(b.nyukin)/10000).toFixed(2)):''}" onchange="formBillings[${i}].nyukin=String(Math.round(parseFloat(this.value||0)*10000))" placeholder="万" inputmode="decimal" step="0.1" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:55px"></label>
       <input type="date" value="${b.nyukin_d||''}" onchange="formBillings[${i}].nyukin_d=this.value" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:110px">
     </div>
   </div>`).join('')||'<div style="color:#bbb;font-size:12px">請求登録なし</div>';
@@ -1331,11 +1328,6 @@ function editBillings(caseId,el){
           <span style="font-weight:700">¥${fmt(fn(b.amount))}</span>
           <button onclick="S.cases.find(x=>x.id==='${c.id}').billings.splice(${i},1);syncBillings('${c.id}');blRepaint&&blRepaint()" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
         </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap;font-size:11px">
-          <label style="display:flex;align-items:center;gap:2px">工期<input type="month" value="${b.kouki_s||''}" onchange="S.cases.find(x=>x.id==='${c.id}').billings[${i}].kouki_s=this.value;syncBillings('${c.id}')" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:100px"></label>
-          <span style="color:#888;line-height:24px">〜</span>
-          <input type="month" value="${b.kouki_e||''}" onchange="S.cases.find(x=>x.id==='${c.id}').billings[${i}].kouki_e=this.value;syncBillings('${c.id}')" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:100px">
-        </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;font-size:11px;margin-top:4px">
           <label style="display:flex;align-items:center;gap:2px">入金<input type="number" value="${fn(b.nyukin)?parseFloat((fn(b.nyukin)/10000).toFixed(2)):''}" onchange="S.cases.find(x=>x.id==='${c.id}').billings[${i}].nyukin=String(Math.round(parseFloat(this.value||0)*10000));syncBillings('${c.id}')" placeholder="万" inputmode="decimal" step="0.1" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:55px">万</label>
           <input type="date" value="${b.nyukin_d||''}" onchange="S.cases.find(x=>x.id==='${c.id}').billings[${i}].nyukin_d=this.value;syncBillings('${c.id}')" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:110px">
@@ -1378,6 +1370,14 @@ function makeDraggable(box,handle){
   handle.addEventListener('mousedown',e=>{onDown(e.clientX,e.clientY);e.preventDefault();});
   handle.addEventListener('touchstart',e=>{if(e.touches[0])onDown(e.touches[0].clientX,e.touches[0].clientY);},{passive:true});
 }
+// 完工月＝累計請求が発注金額に到達した請求の月（★発生月ベース。請求管理月は使わない）
+function calcKankouMonth(c){
+  const jh=fn(c.jisha_h); if(jh<=0)return '';
+  const bl=(c.billings||[]).slice().sort((a,b)=>((a.month||'').localeCompare(b.month||'')));
+  let acc=0;
+  for(const b of bl){ acc+=fn(b.amount); if(acc>=jh) return (b.month||'').slice(0,7); }
+  return '';
+}
 function syncBillings(caseId){
   const c=S.cases.find(x=>x.id===caseId);if(!c)return;
   const bl=c.billings||[];
@@ -1386,10 +1386,6 @@ function syncBillings(caseId){
   c.nyukin=String(bl.reduce((a,b)=>a+fn(b.nyukin),0));
   const lastNy=bl.filter(b=>b.nyukin_d).sort((a,b)=>(b.nyukin_d||'').localeCompare(a.nyukin_d||''));
   c.nyukin_d=lastNy.length?lastNy[0].nyukin_d:'';
-  const starts=bl.map(b=>b.kouki_s).filter(Boolean).sort();
-  const ends=bl.map(b=>b.kouki_e).filter(Boolean).sort();
-  if(starts.length)c.kouki_s=starts[0];
-  if(ends.length)c.kouki_e=ends[ends.length-1];
   // 案件全体フラグを billings から自動同期（請済＝請求あり／入済＝全額入金）。月毎チェックと整合させる
   c.seikyuu_c=fn(c.jisha_s)>0?'✓':'';
   // 請済✓なら請求日も必ず持たせる（片方だけ残ると支払サイトの期限超過判定が基準日を失う）
@@ -1397,6 +1393,12 @@ function syncBillings(caseId){
   else { c.seikyuu_c_date=''; }
   c.nyukin_c=(fn(c.jisha_s)>0&&fn(c.nyukin)>=fn(c.jisha_s))?'✓':'';
   c.kanryo=isDone(c)?'✓':'';   // 累計が発注額に到達＋全額入金で完工
+  // 工期終了＝完工月を自動判定。手入力された工期終了は尊重する
+  // （減額精算・追加工事で発注額と請求額が一致しない案件があるため）
+  if(c.kouki_e_auto==='✓' || !c.kouki_e){
+    const km=calcKankouMonth(c);
+    if(km){ c.kouki_e=km; c.kouki_e_auto='✓'; }
+  }
   sv();
 }
 
@@ -1704,21 +1706,13 @@ function tgCk(id,field,el){
     }
     if(field==='kanryo'){
       if(c.seikyuu_c!=='✓'||c.nyukin_c!=='✓'){alert('請求済・入金済の両方にチェックしてから完了にしてください');return;}
-      // 工期未入力なら記入月を自動セット
-      const autoMonth=c.date||'';
-      if(!c.kouki_s)c.kouki_s=autoMonth;
-      if(!c.kouki_e)c.kouki_e=autoMonth;
     }
   }
   c[field]=newVal;
   // 請求済チェック日を記録
   if(field==='seikyuu_c'){
     c.seikyuu_c_date=c[field]==='✓'?new Date().toISOString().slice(0,10):'';
-    // 請求を出した段階＝工期終了（完成月）を自動入力。空欄のときだけ（手入力は尊重）
-    if(c[field]==='✓'&&!c.kouki_e){c.kouki_e=getMK(getYr(),getMo());}
   }
-  // 完工（完了）＝累計請求が発注金額に達したかで自動判定
-  if(isDone(c)){const autoMonth=c.date||'';if(!c.kouki_s)c.kouki_s=autoMonth;if(!c.kouki_e)c.kouki_e=autoMonth;}
   c.kanryo=isDone(c)?'✓':'';
   sv();
   const fieldNames={shashin:'写真',zando:'残土伝票',nyukin_c:'入金済',kanryo:'完了',seikyuu_c:'請求済'};
@@ -3727,8 +3721,9 @@ function togChakkou(id){
   const c=S.cases.find(x=>x.id===id);if(!c)return;
   const mk=getMK(getYr(),getMo());
   const ks=(c.kouki_s||'').slice(0,7);
-  const on=!!ks&&ks!=='未定'&&ks<=mk;   // すでに着工済み（当月以前）か
-  if(on){ c.kouki_s=''; addLog('check',`${esc(c.place||'')}の「着工（工期開始）」を解除`); }
+  // ★解除できるのは表示月＝工期開始のときだけ。
+  //   3月着工の案件を5月に表示して押したときに3月の記録を消さない
+  if(ks===mk){ c.kouki_s=''; addLog('check',`${esc(c.place||'')}の「着工（工期開始）」を解除`); }
   else { c.kouki_s=mk; addLog('check',`${esc(c.place||'')}の「着工（工期開始）」を${mk}に設定`); }
   sv();renderMonthly();
 }
@@ -3840,8 +3835,11 @@ function saveKoukiSel(id){
   const c=S.cases.find(x=>x.id===id);if(!c)return;
   const s=document.getElementById('ks_'+id).value;
   const e=document.getElementById('ke_'+id).value;
+  const ne=e?e.replace('/','-'):'';
   c.kouki_s=s?s.replace('/','-'):'';
-  c.kouki_e=e?e.replace('/','-'):'';
+  // 工期終了を手で直したら、以後 syncBillings の自動上書きを止める。
+  // 工期開始だけ変えた場合は kouki_e_auto に触らない
+  if(ne!==(c.kouki_e||'')){ c.kouki_e=ne; c.kouki_e_auto=''; }
   sv();renderAll();
 }
 
