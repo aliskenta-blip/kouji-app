@@ -4253,7 +4253,9 @@ function handleJsonFile(file){
 //   ・最後に " で囲み、内部の " は "" にエスケープ
 function csvSafe(v){
   let s=(v??'').toString().replace(/[\t\r\n]+/g,' ');
-  if(/^[=@]/.test(s)||(/^[+\-]/.test(s)&&!/^[+\-][\d,.\s]*$/.test(s)))s="'"+s;
+  // 数値は除外（金額列を壊さないため）。% は数式にならないので末尾の % も数値扱いにする
+  // （粗利率が負の案件「-40.0%」に ' が付き、Excel で文字列になってしまうため）
+  if(/^[=@]/.test(s)||(/^[+\-]/.test(s)&&!/^[+\-][\d,.\s]*%?$/.test(s)))s="'"+s;
   return `"${s.replace(/"/g,'""')}"`;
 }
 function doCSV(type){
