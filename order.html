@@ -1300,6 +1300,9 @@ function addFormBilling(){
 }
 function editBillings(caseId,el){
   if(!canEdit())return;
+  // 開きっぱなしの同種ポップアップを閉じる。2枚重なると pop_bl_yr / pop_bl_amt が
+  // ID重複し、getElementById が1枚目を拾うため2枚目に入力した値が捨てられる
+  document.querySelectorAll('#blPopHdr').forEach(h=>{const p=h.closest('[style*=fixed]');if(p)p.remove();});
   const c=S.cases.find(c=>c.id===caseId);if(!c)return;
   if(!c.billings)c.billings=[];
   if(!c.billings.length&&fn(c.jisha_s)){
@@ -1836,6 +1839,8 @@ function editKyoCell(caseId,ki,field,el,type){
 // 協力会社 出来高請求
 function editKyoBillings(caseId,ki,el){
   if(!canEdit())return;
+  // editBillings と同じ問題。kb_yr_* / kb_amt_* がID重複する
+  document.querySelectorAll('#kbPopHdr').forEach(h=>{const p=h.closest('[style*=fixed]');if(p)p.remove();});
   const c=S.cases.find(c=>c.id===caseId);if(!c)return;
   const k=(c.kyousha_list||[])[ki];if(!k)return;
   if(!k.billings)k.billings=[];
@@ -2189,7 +2194,7 @@ function renderMonthly(){
       <td class="ctr">${doneCk}</td>
       <td style="cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.biko||'')}　クリックでメモ編集" onclick="editMemo('${c.id}',this)">${c.biko?'📝':'＋'}${isMorei?'<span style="color:#c62828;font-size:9px;font-weight:700"> ⚠'+daysSinceSeikyuu+'日</span>':''}</td>
       <td class="ctr" style="white-space:nowrap">
-        ${(r.remaining>0&&bm<=0)?`<button class="btn bx btn-sm edit-only" onclick="miSeikyuu('${c.id}')" title="この月は未請求。未請求残を来月へ繰越">未請</button>`:''}
+        ${(bm<=0&&(r.remaining>0||fn(c.jisha_h)<=0))?`<button class="btn bx btn-sm edit-only" onclick="miSeikyuu('${c.id}')" title="この月は未請求。未請求残を来月へ繰越">未請</button>`:''}
         ${c.seikyuu_c==='✓'&&c.nyukin_c!=='✓'?`<button class="btn bx btn-sm edit-only" onclick="togMorei('${c.id}')" title="請求済だが着金未確認→次月へ" style="font-size:9px;color:#c62828">請求漏</button>`:''}
         ${c.more_flag==='✓'?`<button class="btn bx btn-sm edit-only" onclick="clearMorei('${c.id}')" title="請求漏れ解除" style="font-size:9px">漏解除</button>`:''}
         <button class="btn bo btn-sm edit-only" onclick="editCase('${c.id}')">編</button>
@@ -3752,6 +3757,8 @@ function togMorei(id){
 ※${cur} の売上（月次PL）は動きません。`))return;
 
   target.forEach(b=>{ b.claim_month=next; });   // ★b.month は触らない
+  if(!c.date_orig)c.date_orig=c.date||'';   // 初回記入月を保持
+  c.date=next;                              // 月別一覧の絞り込みは c.date 基準。当月から消して翌月に出す
   c.more_flag='✓';
   c.more_hist=Array.isArray(c.more_hist)?c.more_hist:[];
   c.more_hist.push({from:cur,to:next});
@@ -3782,6 +3789,7 @@ function clearMorei(id){
   (c.billings||[]).forEach(b=>{
     if(claimMonth(b)===last.to){ b.claim_month=(last.from===(b.month||'').slice(0,7))?'':last.from; }
   });
+  c.date=last.from;                         // 記入月も元の月へ戻す（date_orig は初回記入月なので触らない）
   hist.pop();
   c.more_hist=hist;
   if(!hist.length)c.more_flag='';
