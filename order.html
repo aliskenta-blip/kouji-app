@@ -130,6 +130,10 @@ tr.sub-r:hover td{background:#d0e8fa!important}
 .fg label{font-size:12px;font-weight:700;color:#555}
 .fg input,.fg select{border:1.5px solid #ddd;border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;width:100%;-webkit-appearance:none;background:#fff}
 .fg input[type="checkbox"]{-webkit-appearance:auto;appearance:auto;width:auto}
+/* 金額欄のスピナー矢印を消す。矢印を押した拍子の誤入力を防ぐ（.fg 内に限らずアプリ全体に効かせる） */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+input[type="number"]{-moz-appearance:textfield}
 .fg input[type="file"]{padding:8px;font-size:12px}
 .fg input:focus,.fg select:focus{outline:none;border-color:var(--nav2);background:#f0f7ff;box-shadow:0 0 0 3px rgba(21,101,192,.15)}
 .st{font-size:12px;font-weight:700;color:var(--nav);padding:8px 0 5px;border-bottom:2px solid #c1e4f5;margin:12px 0 8px}
@@ -3353,6 +3357,16 @@ function renderKEArari(i){
 }
 function addKEntry(){KD.push({name:'',type:'',mitsumori:'',juchu:'',seikyuu:'',seikyuu_t:'',shiharai_t:'',shiharai:'',billings:[]});renderKE();}
 function rmKE(i){KD.splice(i,1);renderKE();}
+
+// ── 金額欄でホイールを回しても値が変わらないようにする ──
+// フォーカスを外すだけにして preventDefault は使わない（ページ自体がスクロールできなくなるため）。
+// ポップアップやフォームは innerHTML で作り直されるので、個々の input ではなく document に1箇所だけ張る
+document.addEventListener('wheel',function(e){
+  const el=e.target;
+  if(el&&el.tagName==='INPUT'&&el.type==='number'&&document.activeElement===el){
+    el.blur();
+  }
+},{passive:true});
 
 // ── モーダル内Enterキーで次のフィールドへ移動 ──
 document.addEventListener('keydown',function(e){
