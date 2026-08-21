@@ -2157,7 +2157,12 @@ function renderMonthly(){
     const nyMonth=getNyukinMonth(c,mk);
     const nyPrev=getNyukinPrev(c,mk);
     const arariMonth=arariMonthOf(c,mk);   // 当月粗利＝実額ベース（D-012）。マイナスになる月は仕様
-    tot.jh+=fn(c.jisha_h);tot.js+=bm;tot.km+=r.km;tot.ks+=r.ksr;
+    // 受注高＝当月に新規で受注した契約金額（D-019）。繰越・出来高で再掲された案件を
+    // 毎月フル計上すると月をまたいで足せない数字になるため、記入月が当月の案件だけ合計する。
+    // 初回記入月（date_orig）を優先し、未請の繰越で記入月が動いた案件の二重計上を防ぐ
+    const orig=(c.date_orig||c.date||'').slice(0,7);
+    const isNewOrder=orig===mk;
+    tot.jh+=isNewOrder?fn(c.jisha_h):0;tot.js+=bm;tot.km+=isNewOrder?r.km:0;tot.ks+=r.ksr;
     tot.ny+=nyMonth;tot.nyPrev+=nyPrev;tot.rem+=r.remaining;tot.mi+=r.misu;tot.sh+=r.ksh;tot.mp+=r.miharai;tot.ar+=arariMonth;tot.m3+=fn(c.m3);
     const subRows=(c.kyousha_list||[]).map((k,ki)=>{
       const kmi=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));
@@ -2259,9 +2264,9 @@ function renderMonthly(){
   const tr2=tot.js>0?tot.ar/tot.js*100:0;
   document.getElementById('mFoot').innerHTML=`<tr class="tot">
     <td colspan="10">合計（${cases.length}件）</td>
-    <td class="num big">¥${fmt(tot.jh)}</td><td class="num">¥${fmt(tot.js)}</td><td class="num">¥${fmt(tot.rem)}</td><td class="num">¥${fmt(tot.mi)}</td>
+    <td class="num big" title="受注高＝この月に新規で受注した契約金額の合計。繰越・出来高で再掲された案件は含みません（行の発注額の単純合計とは一致しません）">¥${fmt(tot.jh)}</td><td class="num">¥${fmt(tot.js)}</td><td class="num">¥${fmt(tot.rem)}</td><td class="num">¥${fmt(tot.mi)}</td>
     <td></td>
-    <td class="num big">¥${fmt(tot.km)}</td><td class="num">¥${fmt(tot.ks)}</td><td></td><td></td>
+    <td class="num big" title="この月に新規で受注した案件の協力会社見積の合計。繰越で再掲された案件は含みません">¥${fmt(tot.km)}</td><td class="num">¥${fmt(tot.ks)}</td><td></td><td></td>
     <td class="num">¥${fmt(tot.mp)}</td>
     <td class="num">¥${fmt(tot.ny)}</td><td class="num" style="font-size:10px;color:#888">¥${fmt(tot.nyPrev)}</td>
     <td class="num big">¥${fmt(tot.ar)}</td><td class="ctr">${fmtP(tr2)}</td>
