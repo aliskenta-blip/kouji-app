@@ -1398,6 +1398,7 @@ function syncBillings(caseId){
   if(c.kouki_e_auto==='✓' || !c.kouki_e){
     const km=calcKankouMonth(c);
     if(km){ c.kouki_e=km; c.kouki_e_auto='✓'; }
+    else if(c.kouki_e_auto==='✓'){ c.kouki_e=''; }   // 自動で入れた値のみ取り消す（手入力は消さない）
   }
   sv();
 }
