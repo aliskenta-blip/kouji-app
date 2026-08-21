@@ -1582,17 +1582,59 @@ function calc(c){
   const remaining=Math.max(0,jh-js);
   return {js,jh,ny,km,ksr,ksh,misu,miharai,arari,arariRate,cnt:ks.length,isEstimate,remaining,hasJuchu};
 }
-// 案件の粗利率（発注額ベースで安定）。粗利が意味を持つ案件のみ（行の粗利表示と一致させる）
+// 粗利を表示してよい案件か。月別・マスター一覧・受発注一覧で同じ条件を使う
+function showArariOf(c){
+  const r=calc(c);
+  return r.cnt>0&&(r.hasJuchu||c.jisha_sekou!=='✓');
+}
+// 案件の粗利率（分母＝案件の総請求額。未請求なら発注額）。粗利が意味を持つ案件のみ
 function projArariRate(c){
   const r=calc(c);
   if(r.cnt<=0)return 0;                       // 協力会社なし＝原価不明で対象外
   const isSelf=c.jisha_sekou==='✓';
   if(!r.hasJuchu&&isSelf)return 0;            // 合同(自社+外注)は自社労務が入らず粗利が過大→対象外
-  if(r.hasJuchu)return r.arariRate/100;       // 中間マージン案件は既存率
-  // 原価＝協力会社の請求（実額）があればそれを優先、無ければ見積。分母は発注金額（固定）で率を安定化
-  const jh=fn(c.jisha_h);const cost=r.ksr>0?r.ksr:r.km;
+  // ★分母は案件の総請求額に統一する（無ければ発注額）。中間マージン案件で
+  //   分母が自社受注額の合計だと、案件全体の請求に掛けたときに粗利が過大になる
+  const base=r.js>0?r.js:fn(c.jisha_h);
+  if(base<=0)return 0;
+  if(r.hasJuchu)return r.arari/base;
+  // 原価＝協力会社の請求（実額）があればそれを優先、無ければ見積
+  const cost=r.ksr>0?r.ksr:r.km;
   if(cost<=0)return 0;                        // 協力原価が未入力＝粗利不明→0（率100%表示のバグ防止）
-  return jh>0?((jh-cost)/jh):0;
+  return (base-cost)/base;
+}
+// 当月の協力会社請求額（★発生月ベース。協社 billings に claim_month は無い）
+function getKyoBilledMonth(c,ym){
+  return (c.kyousha_list||[]).reduce((a,k)=>{
+    const kbl=(k.billings&&k.billings.length)?k.billings
+      :(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);
+    return a+kbl.filter(b=>(b.month||'').slice(0,7)===ym).reduce((x,b)=>x+fn(b.amount),0);
+  },0);
+}
+// 当月の粗利（★実額ベース。率按分ではない・D-012）
+// 中間マージン案件は「協社の請求月」に、その外注のマージンを按分して計上する。
+// 原価が先に来る月はマイナスになるが、それが正確な情報なので0で丸めない
+function arariMonthOf(c,ym){
+  const r=calc(c);
+  if(r.cnt<=0)return 0;                      // 協力会社なし＝原価不明
+  const isSelf=c.jisha_sekou==='✓';
+  if(!r.hasJuchu&&isSelf)return 0;           // 合同かつ自社受注額なし
+  if(r.hasJuchu){
+    let a=0;
+    (c.kyousha_list||[]).forEach(k=>{
+      const jv=fn(k.juchu); if(jv<=0)return;
+      const cost=fn(k.seikyuu)>0?fn(k.seikyuu):fn(k.mitsumori);
+      const margin=jv-cost;
+      const kbl=(k.billings&&k.billings.length)?k.billings
+        :(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);
+      const tot=kbl.reduce((x,b)=>x+fn(b.amount),0);
+      if(tot<=0)return;                      // 協社請求が未登録＝原価未確定。計上しない
+      kbl.forEach(b=>{ if((b.month||'').slice(0,7)===ym) a+=margin*(fn(b.amount)/tot); });
+    });
+    return a;
+  }
+  // 単独：当月請求 − 当月の協社請求
+  return getBilledMonth(c,ym)-getKyoBilledMonth(c,ym);
 }
 // ── 請求月の二層化 ────────────────────────────────────────────────
 //  b.month       = 売上の発生月。月次PL・工事経歴書・完成工事高の基準。請求漏れでは動かさない
@@ -2114,7 +2156,7 @@ function renderMonthly(){
     const bm=getBilledMonth(c,mk);
     const nyMonth=getNyukinMonth(c,mk);
     const nyPrev=getNyukinPrev(c,mk);
-    const arariMonth=bm*projArariRate(c);   // 当月粗利＝当月請求×案件の粗利率（発生・率ベース）
+    const arariMonth=arariMonthOf(c,mk);   // 当月粗利＝実額ベース（D-012）。マイナスになる月は仕様
     tot.jh+=fn(c.jisha_h);tot.js+=bm;tot.km+=r.km;tot.ks+=r.ksr;
     tot.ny+=nyMonth;tot.nyPrev+=nyPrev;tot.rem+=r.remaining;tot.mi+=r.misu;tot.sh+=r.ksh;tot.mp+=r.miharai;tot.ar+=arariMonth;tot.m3+=fn(c.m3);
     const subRows=(c.kyousha_list||[]).map((k,ki)=>{
@@ -2152,7 +2194,7 @@ function renderMonthly(){
     else if(isSelf&&hasKyou){sekouType='合同';sekouCls='sk-joint';}
     else if(!isSelf&&hasKyou){sekouType='単独';sekouCls='sk-other';}
     else{sekouType='—';sekouCls='';}
-    const showArari=r.cnt>0&&(r.hasJuchu||!isSelf);
+    const showArari=showArariOf(c);
     const ec=`style="cursor:pointer" title="クリックで編集"`;
     // 前月以前から残高ありで繰越（再掲）された行も、請済/入済・写真などをそのまま操作可能にする
     // （請済/入済は案件全体のフラグ。どの月から押しても同じ案件の状態を更新する）
@@ -2192,8 +2234,8 @@ function renderMonthly(){
       <td class="${r.miharai>0?'cw':'ca'}" style="cursor:pointer" onclick="togSub('${c.id}')">¥${fmt(r.miharai)}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
-      <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝当月請求×粗利率（発生ベース）">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}</td>
-      <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="案件の粗利率（発注額ベース）">${showArari?fmtP(projArariRate(c)*100)+(r.isEstimate?' 予':''):'—'}</td>
+      <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}</td>
+      <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）">${showArari?fmtP(projArariRate(c)*100)+(r.isEstimate?' 予':''):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
       <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
@@ -2319,7 +2361,8 @@ function renderMaster(){
   let ts=0,tn=0,tmi=0,tky=0,tksr=0,tsh=0,tmp=0,tar=0,totH=0;
   const ck=v=>v==='✓'?'<span style="color:#7b1fa2;font-weight:700">✓</span>':'';
   document.getElementById('aBody').innerHTML=cases.map((c,i)=>{
-    const r=calc(c);totH+=fn(c.jisha_h);ts+=r.js;tn+=fn(c.nyukin);tmi+=r.misu;tky+=r.km;tksr+=r.ksr;tsh+=r.ksh;tmp+=r.miharai;tar+=r.arari;
+    const r=calc(c);totH+=fn(c.jisha_h);ts+=r.js;tn+=fn(c.nyukin);tmi+=r.misu;tky+=r.km;tksr+=r.ksr;tsh+=r.ksh;tmp+=r.miharai;
+    const shA=showArariOf(c);tar+=shA?r.arari:0;   // 月別画面と同じ条件。粗利を出さない案件は合計にも入れない
     return `<tr class="${i%2?'alt':''}">
       <td class="ctr no-print"><input type="checkbox" class="ma-ck" data-id="${c.id}" onchange="maUpdateBatch()" style="width:16px;height:16px"></td>
       <td class="ctr">${cMo(c)}</td><td class="ctr">${c.date||''}</td>
@@ -2336,8 +2379,8 @@ function renderMaster(){
       <td class="num">¥${fmt(r.ksr)}</td>
       <td class="num">¥${fmt(r.ksh)}</td>
       <td class="${r.miharai>0?'cw':'ca'}">¥${fmt(r.miharai)}</td>
-      <td class="${r.arari>=0?'cp':'cl'}" style="font-weight:700">¥${fmt(r.arari)}</td>
-      <td class="ctr">${fmtP(r.arariRate)}</td>
+      <td class="${shA?(r.arari>=0?'cp':'cl'):''}" style="font-weight:700" title="${shA?'案件の粗利（累計）':'協力会社なし、または合同で自社受注額が未入力のため粗利を出しません'}">${shA?'¥'+fmt(r.arari):'—'}</td>
+      <td class="ctr" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）">${shA?fmtP(projArariRate(c)*100):'—'}</td>
       <td class="ctr">${fn(c.m3)||''}</td>
       <td class="ctr">${ck(c.seikyuu_c)}</td><td class="ctr">${ck(c.nyukin_c)}</td>
       <td class="ctr">${ck(c.shashin)}</td><td class="ctr">${ck(c.zando)}</td>
