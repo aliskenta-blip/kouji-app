@@ -732,16 +732,10 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     </label>
     <div style="font-size:11px;color:#888;margin-top:4px">✓ 自社＋協力会社 → 合同　　✓ 自社のみ → 自社施工　　未チェック＋協力会社 → 単独（中間マージン）</div>
   </div>
-  <div class="st">📅 工期</div>
-  <div class="grid g2">
-    <div class="fg"><label>工期開始</label><div style="display:flex;gap:6px;align-items:center"><input type="month" id="f_kouki_s" style="flex:1"><label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer"><input type="checkbox" id="f_kouki_s_mitei" style="width:16px;height:16px" onchange="document.getElementById('f_kouki_s').disabled=this.checked;if(this.checked)vs('f_kouki_s','')"> 未定</label></div></div>
-    <div class="fg"><label>工期終了</label><div style="display:flex;gap:6px;align-items:center"><input type="month" id="f_kouki_e" style="flex:1"><label style="display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap;cursor:pointer"><input type="checkbox" id="f_kouki_e_mitei" style="width:16px;height:16px" onchange="document.getElementById('f_kouki_e').disabled=this.checked;if(this.checked)vs('f_kouki_e','')"> 未定</label></div></div>
-  </div>
   <div class="st">💰 自社金額（万円入力）</div>
   <div class="grid g2">
     <div class="fg"><label>発注金額（万円）</label><input type="number" id="f_jh" placeholder="" inputmode="decimal" step="0.1" oninput="onGyoshuChange()"></div>
     <div class="fg"><label>入金済（万円）</label><input type="number" id="f_ny" placeholder="" inputmode="decimal" step="0.1"></div>
-    <div class="fg"><label>入金日</label><input type="date" id="f_nd"></div>
     <div class="fg"><label>㎥</label><input type="number" id="f_m3" placeholder="" step="0.01" inputmode="decimal"></div>
   </div>
   <div class="st">📋 出来高請求</div>
@@ -773,12 +767,6 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <button class="btn bg btn-sm" onclick="addKEntry()" style="margin-bottom:10px">＋ 協社を追加</button>
   <div class="st">📝 備考</div>
   <div class="fg"><input type="text" id="f_bk" lang="ja" style="ime-mode:active" placeholder="特記事項"></div>
-  <div class="fg">
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1.5px solid #e0e0e0;border-radius:8px">
-      <input type="checkbox" id="f_more_flag" style="width:18px;height:18px;accent-color:#c62828">
-      <span style="font-size:13px;color:#c62828;font-weight:600">🚨 請求漏れとしてフラグ</span>
-    </label>
-  </div>
   <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
     <button class="btn bp" onclick="printSeikyuuForm()" style="margin-right:auto" title="この案件の請求書を発行">🖨️請求書</button>
     <button class="btn bx" onclick="closeMov()">キャンセル</button>
@@ -2872,19 +2860,25 @@ function printDoc(o){
   </body></html>`);
   w.document.close();
 }
+// 印刷に載せる工期。フォームの工期欄は廃止したので、編集中の案件の値を使う
+// （新規追加中でまだ保存していない場合は空欄。従来も未保存時は空だった）
+function formKoukiStr(){
+  const c=(typeof editId!=='undefined'&&editId)?(S.cases||[]).find(x=>x.id===editId):null;
+  return c?koukiStr(c.kouki_s||'',c.kouki_e||''):'';
+}
 function printChumonKE(i){
   const k=(typeof KD!=='undefined'&&KD[i])?KD[i]:null;if(!k){alert('協力会社の行が見つかりません');return;}
   if(!k.name){alert('協力会社名を選択してください');return;}
   const amt=fn(k.mitsumori)||fn(k.juchu)||fn(k.seikyuu);
   if(!amt){alert('見積金額（または金額）を入力してください');return;}
-  printDoc({docType:'注文書',to:k.name,subject:vg('f_kj')||vg('f_pl'),place:vg('f_genba')||vg('f_pl'),koushu:k.type,amountInclTax:amt,kouki:koukiStr(vg('f_kouki_s'),vg('f_kouki_e'))});
+  printDoc({docType:'注文書',to:k.name,subject:vg('f_kj')||vg('f_pl'),place:vg('f_genba')||vg('f_pl'),koushu:k.type,amountInclTax:amt,kouki:formKoukiStr()});
 }
 function printSeikyuuForm(){
   const cl=vg('f_cl');if(!cl){alert('発注者を選択してください');return;}
   let amt=0;try{amt=(formBillings||[]).reduce((a,b)=>a+fn(b.amount),0);}catch(e){}
   if(!amt)amt=Math.round(parseFloat(vg('f_jh')||0)*10000);
   if(!amt){alert('請求金額（出来高）を入力してください');return;}
-  printDoc({docType:'請求書',to:cl,subject:vg('f_kj')||vg('f_pl'),place:vg('f_genba')||vg('f_pl'),koushu:'',amountInclTax:amt,kouki:koukiStr(vg('f_kouki_s'),vg('f_kouki_e'))});
+  printDoc({docType:'請求書',to:cl,subject:vg('f_kj')||vg('f_pl'),place:vg('f_genba')||vg('f_pl'),koushu:'',amountInclTax:amt,kouki:formKoukiStr()});
 }
 
 // ── 場所→工事現場 自動都道府県付与 ──
@@ -3370,7 +3364,7 @@ document.addEventListener('keydown',function(e){
   const order=['f_dt','f_pl','f_cl','f_br','f_ta','f_kb','f_kj',
     'f_jisha_sekou',
     'f_moto','f_jv','f_haichi','f_gishi','f_kouji_type','f_genba',
-    'f_kouki_s','f_kouki_e','f_jh','f_js','f_st','f_ny','f_nd','f_m3','f_bk'];
+    'f_jh','f_js','f_st','f_ny','f_m3','f_bk'];
   const curId=el.id;
   const curIdx=order.indexOf(curId);
   if(curIdx>=0){
@@ -3430,12 +3424,9 @@ function openAdd(){
   if(!canEdit()){alert('入力権限がありません');return;}
   editId=null;KD=[];pdfH=null;pdfS=null;formBillings=[];
   document.getElementById('mdlT').textContent='案件追加';
-  ['f_dt','f_pl','f_kj','f_mno','f_jh','f_nd','f_ny','f_m3','f_bk','f_kouki_s','f_kouki_e','f_haichi','f_genba'].forEach(id=>vs(id,''));
+  ['f_dt','f_pl','f_kj','f_mno','f_jh','f_ny','f_m3','f_bk','f_haichi','f_genba'].forEach(id=>vs(id,''));
   chkMno();
-  ['f_kouki_s_mitei','f_kouki_e_mitei'].forEach(id=>{document.getElementById(id).checked=false;});
-  ['f_kouki_s','f_kouki_e'].forEach(id=>{document.getElementById(id).disabled=false;});
   document.getElementById('f_jisha_sekou').checked=false;
-  document.getElementById('f_more_flag').checked=false;
   const jw=document.getElementById('f_jisha_sekou_wrap');jw.style.background='#f8fff8';jw.style.borderColor='#e0e0e0';
   vs('f_cl','');vs('f_br','');vs('f_ta','');vs('f_kb','');vs('f_moto','元請');vs('f_jv','');vs('f_gishi','');vs('f_kouji_type','');
   vs('f_dt',new Date().toISOString().slice(0,7));
@@ -3601,7 +3592,7 @@ function editCase(id){
   vs('f_dt',(c.date||'').slice(0,7));vs('f_pl',c.place);vs('f_kj',c.kouji);
   vs('f_mno',c.mitsumori_no||'');chkMno();   // 既存レコードは未設定＝空欄のままで可
   vs('f_jh',fn(c.jisha_h)?parseFloat((fn(c.jisha_h)/10000).toFixed(4)):'');
-  vs('f_nd',c.nyukin_d);vs('f_ny',fn(c.nyukin)?parseFloat((fn(c.nyukin)/10000).toFixed(4)):'');vs('f_m3',c.m3);vs('f_bk',c.biko);
+  vs('f_ny',fn(c.nyukin)?parseFloat((fn(c.nyukin)/10000).toFixed(4)):'');vs('f_m3',c.m3);vs('f_bk',c.biko);
   // 旧データ互換：billingsが空でjisha_sがある場合
   if(!formBillings.length&&fn(c.jisha_s)){
     const mo=c.seikyuu_t||c.date||'';
@@ -3609,12 +3600,9 @@ function editCase(id){
   }
   document.getElementById('f_bl_month').value=getMK(getYr(),getMo());
   renderFormBillings();
-  if(c.kouki_s==='未定'){vs('f_kouki_s','');document.getElementById('f_kouki_s_mitei').checked=true;document.getElementById('f_kouki_s').disabled=true;}else{vs('f_kouki_s',(c.kouki_s||'').slice(0,7));document.getElementById('f_kouki_s_mitei').checked=false;document.getElementById('f_kouki_s').disabled=false;}
-  if(c.kouki_e==='未定'){vs('f_kouki_e','');document.getElementById('f_kouki_e_mitei').checked=true;document.getElementById('f_kouki_e').disabled=true;}else{vs('f_kouki_e',(c.kouki_e||'').slice(0,7));document.getElementById('f_kouki_e_mitei').checked=false;document.getElementById('f_kouki_e').disabled=false;}
   vs('f_haichi',c.haichi_gishi||'');vs('f_genba',c.genba||'');
   const jsChk=c.jisha_sekou==='✓';document.getElementById('f_jisha_sekou').checked=jsChk;
   const jw=document.getElementById('f_jisha_sekou_wrap');jw.style.background=jsChk?'#e8f5e9':'#f8fff8';jw.style.borderColor=jsChk?'#2e7d32':'#e0e0e0';
-  document.getElementById('f_more_flag').checked=c.more_flag==='✓';
   document.getElementById('f_pdf_h').value='';
   document.getElementById('f_pdf_s').value='';
   renderPdfTags();renderKE();updateSels();
@@ -3660,7 +3648,11 @@ function saveCase(cont){
   if(_gy===GYOSHU_NOPERMIT&&_amt>=TH.keibi){
     if(!confirm('🚨 管工事は許可がありません（無許可）。\n税込500万円以上は受注できません（建設業法違反の恐れ）。\n\n業種区分が正しいか確認してください。\nこのまま記録だけ残しますか？（集計で無許可営業として警告表示されます）')){return;}
   }
-  const CK=['shashin','zando','nyukin_c','kanryo','seikyuu_c'];
+  // CK＝フォームに欄が無い項目。編集時は旧値を引き継ぎ、新規時は空にする。
+  // 工期・入金日・請求漏れフラグは着工ボタン／自動判定／入金ボタン／請求漏ボタンが正なので、
+  // フォーム保存で無条件に上書きしない（kouki_e_auto は編集時マージで自動的に残る）
+  const CK=['shashin','zando','nyukin_c','kanryo','seikyuu_c',
+            'kouki_s','kouki_e','nyukin_d','more_flag'];
   const base={
     id:editId||uid(),month:getMK(getYr(),getMo()),
     date:vg('f_dt')||new Date().toISOString().slice(0,7),place:vg('f_pl'),client:vg('f_cl'),branch:vg('f_br'),
@@ -3670,14 +3662,10 @@ function saveCase(cont){
     jisha_s:String(formBillings.reduce((a,b)=>a+fn(b.amount),0)),
     seikyuu_t:formBillings.length>0?formBillings[formBillings.length-1].month:'',
     nyukin:formBillings.length>0?String(formBillings.reduce((a,b)=>a+fn(b.nyukin),0)):String(Math.round(parseFloat(vg('f_ny')||0)*10000)),
-    nyukin_d:formBillings.length>0?(formBillings.filter(b=>b.nyukin_d).sort((a,b)=>(b.nyukin_d||'').localeCompare(a.nyukin_d||''))[0]||{}).nyukin_d||'':vg('f_nd'),
     m3:vg('f_m3'),biko:vg('f_bk'),
-    kouki_s:formBillings.length>0?(formBillings.map(b=>b.kouki_s).filter(Boolean).sort()[0]||vg('f_kouki_s')):(document.getElementById('f_kouki_s_mitei').checked?'未定':vg('f_kouki_s')),
-    kouki_e:formBillings.length>0?((()=>{const e=formBillings.map(b=>b.kouki_e).filter(Boolean).sort();return e.length?e[e.length-1]:vg('f_kouki_e');})()):(document.getElementById('f_kouki_e_mitei').checked?'未定':vg('f_kouki_e')),
     moto_shita:vg('f_moto'),jv:vg('f_jv'),haichi_gishi:vg('f_haichi'),
     gishi_type:vg('f_gishi'),kouji_type:vg('f_kouji_type'),genba:vg('f_genba'),
     jisha_sekou:document.getElementById('f_jisha_sekou').checked?'✓':'',
-    more_flag:document.getElementById('f_more_flag').checked?'✓':'',
     pdf_hacchu:pdfH,pdf_seikyuu:pdfS,
     kyousha_list:KD.filter(k=>k.name||fn(k.seikyuu)),
   };
