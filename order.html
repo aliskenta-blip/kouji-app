@@ -2170,15 +2170,20 @@ function renderMonthly(){
     const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk&&!hasCurAct;
     const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
     const doneCk=isDone(c)?`<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します">完</span>`;
+    // 工期セル：<input type="month"> は '未定' を受け付けず値を捨てるため、
+    // 空表示になったセルを触ると updField で '未定' が空文字に上書きされてしまう。
+    // 未定を含む案件はテキスト表示にし、クリックで editKoukiSel を開く
+    const kkS=c.kouki_s||'',kkE=c.kouki_e||'';
+    const koukiCell=(kkS==='未定'||kkE==='未定')
+      ? `<span onclick="editKoukiSel('${c.id}',this.closest('td'))" style="cursor:pointer;display:inline-block;padding:1px 6px;border:1px dashed #f57c00;border-radius:3px;color:#e65100;font-weight:700;font-size:10px" title="工期が未定です。クリックで設定（未定のままにもできます）">${kkS==='未定'?'未定':esc(kkS.slice(0,7)||'—')}〜${kkE==='未定'?'未定':esc(kkE.slice(0,7)||'—')}</span>`
+      : `<input type="month" value="${esc(kkS)}" onchange="updField('${c.id}','kouki_s',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">〜<input type="month" value="${esc(kkE)}" onchange="updField('${c.id}','kouki_e',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">`;
     const chakKs=(c.kouki_s||'').slice(0,7);
     const chakkouOn=!!chakKs&&chakKs!=='未定'&&chakKs<=mk;   // 工期開始が当月以前＝着工済み（以降の月も自動でチェック表示）
     const chakkouCk=`<span class="ck pk${chakkouOn?' on':''}" style="cursor:pointer" title="${chakkouOn?('着工済み（工期開始 '+chakKs+'）。クリックで解除'):('この月（'+mk+'）に着工→工期開始に自動入力')}" onclick="togChakkou('${c.id}')">${chakkouOn?'✓':'着'}</span>`;
     const mainRow=`<tr class="${i%2?'alt':''}${isMorei?' style="background:#fff8e1"':''}">
       <td class="ctr" style="cursor:pointer;font-size:11px" id="exp-${c.id}" onclick="togSub('${c.id}')">${r.cnt>0?'▶':''}</td>
       <td class="ctr">${i+1}</td><td class="ctr" ${ec} onclick="editCell('${c.id}','date',this,'month')">${carryMark}${(c.date||'').slice(5)}</td>
-      <td style="white-space:nowrap;font-size:10px;padding:2px">
-        <input type="month" value="${c.kouki_s||''}" onchange="updField('${c.id}','kouki_s',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">〜<input type="month" value="${c.kouki_e||''}" onchange="updField('${c.id}','kouki_e',this.value)" style="width:90px;font-size:9px;padding:1px;border:1px solid #ddd;border-radius:3px;background:transparent">
-      </td>
+      <td style="white-space:nowrap;font-size:10px;padding:2px">${koukiCell}</td>
       <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
@@ -3820,6 +3825,7 @@ function editKoukiSel(id,el){
   const eVal=c.kouki_e?(c.kouki_e.replace('-','/')):('');
   function mkOpts(sel){
     let o='<option value="">—</option>';
+    o+=`<option value="未定"${sel==='未定'?' selected':''}>未定</option>`;   // 未定を維持・設定できるようにする
     for(let y=curY-1;y<=curY+2;y++){
       for(let m=1;m<=12;m++){
         const v=y+'/'+String(m).padStart(2,'0');
