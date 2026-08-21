@@ -1265,6 +1265,9 @@ setInterval(pollSync,5000);
 let editId=null,KD=[];
 let pdfH=null,pdfS=null; // temp PDF data
 let formBillings=[];
+// 出来高請求ポップアップの再描画関数。＋／× で閉じて開き直すと位置がずれ、
+// 二重に開いて同じ金額が2回入る事故になるため、中身だけ描き直す
+let blRepaint=null,kbRepaint=null;
 
 function renderFormBillings(){
   const el=document.getElementById('f_billings_list');if(!el)return;
@@ -1326,7 +1329,7 @@ function editBillings(caseId,el){
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
           <span style="font-weight:700;color:var(--nav)">${b.month}</span>
           <span style="font-weight:700">¥${fmt(fn(b.amount))}</span>
-          <button onclick="S.cases.find(x=>x.id==='${c.id}').billings.splice(${i},1);syncBillings('${c.id}');this.closest('[style*=fixed]').remove();editBillings('${c.id}',document.body)" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
+          <button onclick="S.cases.find(x=>x.id==='${c.id}').billings.splice(${i},1);syncBillings('${c.id}');blRepaint&&blRepaint()" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;font-size:11px">
           <label style="display:flex;align-items:center;gap:2px">工期<input type="month" value="${b.kouki_s||''}" onchange="S.cases.find(x=>x.id==='${c.id}').billings[${i}].kouki_s=this.value;syncBillings('${c.id}')" style="padding:3px;border:1px solid #ddd;border-radius:4px;font-size:10px;width:100px"></label>
@@ -1343,20 +1346,21 @@ function editBillings(caseId,el){
       <select id="pop_bl_yr" style="padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px">${[2024,2025,2026,2027,2028].map(y=>`<option value="${y}"${y===getYr()?' selected':''}>${y}年</option>`).join('')}</select>
       <select id="pop_bl_mon" style="padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m=>`<option value="${String(m).padStart(2,'0')}"${m===getMo()?' selected':''}>${m}月</option>`).join('')}</select>
       <input type="number" id="pop_bl_amt" placeholder="万円" inputmode="decimal" step="0.1" style="width:70px;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px">
-      <button class="btn bn btn-sm" onclick="const mo=document.getElementById('pop_bl_yr').value+'-'+document.getElementById('pop_bl_mon').value;const amt=Math.round(parseFloat(document.getElementById('pop_bl_amt').value||0)*10000);if(!mo||!amt){alert('月と金額');return;}const c=S.cases.find(x=>x.id==='${c.id}');c.billings.push({month:mo,amount:String(amt),kouki_s:'',kouki_e:'',nyukin:'',nyukin_d:''});syncBillings('${c.id}');this.closest('[style*=fixed]').remove();editBillings('${c.id}',document.body)">＋</button>
+      <button class="btn bn btn-sm" onclick="const mo=document.getElementById('pop_bl_yr').value+'-'+document.getElementById('pop_bl_mon').value;const amt=Math.round(parseFloat(document.getElementById('pop_bl_amt').value||0)*10000);if(!mo||!amt){alert('月と金額');return;}const c=S.cases.find(x=>x.id==='${c.id}');c.billings.push({month:mo,amount:String(amt),kouki_s:'',kouki_e:'',nyukin:'',nyukin_d:''});syncBillings('${c.id}');blRepaint&&blRepaint()">＋</button>
     </div>`;
     h+=`<div style="margin-top:8px;font-size:12px;padding:8px;background:${rem>0?'#fff3e0':'#e8f5e9'};border-radius:6px">
       請求計: <b>¥${fmt(sum)}</b>　残: <b style="color:${rem>0?'#e65100':'#2e7d32'}">¥${fmt(rem)}</b><br>入金計: <b>¥${fmt(nySum)}</b>
     </div>`;
     h+=`<button class="btn bn btn-sm" style="width:100%;margin-top:8px" onclick="this.closest('[style*=fixed]').remove();renderAll()">閉じる</button></div>`;
     pop.innerHTML=h;
+    makeDraggable(pop,pop.querySelector('#blPopHdr'));   // innerHTML でヘッダーが作り直されるため毎回張り直す
   }
+  blRepaint=()=>{ if(pop.isConnected)rp(); };
   rp();
   const r=el.getBoundingClientRect();
   pop.style.top=Math.max(8,Math.min(r.bottom+2,window.innerHeight-140))+'px';
   pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-396))+'px';
   document.body.appendChild(pop);
-  makeDraggable(pop,pop.querySelector('#blPopHdr'));
 }
 // ポップアップをヘッダーでドラッグ移動（PC=マウス / タブレット=タッチ）
 function makeDraggable(box,handle){
@@ -1865,27 +1869,28 @@ function editKyoBillings(caseId,ki,el){
         <span style="font-size:13px;font-weight:700;color:#e65100">${b.month}</span>
         <span style="font-weight:700">¥${fmt(fn(b.amount))}</span>
         <span style="font-size:11px;color:#888">(${parseFloat((fn(b.amount)/10000).toFixed(2))}万)</span>
-        <button onclick="S.cases.find(x=>x.id==='${c.id}').kyousha_list[${ki}].billings.splice(${bi},1);updKyoFromBl('${c.id}',${ki});this.closest('[style*=fixed]').remove();editKyoBillings('${c.id}',${ki},document.body)" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
+        <button onclick="S.cases.find(x=>x.id==='${c.id}').kyousha_list[${ki}].billings.splice(${bi},1);updKyoFromBl('${c.id}',${ki});kbRepaint&&kbRepaint()" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
       </div>`;
     });
     h+=`<div style="display:flex;gap:6px;margin-top:8px">
       <select id="kb_yr_${ki}" style="padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px">${[2024,2025,2026,2027,2028].map(y=>`<option value="${y}"${y===getYr()?' selected':''}>${y}</option>`).join('')}</select>
       <select id="kb_mon_${ki}" style="padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m=>`<option value="${String(m).padStart(2,'0')}"${m===getMo()?' selected':''}>${m}月</option>`).join('')}</select>
       <input type="number" id="kb_amt_${ki}" placeholder="万円" inputmode="decimal" step="0.1" style="width:70px;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:12px">
-      <button class="btn bo btn-sm" onclick="const mo=document.getElementById('kb_yr_${ki}').value+'-'+document.getElementById('kb_mon_${ki}').value;const amt=Math.round(parseFloat(document.getElementById('kb_amt_${ki}').value||0)*10000);if(!mo||!amt){alert('月と金額');return;}S.cases.find(x=>x.id==='${c.id}').kyousha_list[${ki}].billings.push({month:mo,amount:String(amt)});updKyoFromBl('${c.id}',${ki});this.closest('[style*=fixed]').remove();editKyoBillings('${c.id}',${ki},document.body)">＋</button>
+      <button class="btn bo btn-sm" onclick="const mo=document.getElementById('kb_yr_${ki}').value+'-'+document.getElementById('kb_mon_${ki}').value;const amt=Math.round(parseFloat(document.getElementById('kb_amt_${ki}').value||0)*10000);if(!mo||!amt){alert('月と金額');return;}S.cases.find(x=>x.id==='${c.id}').kyousha_list[${ki}].billings.push({month:mo,amount:String(amt)});updKyoFromBl('${c.id}',${ki});kbRepaint&&kbRepaint()">＋</button>
     </div>`;
     h+=`<div style="margin-top:8px;font-size:12px;padding:8px;background:${rem>0?'#fff3e0':'#e8f5e9'};border-radius:6px">
       請求計: <b>¥${fmt(sum)}</b>　未請求残: <b style="color:${rem>0?'#e65100':'#2e7d32'}">¥${fmt(rem)}</b>
     </div>`;
     h+=`<button class="btn bo btn-sm" style="width:100%;margin-top:8px" onclick="this.closest('[style*=fixed]').remove();renderAll()">閉じる</button></div>`;
     pop.innerHTML=h;
+    makeDraggable(pop,pop.querySelector('#kbPopHdr'));
   }
+  kbRepaint=()=>{ if(pop.isConnected)buildPop(); };
   buildPop();
   const r=el.getBoundingClientRect();
   pop.style.top=Math.max(8,Math.min(r.bottom+2,window.innerHeight-140))+'px';
   pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-336))+'px';
   document.body.appendChild(pop);
-  makeDraggable(pop,pop.querySelector('#kbPopHdr'));
 }
 function updKyoFromBl(caseId,ki){
   const c=S.cases.find(x=>x.id===caseId);if(!c)return;
@@ -1974,11 +1979,20 @@ function remindCard(bg,border,color,titleHtml,rightHtml,bodyHtml,desc){
     <div style="display:none;padding:2px 14px 10px">${desc?`<div style="font-size:11px;color:#555;background:rgba(255,255,255,.7);border-radius:6px;padding:6px 9px;margin:4px 0 8px;line-height:1.6">💡 ${desc}</div>`:''}${bodyHtml}</div>
   </div>`;
 }
+// 月別一覧にその案件を出すか。記入月ではなく請求管理月（claim_month）で判定する。
+// 記入月は「発注書を記入した月」の記録なので、繰越・請求漏れでは動かさない
+function caseInMonth(c,mk){
+  const bl=c.billings||[];
+  if(bl.some(b=>claimMonth(b)===mk&&fn(b.amount)>0))return true;   // 当月に請求がある
+  const dm=(c.date||'').slice(0,7);
+  if(dm===mk&&(!bl.length||calc(c).remaining>0))return true;       // 記入月かつ未請求残あり
+  return false;
+}
 function renderMonthly(){
   const yr=getYr(),mo=getMo(),mk=getMK(yr,mo);
   const srch=(vg('srch_m')||'').toLowerCase();
   document.getElementById('mTitle').textContent=`${yr}年 ${mo}月 発注一覧`;
-  let cases=S.cases.filter(c=>(c.date||'').slice(0,7)===mk);
+  let cases=S.cases.filter(c=>caseInMonth(c,mk));
   if(srch)cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch)));
   // 表示対象を拡張（KPI・発注者別集計にも反映させるためここで cases に追加）：
   //  ①前月以前の記入で残高あり（未請求残 or 未収金 or 請求漏れ）＝繰越　②当月に請求 or 入金がある現場（出来高請求）
@@ -3758,9 +3772,7 @@ function togMorei(id){
 
 ※${cur} の売上（月次PL）は動きません。`))return;
 
-  target.forEach(b=>{ b.claim_month=next; });   // ★b.month は触らない
-  if(!c.date_orig)c.date_orig=c.date||'';   // 初回記入月を保持
-  c.date=next;                              // 月別一覧の絞り込みは c.date 基準。当月から消して翌月に出す
+  target.forEach(b=>{ b.claim_month=next; });   // ★b.month も c.date も触らない（表示は claim_month で決まる）
   c.more_flag='✓';
   c.more_hist=Array.isArray(c.more_hist)?c.more_hist:[];
   c.more_hist.push({from:cur,to:next});
@@ -3791,7 +3803,6 @@ function clearMorei(id){
   (c.billings||[]).forEach(b=>{
     if(claimMonth(b)===last.to){ b.claim_month=(last.from===(b.month||'').slice(0,7))?'':last.from; }
   });
-  c.date=last.from;                         // 記入月も元の月へ戻す（date_orig は初回記入月なので触らない）
   hist.pop();
   c.more_hist=hist;
   if(!hist.length)c.more_flag='';
@@ -3842,8 +3853,12 @@ function miSeikyuu(id){
     if(claimMonth(b)===cur){ b.month=next; if(b.claim_month)b.claim_month=next; }
   });
   if((c.seikyuu_t||'')===cur)c.seikyuu_t=next;
-  if(!c.date_orig)c.date_orig=c.date||'';   // 初回記入月を保持（繰越で c.date が上書きされ続けるため）
-  c.date=next;
+  // 記入月を動かすのは、表示中の月がその案件の記入月と一致するときだけ。
+  // 繰越で再掲された行から押したときに、無関係な月へ飛ばさない
+  if((c.date||'').slice(0,7)===cur){
+    if(!c.date_orig)c.date_orig=c.date||'';   // 初回記入月を保持
+    c.date=next;
+  }
   c.seikyuu_c='';c.seikyuu_c_date='';c.nyukin_c='';
   syncBillings(id);
   addLog('edit',`${esc(c.place||'')}を未請求→${next}に繰越`);
