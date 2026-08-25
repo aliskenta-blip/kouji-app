@@ -1604,6 +1604,39 @@ function showArariOf(c){
   const r=calc(c);
   return r.cnt>0&&(r.hasJuchu||c.jisha_sekou!=='✓');
 }
+// 粗利が確定しているか＝売上と原価の両方が確定している（D-038）
+//   売上：発注額まで請求済み かつ 全額入金済み
+//   原価：全ての協社に請求（billings または seikyuu）が登録されている
+// calc().isEstimate は原価側だけを見ているため、画面の「予」はこちらで判定する
+function arariKakutei(c){
+  if(!showArariOf(c))return false;
+  const r=calc(c);
+  if(r.remaining>0||r.misu>0)return false;                 // 売上未確定
+  const ks=(c.kyousha_list||[]);
+  if(!ks.length)return false;
+  return ks.every(k=>{
+    const kbl=(k.billings&&k.billings.length)?k.billings:[];
+    return kbl.length>0||fn(k.seikyuu)>0;
+  });
+}
+// 「予」のツールチップに出す理由（D-038）
+const ARARI_YOTEI_MSG='確定前です（発注額まで請求していない／入金が未完了／協力会社の請求が未登録）。';
+// 協社の請求が未登録（見積のみ）で、原価が粗利計算から抜けている案件（D-038）。
+// 粗利が過大に出ている理由をダッシュボードから読めるようにする。
+// cs には粗利合計と同じ年度の案件を渡す（ダッシュボードの数字と対象を揃えるため）
+function miKeijoCost(cs){
+  let cnt=0,cost=0;
+  (cs||[]).forEach(c=>{
+    if(!showArariOf(c))return;
+    let hit=false;
+    (c.kyousha_list||[]).forEach(k=>{
+      const kbl=(k.billings&&k.billings.length)?k.billings:[];
+      if(kbl.length===0&&fn(k.seikyuu)<=0&&fn(k.mitsumori)>0){ hit=true; cost+=fn(k.mitsumori); }
+    });
+    if(hit)cnt++;
+  });
+  return {cnt,cost};
+}
 // 案件の粗利率（分母＝案件の総請求額。未請求なら発注額）。粗利が意味を持つ案件のみ
 function projArariRate(c){
   const r=calc(c);
@@ -2082,7 +2115,7 @@ function renderMonthly(){
     <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計"><div class="kl">請求もれ</div><div class="kv">¥${fmt(tmore)}</div><div class="ks">${tmoreCnt}件</div></div>
     <div class="kpi o" title="協力会社からの請求合計＝外注の原価"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
     <div class="kpi r" title="協力会社へまだ支払っていない合計"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
-    <div class="kpi g" title="粗利＝当月の実額（当月請求 − 当月の協力会社請求）。下の表の合計行と同じ数字です。原価が先に来る月はマイナスになりますが、それが正確な情報です（協力会社なしは対象外）"><div class="kl">粗利</div><div class="kv">¥${fmt(tar)}</div></div>`;
+    <div class="kpi g" title="この月に請求した現場の粗利です。協力会社の請求だけがあって自社の請求がない現場は、この一覧に出ないため含まれません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。下の表の合計行と同じ数字です（協力会社なしは対象外）"><div class="kl">粗利（この月に請求した分）</div><div class="kv">¥${fmt(tar)}</div></div>`;
 
   // 発注者別当月請求合計
   const byClient={};
@@ -2237,6 +2270,7 @@ function renderMonthly(){
     else if(!isSelf&&hasKyou){sekouType='単独';sekouCls='sk-other';}
     else{sekouType='—';sekouCls='';}
     const showArari=showArariOf(c);
+    const kakutei=arariKakutei(c);                      // 確定前は率の後ろに「予」（D-038）
     const ec=`style="cursor:pointer" title="クリックで編集"`;
     // 前月以前から残高ありで繰越（再掲）された行も、請済/入済・写真などをそのまま操作可能にする
     // （請済/入済は案件全体のフラグ。どの月から押しても同じ案件の状態を更新する）
@@ -2277,7 +2311,7 @@ function renderMonthly(){
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
       <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
-      <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）">${showArari?fmtP(projArariRate(c)*100)+(r.isEstimate?' 予':''):'—'}</td>
+      <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）${showArari&&!kakutei?'&#10;'+ARARI_YOTEI_MSG:''}">${showArari?fmtP(projArariRate(c)*100)+(kakutei?'':' 予'):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
       <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
@@ -2405,6 +2439,7 @@ function renderMaster(){
   document.getElementById('aBody').innerHTML=cases.map((c,i)=>{
     const r=calc(c);totH+=fn(c.jisha_h);ts+=r.js;tn+=fn(c.nyukin);tmi+=r.misu;tky+=r.km;tksr+=r.ksr;tsh+=r.ksh;tmp+=r.miharai;
     const shA=showArariOf(c);tar+=shA?r.arari:0;   // 月別画面と同じ条件。粗利を出さない案件は合計にも入れない
+    const kkA=arariKakutei(c);                     // 確定前は率の後ろに「予」（D-038）
     return `<tr class="${i%2?'alt':''}">
       <td class="ctr no-print"><input type="checkbox" class="ma-ck" data-id="${c.id}" onchange="maUpdateBatch()" style="width:16px;height:16px"></td>
       <td class="ctr">${cMo(c)}</td><td class="ctr">${c.date||''}</td>
@@ -2422,7 +2457,7 @@ function renderMaster(){
       <td class="num">¥${fmt(r.ksh)}</td>
       <td class="${r.miharai>0?'cw':'ca'}">¥${fmt(r.miharai)}</td>
       <td class="${shA?(r.arari>=0?'cp':'cl'):''}" style="font-weight:700" title="${shA?'案件の粗利（累計）':'協力会社なし、または合同で自社受注額が未入力のため粗利を出しません'}">${shA?'¥'+fmt(r.arari):'—'}</td>
-      <td class="ctr" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）">${shA?fmtP(projArariRate(c)*100):'—'}</td>
+      <td class="ctr" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）${shA&&!kkA?'&#10;'+ARARI_YOTEI_MSG:''}">${shA?fmtP(projArariRate(c)*100)+(kkA?'':' 予'):'—'}</td>
       <td class="ctr">${fn(c.m3)||''}</td>
       <td class="ctr">${ck(c.seikyuu_c)}</td><td class="ctr">${ck(c.nyukin_c)}</td>
       <td class="ctr">${ck(c.shashin)}</td><td class="ctr">${ck(c.zando)}</td>
@@ -2704,8 +2739,12 @@ function renderDash(){
     <div class="kpi g"><div class="kl">入金金額 合計</div><div class="kv">¥${fmt(tny)}</div><div class="ks">請求の ${fmtP(pct(tny,tjs))}</div></div>
     <div class="kpi r"><div class="kl">未収金 合計</div><div class="kv">¥${fmt(tmi)}</div><div class="ks">請求 − 入金</div></div>
     <div class="kpi o"><div class="kl">協力会社 請求合計</div><div class="kv">¥${fmt(tky)}</div><div class="ks">外注原価</div></div>
-    <div class="kpi p" title="月別入力の当月粗利（実額＝当月請求−当月の協社請求）を年度で合計した金額です。請求額×率の積算ではありません。粗利率は 粗利合計 ÷ 請求金額合計"><div class="kl">粗利 合計</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tar,tjs))}</div></div>
+    <div class="kpi p" title="その月に発生した粗利の年度合計です。原価だけが発生した月も含むため、月別入力の粗利を12ヶ月足した数字とは一致しません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。請求額×率の積算ではありません。粗利率は 粗利合計 ÷ 請求金額合計"><div class="kl">粗利 合計（発生ベース）</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tar,tjs))}</div></div>
   </div>`;
+
+  // ── 未計上原価の注記（D-038）。協社請求が未登録の分だけ粗利が過大に出ていることを明示 ──
+  const mkc=miKeijoCost(casesFY);
+  const mkcNote=mkc.cnt>0?`<div style="margin:-4px 0 12px;padding:8px 12px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:12px;color:#7a5900" title="協力会社の見積は入っているが請求（協力会社明細の請求額）がまだ登録されていない案件です。請求を登録すると粗利はこの金額の分だけ下がります">⚠ 協力会社の請求が未登録の案件が <b>${mkc.cnt}件</b> あります。原価 <b>¥${fmt(mkc.cost)}</b> が粗利に反映されていません（${fyLabel(dashFY)}の案件）。</div>`:'';
 
   // ── 発注→請求→入金 の相関ファネル ──
   const seg=s=>s.w>0.3?`<div title="${s.t||''}" style="width:${s.w}%;background:${s.c};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden">${s.l||''}</div>`:'';
@@ -2872,7 +2911,7 @@ function renderDash(){
     <button class="btn bo btn-sm" onclick="exportBackup()" style="white-space:nowrap">💾 今すぐバックアップ</button>
   </div>`:'';
 
-  root.innerHTML=bkWarn+head+kpi+kkCard+funnel+nyCard+lpCard+trend+clCard+kbCard+taCard+brCard+progCard+kyCard+cfCard+bottom+logCard;
+  root.innerHTML=bkWarn+head+kpi+mkcNote+kkCard+funnel+nyCard+lpCard+trend+clCard+kbCard+taCard+brCard+progCard+kyCard+cfCard+bottom+logCard;
  }catch(e){
   const root=document.getElementById('dashRoot');
   if(root)root.innerHTML='<div class="card"><div class="card-body" style="color:#c62828">ダッシュボードの表示でエラーが発生しました（データには影響ありません）。<br><small>'+(e&&e.message||e)+'</small></div></div>';
