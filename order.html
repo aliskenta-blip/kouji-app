@@ -4500,11 +4500,19 @@ function doCSV(type){
 }
 
 // ── 工事経歴書 ──
+// 和暦（令和）変換の共通土台。YYYY-MM / YYYY-MM-DD 以外（'未定'・空欄・不正値）は null を返す。
+// new Date('未定') は Invalid Date になり、そのまま計算すると「RNaN.NaN」と印字されてしまう。
+// 文字列のまま検証してから数値にすることで、タイムゾーンによる月ズレも起こらない
+function reiwaYM(v){
+  const m=/^(\d{4})-(\d{1,2})(?:-|$)/.exec(String(v==null?'':v).trim());
+  if(!m)return null;
+  const y=parseInt(m[1],10)-2018, mo=parseInt(m[2],10);
+  if(!mo||mo<1||mo>12)return null;
+  return {y,m:mo};
+}
 function toReiwa(dateStr){
-  if(!dateStr)return '';
-  const d=new Date(dateStr);
-  const y=d.getFullYear()-2018;
-  return `R${y}.${d.getMonth()+1}`;
+  const r=reiwaYM(dateStr);
+  return r?`R${r.y}.${r.m}`:'';         // 工期未定・未入力は空欄（集計からは外さない）
 }
 function toSenYen(val,isTaxExcl){
   const v=fn(val);
@@ -4941,9 +4949,8 @@ function printKeireki(){
   const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
 
   function toR(ds){
-    if(!ds||ds==='未定')return {y:'',m:''};
-    const d=new Date(ds);
-    return {y:String(d.getFullYear()-2018),m:String(d.getMonth()+1)};
+    const r=reiwaYM(ds);                // 工期未定・未入力・不正値は空欄（様式の「令和　年　月」のまま）
+    return r?{y:String(r.y),m:String(r.m)}:{y:'',m:''};
   }
   const THEAD=`<tr class="hdr1">
       <th rowspan="2" style="width:9%">注文者</th><th rowspan="2" style="width:14%">工事名</th>
@@ -5137,7 +5144,7 @@ function exportKerekiWord(){
   const mode=vg('kr_mode')||'keishin';
   const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
   const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
-  function toR(ds){if(!ds||ds==='未定')return '';const d=new Date(ds);return `令和 ${d.getFullYear()-2018} 年 ${d.getMonth()+1} 月`;}
+  function toR(ds){const r=reiwaYM(ds);return r?`令和 ${r.y} 年 ${r.m} 月`:'';}   // 未定・不正値は空欄
   const sen=v=>Math.round(v/1000);
   const HEAD=`<tr><th>注文者</th><th>工事名</th><th>元請又は<br>下請の別</th><th>JVの別</th><th>工事現場の都道府県<br>及び市区町村名</th><th>配置技術者<br>氏名</th><th>主任技術者又は<br>監理技術者の別</th><th>請負代金の額</th><th>うち元請工事</th><th>うちPC・法面処理<br>・鋼橋上部</th><th>着工年月</th><th>完成又は<br>完成予定年月</th></tr>`;
   function pageBlock(b,idx){
