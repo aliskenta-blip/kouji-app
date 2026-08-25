@@ -1648,8 +1648,10 @@ function arariBaseOf(c){
   if(r.hasJuchu)return (c.kyousha_list||[]).reduce((a,k)=>a+fn(k.juchu),0);
   return fn(c.jisha_h)>0?fn(c.jisha_h):r.js;
 }
-// 案件の粗利率＝粗利 ÷ その外注に対応する自社の受注額。粗利が意味を持つ案件のみ。
-// 分子 calc(c).arari は変更しない（分母だけの差し替え）。率はどこにも掛けない表示専用の指標
+// 案件の粗利率＝（対応する自社の受注額 − 外注費）÷ その受注額。粗利が意味を持つ案件のみ。
+// 分子・分母とも受注額ベースに揃える＝自社の請求の進捗では動かない「この契約で何%取れるか」の指標。
+// calc(c).arari（単独は累計請求額ベース）はそのまま。金額の表示には触れず、率の中だけで作り直す。
+// 率はどこにも掛けない表示専用の指標なので、金額側と基準が違っていてよい
 function projArariRate(c){
   if(!showArariOf(c))return 0;                // 協力会社なし／合同で自社受注額なし＝対象外
   const r=calc(c);
@@ -1657,6 +1659,10 @@ function projArariRate(c){
   if(!r.hasJuchu&&(r.ksr>0?r.ksr:r.km)<=0)return 0;
   const base=arariBaseOf(c);
   if(base<=0)return 0;
+  // 単独：（発注金額 − 外注費）÷ 発注金額。外注費は協社請求があればそれ、無ければ見積
+  if(!r.hasJuchu)return (base-(r.ksr>0?r.ksr:r.km))/base;
+  // 合同・中間マージン：Σ(自社受注額 − その外注費) ÷ 自社受注額の合計。
+  // calc の hasJuchu 分岐は元から自社受注額ベースで、自社の請求額を使っていないためそのまま使う
   return r.arari/base;
 }
 // 当月の協力会社請求額（★発生月ベース。協社 billings に claim_month は無い）
