@@ -1271,12 +1271,22 @@ let formBillings=[];
 // 二重に開いて同じ金額が2回入る事故になるため、中身だけ描き直す
 let blRepaint=null,kbRepaint=null;
 
+// 請求1件の補足表示。請求管理月が発生月とズレている（請求漏れで繰り越した）行と、
+// 一部繰越で分割してできた行に印を出す。あとから見て「なぜ2行に分かれているか」が分かるように
+function blNoteHtml(b){
+  const gm=(b&&b.month||'').slice(0,7), cm=claimMonth(b);
+  let h='';
+  if(cm&&gm&&cm!==gm)h+=`<span style="font-size:10px;color:#1565c0;border:1px solid #bbdefb;background:#e3f2fd;border-radius:4px;padding:0 4px" title="売上の発生月は ${gm} のままです。請求リストに出る月だけが ${cm} に移っています">請求 ${cm}</span>`;
+  if(b&&b.carry_note)h+=`<span style="font-size:10px;color:#e65100;border:1px solid #ffe082;background:#fff8e1;border-radius:4px;padding:0 4px" title="請求漏れで一部だけを繰り越したときに分割してできた行です">🔄 ${esc(b.carry_note)}</span>`;
+  return h;
+}
 function renderFormBillings(){
   const el=document.getElementById('f_billings_list');if(!el)return;
   el.innerHTML=formBillings.map((b,i)=>`<div style="border:1px solid #e0e0e0;border-radius:8px;padding:8px;margin-bottom:6px;background:#fafafa">
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
       <span style="font-size:13px;font-weight:700;color:var(--nav)">${b.month||'?'}</span>
       <span style="font-weight:700">¥${fmt(fn(b.amount))}</span>
+      ${blNoteHtml(b)}
       <span style="font-size:11px;color:#888">(${parseFloat((fn(b.amount)/10000).toFixed(2))}万)</span>
       <button onclick="formBillings.splice(${i},1);renderFormBillings()" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
     </div>
@@ -1325,9 +1335,10 @@ function editBillings(caseId,el){
     h+=`<div style="font-size:12px;margin-bottom:8px;padding:8px;background:#f0f8ff;border-radius:6px">発注額: <b>¥${fmt(fn(c.jisha_h))}</b></div>`;
     bl.forEach((b,i)=>{
       h+=`<div style="border:1px solid #e0e0e0;border-radius:8px;padding:8px;margin-bottom:6px;background:#fafafa">
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
           <span style="font-weight:700;color:var(--nav)">${b.month}</span>
           <span style="font-weight:700">¥${fmt(fn(b.amount))}</span>
+          ${blNoteHtml(b)}
           <button onclick="S.cases.find(x=>x.id==='${c.id}').billings.splice(${i},1);syncBillings('${c.id}');blRepaint&&blRepaint()" style="background:none;border:none;color:#e53935;font-size:16px;cursor:pointer;margin-left:auto">×</button>
         </div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;font-size:11px;margin-top:4px">
@@ -4028,26 +4039,132 @@ function shiftYM(ym,delta){
 // 請求漏れ：請求書は出したが入金が確認できない現場を、翌月の請求リストへ送る。
 // ★売上の発生月（b.month）は動かさない。請求管理月（b.claim_month）だけを動かす。
 //   6月に出した請求は6月の売上のまま（原価も6月に出ている）／6月の当月請求計からだけ外れて7月に乗る。
+// 当月の請求が2件以上あると「まとめて翌月へ」では困る（繰越分だけ動かしたいのに当月完成分も動く）。
+// 1件なら従来どおり確認だけ、2件以上なら請求ごとに選ぶ画面を出す。
 function togMorei(id){
   if(!canEdit())return;
   const c=S.cases.find(x=>x.id===id); if(!c)return;
   const cur=getMK(getYr(),getMo());      // ★表示中の月が基準（記入月ではない）
   const next=shiftYM(cur,1);
-  const target=(c.billings||[]).filter(b=>claimMonth(b)===cur&&fn(b.amount)>0);
-  if(!target.length){ alert(`${cur} に請求がありません。請求漏れにできるのは請求済みの月だけです。`); return; }
-  const amt=target.reduce((a,b)=>a+fn(b.amount),0);
-  if(!confirm(`「${c.place||''} ${c.kouji||''}」の ${cur} 分 ¥${fmt(amt)} を請求漏れとして ${next} の請求リストへ移しますか？
+  const targets=(c.billings||[]).map((b,i)=>({b,i})).filter(o=>claimMonth(o.b)===cur&&fn(o.b.amount)>0);
+  if(!targets.length){ alert(`${cur} に請求がありません。請求漏れにできるのは請求済みの月だけです。`); return; }
+  if(targets.length===1){
+    const amt=fn(targets[0].b.amount);
+    if(!confirm(`「${c.place||''} ${c.kouji||''}」の ${cur} 分 ¥${fmt(amt)} を請求漏れとして ${next} の請求リストへ移しますか？
 
 ※${cur} の売上（月次PL）は動きません。`))return;
-
-  target.forEach(b=>{ b.claim_month=next; });   // ★b.month も c.date も触らない（表示は claim_month で決まる）
-  c.more_flag='✓';
+    applyMorei(id,cur,next,[{i:targets[0].i,carry:amt}]);
+    return;
+  }
+  openMoreiPick(id,cur,next,targets);
+}
+// 請求漏れの実行。ops=[{i:c.billings のインデックス, carry:繰り越す金額(円)}]
+// ★b.month（売上の発生月）は全額でも一部でも書き換えない。動かすのは claim_month だけ
+function applyMorei(id,cur,next,ops){
+  const c=S.cases.find(x=>x.id===id); if(!c||!ops||!ops.length)return;
   c.more_hist=Array.isArray(c.more_hist)?c.more_hist:[];
-  c.more_hist.push({from:cur,to:next});
+  let moved=0,splitCnt=0;
+  // 後ろの行から処理する。一部繰越で行を挿入すると、それより後ろのインデックスがずれるため
+  ops.slice().sort((a,b)=>b.i-a.i).forEach(op=>{
+    const b=c.billings[op.i]; if(!b)return;
+    const total=fn(b.amount), gm=(b.month||'').slice(0,7);
+    const carry=Math.min(Math.round(fn(op.carry)),total);
+    if(carry<=0)return;
+    if(carry>=total){
+      b.claim_month=next;                                    // 全額：請求管理月だけ動かす
+      c.more_hist.push({from:cur,to:next,month:gm,amount:total,split:false});
+    }else{
+      // 一部：請求を2行に割る。入金は残る側に付けたまま（入金済みの分は繰り越さない）
+      b.amount=String(total-carry);
+      c.billings.splice(op.i+1,0,{
+        month:b.month,                                       // ★発生月は元のまま
+        amount:String(carry),
+        kouki_s:b.kouki_s||'',kouki_e:b.kouki_e||'',
+        nyukin:'',nyukin_d:'',
+        claim_month:next,
+        carry_note:`${cur} から繰越`
+      });
+      c.more_hist.push({from:cur,to:next,month:gm,amount:carry,split:true});
+      splitCnt++;
+    }
+    moved+=carry;
+  });
+  if(!moved)return;
+  c.more_flag='✓';
   c.nyukin_c='';
   syncBillings(id);
-  addLog('edit',`${esc(c.place||'')} ${cur}分を請求漏れ→${next}の請求リストへ`);
+  addLog('edit',`${esc(c.place||'')} ${cur}分 ¥${fmt(moved)}（${ops.length}件${splitCnt?'・うち分割'+splitCnt+'件':''}）を請求漏れ→${next}の請求リストへ`);
   renderAll();
+}
+let _moreiCtx=null;   // 選択画面の対象（idx は c.billings の実インデックス）
+function openMoreiPick(id,cur,next,targets){
+  document.querySelectorAll('#moreiPickWrap').forEach(x=>x.remove());
+  const c=S.cases.find(x=>x.id===id); if(!c)return;
+  _moreiCtx={id,cur,next,idx:targets.map(o=>o.i)};
+  const rows=targets.map((o,j)=>{
+    const b=o.b, amt=fn(b.amount), ny=fn(b.nyukin), rest=Math.max(0,amt-ny);
+    return `<div style="border:1px solid #e0e0e0;border-radius:8px;padding:10px;margin-bottom:8px;background:#fafafa">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap">
+        <input type="checkbox" id="mo_ck_${j}" checked style="width:18px;height:18px">
+        <span style="font-weight:700;font-size:14px">¥${fmt(amt)}</span>
+        <span style="font-size:11px;color:#666">発生月 ${(b.month||'').slice(0,7)||'—'}</span>
+        ${ny>0?`<span style="font-size:11px;color:#2e7d32">入金 ¥${fmt(ny)}</span>`:''}
+        ${blNoteHtml(b)}
+      </label>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:6px;font-size:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="mo_md_${j}" value="full" checked onchange="const e=document.getElementById('mo_amt_${j}');e.disabled=true">全額</label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="mo_md_${j}" value="part" onchange="const e=document.getElementById('mo_amt_${j}');e.disabled=false;e.focus()">一部</label>
+        <input type="number" id="mo_amt_${j}" placeholder="円" inputmode="numeric" step="1" min="1" max="${rest}" disabled style="width:110px;padding:4px;border:1px solid #ddd;border-radius:5px;font-size:12px"><span style="font-size:11px">円</span>
+        <span style="font-size:10px;color:#888">繰り越せるのは ¥${fmt(rest)} まで（入金済みの分は繰り越せません）</span>
+      </div>
+    </div>`;
+  }).join('');
+  const wrap=document.createElement('div');
+  wrap.id='moreiPickWrap';
+  wrap.style.cssText='position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:12px';
+  wrap.innerHTML=`<div style="background:#fff;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,.3);width:520px;max-width:100%;max-height:88vh;overflow-y:auto">
+    <div style="padding:12px 16px;background:#c62828;color:#fff;border-radius:12px 12px 0 0;font-weight:700;font-size:14px">
+      🚨 ${cur} の請求（${targets.length}件）— 請求漏れにするものを選んでください
+      <div style="font-size:11px;font-weight:400;opacity:.9;margin-top:2px">${esc(c.place||'')} ${esc(c.kouji||'')}</div>
+    </div>
+    <div style="padding:14px">
+      ${rows}
+      <div style="font-size:11px;color:#666;background:#f5f5f5;border-radius:6px;padding:8px;margin-top:4px">
+        ※選んだ分の売上（月次PL）は動きません。請求管理上の月だけが <b>${next}</b> へ移ります。<br>
+        ※一部だけ繰り越すと請求が2行に分かれます（発生月は両方とも元のまま・入金は残る側に付きます）。
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="btn bx btn-sm" onclick="document.getElementById('moreiPickWrap').remove()">キャンセル</button>
+        <button class="btn bn btn-sm" onclick="moreiPickExec()">実行</button>
+      </div>
+    </div>
+  </div>`;
+  wrap.addEventListener('mousedown',e=>{if(e.target===wrap)wrap.remove();});
+  document.body.appendChild(wrap);
+}
+function moreiPickExec(){
+  const ctx=_moreiCtx; if(!ctx)return;
+  const c=S.cases.find(x=>x.id===ctx.id); if(!c)return;
+  const ops=[];
+  for(let j=0;j<ctx.idx.length;j++){
+    const ck=document.getElementById('mo_ck_'+j);
+    if(!ck||!ck.checked)continue;
+    const b=c.billings[ctx.idx[j]]; if(!b)continue;
+    const total=fn(b.amount), rest=Math.max(0,total-fn(b.nyukin));
+    const md=document.querySelector('input[name="mo_md_'+j+'"]:checked');
+    if(md&&md.value==='part'){
+      const v=Math.round(fn(document.getElementById('mo_amt_'+j).value));
+      if(v<=0){ alert(`¥${fmt(total)} の「一部」に繰り越す金額を入れてください。`); return; }
+      if(v>rest){ alert(`¥${fmt(total)} のうち繰り越せるのは ¥${fmt(rest)} までです（¥${fmt(fn(b.nyukin))} は入金済みのため繰り越せません）。`); return; }
+      ops.push({i:ctx.idx[j],carry:v});      // v>=total なら applyMorei 側で全額扱いになる
+    }else{
+      ops.push({i:ctx.idx[j],carry:total});
+    }
+  }
+  if(!ops.length){ alert('請求漏れにする請求を1件以上選んでください。'); return; }
+  const wrap=document.getElementById('moreiPickWrap'); if(wrap)wrap.remove();
+  _moreiCtx=null;
+  applyMorei(ctx.id,ctx.cur,ctx.next,ops);
 }
 function clearMorei(id){
   if(!canEdit())return;
@@ -4066,11 +4183,26 @@ function clearMorei(id){
     sv();addLog('edit',`${esc(c.place||'')}の請求漏れ（旧方式）を解除→${prev}へ`);renderAll();
     return;
   }
-  if(!confirm(`請求漏れを解除して ${last.from} の請求リストへ戻しますか？`))return;
-  // 一度だけ動かした分は claim_month を消して発生月に戻す。二段繰越は一段だけ戻す
-  (c.billings||[]).forEach(b=>{
-    if(claimMonth(b)===last.to){ b.claim_month=(last.from===(b.month||'').slice(0,7))?'':last.from; }
-  });
+  // 新方式（month を持つ履歴）は動かした請求1件だけを戻す。
+  // ★一部繰越で分割した行はマージしない。claim_month を戻すだけで、行は2つのまま残す
+  const gm=last.month||'', amt=fn(last.amount);
+  let tgt=null;
+  if(gm){
+    const cand=(c.billings||[]).filter(b=>claimMonth(b)===last.to&&(b.month||'').slice(0,7)===gm);
+    tgt=cand.find(b=>fn(b.amount)===amt)||cand[0]||null;   // 金額を直された後でも発生月で拾える
+  }
+  const rest=hist.length-1;
+  if(!confirm(`${tgt?`この請求 ¥${fmt(fn(tgt.amount))}（発生月 ${gm}）を`:'請求漏れを'} ${last.from} の請求リストへ戻しますか？`
+    +(rest>0?`\n\n※ほかに ${rest} 件の請求漏れが残ります。1件ずつ解除してください。`:'')
+    +(tgt&&tgt.carry_note?'\n※一部繰越で分かれた行はまとめ直しません（記録として残ります）。':'')))return;
+  if(tgt){
+    tgt.claim_month=(last.from===(tgt.month||'').slice(0,7))?'':last.from;
+  }else{
+    // 旧履歴（month を持たない {from,to}）はその月ごと戻す＝従来どおりの挙動
+    (c.billings||[]).forEach(b=>{
+      if(claimMonth(b)===last.to){ b.claim_month=(last.from===(b.month||'').slice(0,7))?'':last.from; }
+    });
+  }
   hist.pop();
   c.more_hist=hist;
   if(!hist.length)c.more_flag='';
