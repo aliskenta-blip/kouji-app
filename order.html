@@ -3072,22 +3072,32 @@ function renderSeikyuu(){
 // 「なぜこの数字になったのか」を調べる道具。★KPIと同じ対象（S.cases 全件）から作り、
 // 計算は既存の関数（arariMonthOf / genkaKakuteiOf / calc）をそのまま呼ぶ。
 // 内訳の合計がKPIと一致しなければ調べる道具にならないので、別の集計は書かない
-function kpiDrillArari(mk){
-  // 算入リストは★月ベース（KPIと同じ mk の粗利）
+// mode: 'month'（既定）… 算入＝mk の月ベース／除外＝年度ベース
+//       'fy'            … 算入も除外も年度ベース（ダッシュボードの年度合計カード用）
+// ★除外の別枠はどちらのモードでも年度ベース。ダッシュボードの注記と必ず一致させるため、
+//   同じ miKeijoCost の結果をそのまま使う（月ごとの再計算はしない）
+function kpiDrillArari(mk,mode){
+  const fyStart=(fyStartOf(mk)!=null)?fyStartOf(mk):curFYStart();
+  const fyMonths=fyMonthKeys(fyStart),fySet=new Set(fyMonths);
+  const isFY=(mode==='fy');
+  // 算入リスト。月モードは mk の1ヶ月、年度モードは12ヶ月の合計
   const inc=[];let incSum=0;
   S.cases.forEach(c=>{
     if(!showArariOf(c))return;
     if(!genkaKakuteiOf(c))return;                    // 除外側は下でまとめて年度ベースに作る
     const r=calc(c);
-    const row={c,a:arariMonthOf(c,mk),hasJuchu:r.hasJuchu,
-      bm:getBilledMonthRaw(c,mk),                    // 当月請求（発生月）
-      km:getKyoBilledMonth(c,mk)};                   // 当月の協社請求（発生月）
+    let row;
+    if(isFY){
+      let a=0,bm=0,km=0;
+      fyMonths.forEach(m=>{a+=arariMonthOf(c,m);bm+=getBilledMonthRaw(c,m);km+=getKyoBilledMonth(c,m);});
+      row={c,a,hasJuchu:r.hasJuchu,bm,km};
+    }else{
+      row={c,a:arariMonthOf(c,mk),hasJuchu:r.hasJuchu,
+        bm:getBilledMonthRaw(c,mk),                  // 当月請求（発生月）
+        km:getKyoBilledMonth(c,mk)};                 // 当月の協社請求（発生月）
+    }
     if(row.a!==0||row.bm!==0||row.km!==0){inc.push(row);incSum+=row.a;}
   });
-  // 除外の別枠は★年度ベース。ダッシュボードの注記と必ず一致させるため、
-  // 同じ miKeijoCost の結果をそのまま使う（月ごとの再計算はしない）
-  const fyStart=(fyStartOf(mk)!=null)?fyStartOf(mk):curFYStart();
-  const fyMonths=fyMonthKeys(fyStart),fySet=new Set(fyMonths);
   const casesFY=S.cases.filter(c=>caseFYContrib(c,fySet).inFY);
   const mkc=miKeijoCost(casesFY,fyMonths);
   const toRow=o=>({c:o.c,a:o.a,hasJuchu:calc(o.c).hasJuchu,bm:null,km:null});   // 年度合計なので月の内訳は出さない
@@ -3098,21 +3108,21 @@ function kpiDrillArari(mk){
   return {inc,incSum,
     exNoBill,exNoBillSum:mkc.exc,
     exNoAmt,exNoAmtSum:mkc.unkExc,
-    fyStart};
+    fyStart,isFY};
 }
 function kpiDrillClose(){document.querySelectorAll('#kpiDrillWrap').forEach(x=>x.remove());}
-function openKpiDrillArari(mk){
+function openKpiDrillArari(mk,mode){
   kpiDrillClose();                                   // ★2枚重ならないよう先に消す（§5 #8 の罠）
-  const d=kpiDrillArari(mk);
+  const d=kpiDrillArari(mk,mode);
   const nm=c=>esc(((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）');
   const line=o=>{
     const c=o.c;
-    const f=(o.bm==null)
-      ? `<span style="color:#666">年度合計</span>`                                   // 除外の別枠は年度ベースなので月の式を出さない
+    const f=(o.bm==null||d.isFY)
+      ? `<span style="color:#666">年度合計</span>`                                   // 年度ベースの行は月ごとの式を出さない
       : (o.hasJuchu
         ? `<span style="color:#666">自社受注額 − 外注費</span>`                       // 中間マージンは式が違う
         : `請求 <b>¥${fmt(o.bm)}</b> − 協社 <b>¥${fmt(o.km)}</b>`);
-    const v=(o.bm==null||o.hasJuchu)?o.a:(o.bm-o.km);
+    const v=(o.bm==null||d.isFY||o.hasJuchu)?o.a:(o.bm-o.km);
     return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #eee;cursor:pointer;font-size:12px" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
       <span style="flex:1;min-width:120px">${nm(c)}${esc(c.client?'（'+c.client+'）':'')}</span>
       <span style="white-space:nowrap;color:#555">${f}</span>
@@ -3126,12 +3136,12 @@ function openKpiDrillArari(mk){
   wrap.style.cssText='position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:12px';
   wrap.innerHTML=`<div style="background:#fff;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,.3);width:720px;max-width:100%;max-height:88vh;overflow-y:auto">
     <div style="position:sticky;top:0;padding:12px 16px;background:var(--nav);color:#fff;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:700;font-size:14px">${mk} の粗利　¥${fmt(d.incSum)}（${d.inc.length}件）</span>
+      <span style="font-weight:700;font-size:14px">${d.isFY?fyLabel(d.fyStart)+'の粗利':mk+' の粗利'}　¥${fmt(d.incSum)}（${d.inc.length}件）</span>
       <span onclick="kpiDrillClose()" style="cursor:pointer;font-size:24px;line-height:1;padding:0 6px" title="閉じる">×</span>
     </div>
     <div style="padding:14px">
-      <div style="font-size:11px;color:#666;margin-bottom:8px">その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。全案件が対象です。</div>
-      <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px">算入　${d.inc.length}件　¥${fmt(d.incSum)}<span style="font-weight:400;color:#888">　※${mk} の分</span></div>
+      <div style="font-size:11px;color:#666;margin-bottom:8px">その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。全案件が対象です。${d.isFY?'この画面は年度の12ヶ月を合計しています。':''}</div>
+      <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px">算入　${d.inc.length}件　¥${fmt(d.incSum)}<span style="font-weight:400;color:#888">　※${d.isFY?'年度全体':mk+' の分'}</span></div>
       ${block(d.inc)}
       <div style="display:flex;justify-content:space-between;font-weight:800;font-size:13px;padding:8px 0;border-top:2px solid #333;margin-top:4px">
         <span>合計</span><span>¥${fmt(d.incSum)}</span>
@@ -3142,7 +3152,7 @@ function openKpiDrillArari(mk){
           <span>除外　${exCnt}件　¥${fmt(exTotal)}　<span style="font-weight:400">※年度全体（${fyLabel(d.fyStart)}）</span></span><span>▶</span>
         </div>
         <div style="display:none;padding:10px 12px">
-          <div style="font-size:11px;color:#7a5900;margin-bottom:6px">原価が確定していないため集計から外した分です。<b>上の算入リストは ${mk} の分ですが、こちらは年度全体</b>なので基準が違います。ダッシュボードの注記と同じ数字です。協力会社の請求を登録すると粗利が戻ります。現場名をクリックすると案件が開きます。</div>
+          <div style="font-size:11px;color:#7a5900;margin-bottom:6px">原価が確定していないため集計から外した分です。${d.isFY?'算入リストと同じく年度全体です。':`<b>上の算入リストは ${mk} の分ですが、こちらは年度全体</b>なので基準が違います。`}ダッシュボードの注記と同じ数字です。協力会社の請求を登録すると粗利が戻ります。現場名をクリックすると案件が開きます。</div>
           <div style="font-weight:700;font-size:12px;color:#7a5900;margin:8px 0 2px">① 協力会社の請求が未登録　${d.exNoBill.length}件　¥${fmt(d.exNoBillSum)}</div>
           ${block(d.exNoBill)}
           <div style="font-weight:700;font-size:12px;color:#7a5900;margin:12px 0 2px">② 協力会社の金額が未入力　${d.exNoAmt.length}件　¥${fmt(d.exNoAmtSum)}</div>
@@ -3800,7 +3810,7 @@ function renderDash(){
     <div class="kpi g"><div class="kl">入金金額 合計</div><div class="kv">¥${fmt(tny)}</div><div class="ks">請求の ${fmtP(pct(tny,tjs))}</div></div>
     <div class="kpi r"><div class="kl">未収金 合計</div><div class="kv">¥${fmt(tmi)}</div><div class="ks">請求 − 入金</div></div>
     <div class="kpi o"><div class="kl">協力会社 請求合計</div><div class="kv">¥${fmt(tky)}</div><div class="ks">外注原価</div></div>
-    <div class="kpi p" title="その月に発生した粗利の年度合計です。原価だけが発生した月も含むため、月別入力の粗利を12ヶ月足した数字とは一致しません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。請求額×率の積算ではありません。&#10;★金額と率で基準が違います。金額はその年度に発生した実額、率は契約ベース（案件ごとの率を受注額で加重平均したもの＝(受注額 − 外注費) の合計 ¥${fmt(tarNum)} ÷ 受注額の合計 ¥${fmt(tarBase)}）です。請求の進捗で率が振れないようにするためで、率 × 分母 は粗利合計と一致しません。&#10;率は外注案件のみで、自社施工分は分子にも分母にも含みません。自社施工の原価を kouji-cost から取り込めば、会社全体の粗利率にできます（Phase 6）"><div class="kl">粗利 合計（発生ベース）</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tarNum,tarBase))}（契約ベース・外注案件のみ）</div></div>
+    <div class="kpi p" title="その月に発生した粗利の年度合計です。原価だけが発生した月も含むため、月別入力の粗利を12ヶ月足した数字とは一致しません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。請求額×率の積算ではありません。&#10;★金額と率で基準が違います。金額はその年度に発生した実額、率は契約ベース（案件ごとの率を受注額で加重平均したもの＝(受注額 − 外注費) の合計 ¥${fmt(tarNum)} ÷ 受注額の合計 ¥${fmt(tarBase)}）です。請求の進捗で率が振れないようにするためで、率 × 分母 は粗利合計と一致しません。&#10;率は外注案件のみで、自社施工分は分子にも分母にも含みません。自社施工の原価を kouji-cost から取り込めば、会社全体の粗利率にできます（Phase 6）&#10;クリックすると現場ごとの内訳（年度全体）が出ます" style="cursor:pointer" onclick="openKpiDrillArari('${fyMonths[0]}','fy')"><div class="kl">粗利 合計（発生ベース）🔍</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tarNum,tarBase))}（契約ベース・外注案件のみ）</div></div>
     <div class="kpi g" title="今月に発生した粗利です。その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。原価が先に出た月はマイナスになります。全案件が対象です。&#10;月別入力のKPI「粗利（この月に発生した分）」と同じ数字です（ヘッダーで選んだ年月）。&#10;クリックすると現場ごとの内訳が出ます${curInFY?'':'&#10;※いま選ばれている年月は、表示中の事業年度の外です'}" style="cursor:pointer" onclick="openKpiDrillArari('${curMK}')"><div class="kl">今月の粗利（${curMK}）🔍</div><div class="kv">¥${fmt(tarCur)}</div><div class="ks">${curInFY?(tar>0?`年度合計の ${fmtP(pct(tarCur,tar))}`:'年度合計に対する割合は出せません'):'表示中の年度外'}</div></div>
   </div>`;
 
