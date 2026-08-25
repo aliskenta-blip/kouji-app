@@ -4500,19 +4500,25 @@ function doCSV(type){
 }
 
 // ── 工事経歴書 ──
-// 和暦（令和）変換の共通土台。YYYY-MM / YYYY-MM-DD 以外（'未定'・空欄・不正値）は null を返す。
+// 和暦変換の共通土台。YYYY-MM / YYYY-MM-DD 以外（'未定'・空欄・不正値）は null を返す。
 // new Date('未定') は Invalid Date になり、そのまま計算すると「RNaN.NaN」と印字されてしまう。
-// 文字列のまま検証してから数値にすることで、タイムゾーンによる月ズレも起こらない
+// 文字列のまま検証してから数値にすることで、タイムゾーンによる月ズレも起こらない。
+// 元号は改元日（2019-05-01）で切り替える：
+//   2019-05 以降 → 令和（西暦 − 2018）／ 2019-01〜04 → 平成31年 ／ 2018 以前 → 平成（西暦 − 1988）
+// 平成より前（1988 以前）は扱わないので空欄にする（年の打ち間違いで H-1786 等を印字しないため）
 function reiwaYM(v){
   const m=/^(\d{4})-(\d{1,2})(?:-|$)/.exec(String(v==null?'':v).trim());
   if(!m)return null;
-  const y=parseInt(m[1],10)-2018, mo=parseInt(m[2],10);
+  const yy=parseInt(m[1],10), mo=parseInt(m[2],10);
   if(!mo||mo<1||mo>12)return null;
-  return {y,m:mo};
+  if(yy<1989)return null;
+  return (yy>2019||(yy===2019&&mo>=5))
+    ? {era:'令和',abbr:'R',y:yy-2018,m:mo}
+    : {era:'平成',abbr:'H',y:yy-1988,m:mo};
 }
 function toReiwa(dateStr){
   const r=reiwaYM(dateStr);
-  return r?`R${r.y}.${r.m}`:'';         // 工期未定・未入力は空欄（集計からは外さない）
+  return r?`${r.abbr}${r.y}.${r.m}`:''; // 工期未定・未入力は空欄（集計からは外さない）
 }
 function toSenYen(val,isTaxExcl){
   const v=fn(val);
@@ -4949,8 +4955,10 @@ function printKeireki(){
   const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
 
   function toR(ds){
-    const r=reiwaYM(ds);                // 工期未定・未入力・不正値は空欄（様式の「令和　年　月」のまま）
-    return r?{y:String(r.y),m:String(r.m)}:{y:'',m:''};
+    // 工期未定・未入力・不正値は年月を空欄にする（様式の「令和　年　月」と同じ見え方）。
+    // 元号も値に合わせて差し替える（平成の工事は「平成 31 年 4 月」と印字する）
+    const r=reiwaYM(ds);
+    return r?{g:r.era,y:String(r.y),m:String(r.m)}:{g:'令和',y:'',m:''};
   }
   const THEAD=`<tr class="hdr1">
       <th rowspan="2" style="width:9%">注文者</th><th rowspan="2" style="width:14%">工事名</th>
@@ -4976,10 +4984,10 @@ function printKeireki(){
         <td class="r ed" contenteditable="true">${amt?amt.toLocaleString():''}</td>
         <td class="r ed" contenteditable="true">${motoAmt?motoAmt.toLocaleString():''}</td>
         <td class="r ed" contenteditable="true"></td>
-        <td class="c ed" contenteditable="true" style="font-size:8px">令和 ${ks.y} 年 ${ks.m} 月</td>
+        <td class="c ed" contenteditable="true" style="font-size:8px">${ks.g} ${ks.y} 年 ${ks.m} 月</td>
       </tr><tr>
         <td class="c sub">千円</td><td class="c sub">千円</td><td class="c sub"></td>
-        <td class="c ed" contenteditable="true" style="font-size:8px">令和 ${ke.y} 年 ${ke.m} 月</td>
+        <td class="c ed" contenteditable="true" style="font-size:8px">${ke.g} ${ke.y} 年 ${ke.m} 月</td>
       </tr>`);
     });
     if(b.other){
@@ -5144,7 +5152,7 @@ function exportKerekiWord(){
   const mode=vg('kr_mode')||'keishin';
   const yr=parseInt(vg('kr_year'))||fyOf(nowYM());
   const gyoshuList=krGyoshuListFor(mode,type,yr,isTaxExcl);
-  function toR(ds){const r=reiwaYM(ds);return r?`令和 ${r.y} 年 ${r.m} 月`:'';}   // 未定・不正値は空欄
+  function toR(ds){const r=reiwaYM(ds);return r?`${r.era} ${r.y} 年 ${r.m} 月`:'';}   // 未定・不正値は空欄
   const sen=v=>Math.round(v/1000);
   const HEAD=`<tr><th>注文者</th><th>工事名</th><th>元請又は<br>下請の別</th><th>JVの別</th><th>工事現場の都道府県<br>及び市区町村名</th><th>配置技術者<br>氏名</th><th>主任技術者又は<br>監理技術者の別</th><th>請負代金の額</th><th>うち元請工事</th><th>うちPC・法面処理<br>・鋼橋上部</th><th>着工年月</th><th>完成又は<br>完成予定年月</th></tr>`;
   function pageBlock(b,idx){
