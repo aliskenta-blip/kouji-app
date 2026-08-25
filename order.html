@@ -378,6 +378,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
       style="flex:1;min-width:120px;max-width:240px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
     <span style="font-size:11px;color:#888">支払通知書との突合用。詳しい内容は「月別入力」タブで見られます</span>
   </div>
+  <div id="sDiff"></div>
   <div class="kpis" id="sKpi"></div>
   <div id="sClientWrap"></div>
   <div id="sRemind"></div>
@@ -2227,12 +2228,12 @@ const COL_TIPS={
   misu:'請求したのにまだ入金されていない金額（累計請求−累計入金）',
   remaining:'発注額のうち、まだ請求していない残り（発注額−累計請求）',
   km:'協力会社の見積金額',
-  ksr:'協力会社からの請求金額＝外注の原価',
+  ksr:'協力会社からの請求金額＝外注の原価。粗利はこの請求の月に立ちます（支払った月ではありません）',
   ksh:'協力会社へ支払い済みの金額',
   miharai:'協力会社へまだ払っていない金額（協請求−支払済）',
   nyukin:'当月に入金された金額',
-  arari:'粗利（外注分の自社受注額−外注原価）',
-  arariRate:'粗利率',
+  arari:'その月に発生した粗利の実額（当月請求 − 当月の協力会社請求）。協力会社の請求が未登録の案件は「—」になり集計から除外されます',
+  arariRate:'粗利率＝（対応する自社の受注額 − 外注費）÷ その受注額。契約ベースなので工事の進捗では動きません。「予」は原価に見積を使っている状態です',
   m3:'残土数量（㎥）。請求の証憑に使用（工事経歴書の出力には使っていません）',
   seikyuu_c:'請求書を出したらチェック（請求済）',
   nyukin_c:'入金を確認したらチェック（入金済）',
@@ -2410,7 +2411,7 @@ function arariKakutei(c){
 // 「予」のツールチップに出す理由（D-038）
 const ARARI_YOTEI_MSG='確定前です（発注額まで請求していない／入金が未完了／協力会社の請求が未登録）。';
 // 率の列のツールチップ。分母の定義を画面から読めるようにする
-const ARARI_RATE_MSG='粗利率＝（対応する自社の受注額 − 外注費）÷ その受注額（単独＝発注金額／合同＝自社受注額の合計）。契約ベースなので請求の進捗では動きません。金額の粗利は実額なので、率と基準が違います。自社施工分は分母に入れません。';
+const ARARI_RATE_MSG='粗利率＝（対応する自社の受注額 − 外注費）÷ その受注額（単独＝発注金額／合同＝自社受注額の合計）。契約ベースなので請求の進捗では動きません。自社施工分は分母に入れません。&#10;※金額の粗利は「その月／その年度に実際に発生した額」、率は「この契約で何%取れるか」です。基準が違うので、率 × 金額 は粗利合計と一致しません（D-044）。';
 // 原価が確定しておらず、粗利の集計から除外した案件（D-012 / D-038・Phase 10-3b）。
 // 2種類あり、意味が違うので分けて返す：
 //   cnt / cost / exc  … 協社の請求が未登録（見積のみ）。見積額が分かるので参考に出せる
@@ -3007,6 +3008,21 @@ function renderSeikyuu(){
   let cases=monthlyCases(mk,srch);
   const T=monthlyTotals(S.cases,mk);   // ★KPIは全案件（全部確認用と同じ値になる）
   const V=monthlyTotals(cases,mk);     // 発注者別 当月請求合計の合計行用＝表示中の案件
+  // ── 請求と入金の差額（10-3）。支払通知書との突合で最初に見る数字なので、
+  //    折りたたみを開かずに判断できるようKPIの上に大きく1行で出す。
+  //    ★金額は monthlyTotals の結果（T.ts / T.tn）をそのまま使う。新しい集計は書かない ──
+  const mizu=T.ts-T.tn;
+  let mizuCnt=0;                       // 当月請求があって、当月入金が請求額に達していない案件数
+  S.cases.forEach(c=>{const b=getBilledMonth(c,mk);if(b>0&&getNyukinMonth(c,mk)<b)mizuCnt++;});
+  const okAll=mizu<=0;
+  document.getElementById('sDiff').innerHTML=`<div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:10px 14px;border-radius:10px;border:2px solid ${okAll?'#2e7d32':'#c62828'};background:${okAll?'#e8f5e9':'#fdecea'};margin-bottom:12px"
+    title="この月に請求した額と、この月に入金された額の差です。KPIの「当月請求」「入金済」と同じ数字（全案件が対象）。${okAll?'差がゼロなので、この月の請求は全て入金されています。':'残っている分は支払通知書と突き合わせてください。'}">
+    <span style="font-weight:700;font-size:13px;color:#555">${yr}年${mo}月</span>
+    <span style="font-size:12px;color:#555">請求 <b style="font-size:14px">¥${fmt(T.ts)}</b> − 入金 <b style="font-size:14px">¥${fmt(T.tn)}</b> ＝</span>
+    <span style="font-size:12px;color:#555">未入金</span>
+    <span style="font-size:22px;font-weight:800;color:${okAll?'#2e7d32':'#c62828'}">¥${fmt(Math.max(0,mizu))}</span>
+    <span style="font-size:12px;color:${okAll?'#2e7d32':'#c62828'};font-weight:700">${okAll?'✅ 全額入金':`（${mizuCnt}件）`}</span>
+  </div>`;
   // KPIは5つ。協社請求計・未払残計・粗利は請求業務に不要なので出さない
   document.getElementById('sKpi').innerHTML=`
     <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません${KPI_ALL_NOTE}"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(T.ts)}</div><div class="ks">${T.tsCnt}件</div></div>
