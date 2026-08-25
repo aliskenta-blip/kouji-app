@@ -1631,7 +1631,9 @@ function getKyoBilledMonth(c,ym){
 // 当月の粗利（★実額ベース。率按分ではない・D-012）
 // 中間マージン案件は「協社の請求月」に、その外注のマージンを按分して計上する。
 // 原価が先に来る月はマイナスになるが、それが正確な情報なので0で丸めない
-function arariMonthOf(c,ym){
+// basis: 'claim'（既定・月別入力用＝請求管理月ベース）/ 'month'（発生月ベース・ダッシュボード用・D-016）
+//   中間マージン案件は元から協社の請求月（b.month）で按分しているので basis の影響を受けない
+function arariMonthOf(c,ym,basis){
   const r=calc(c);
   if(r.cnt<=0)return 0;                      // 協力会社なし＝原価不明
   const isSelf=c.jisha_sekou==='✓';
@@ -1651,7 +1653,8 @@ function arariMonthOf(c,ym){
     return a;
   }
   // 単独：当月請求 − 当月の協社請求
-  return getBilledMonth(c,ym)-getKyoBilledMonth(c,ym);
+  const bm=(basis==='month')?getBilledMonthRaw(c,ym):getBilledMonth(c,ym);
+  return bm-getKyoBilledMonth(c,ym);
 }
 // ── 請求月の二層化 ────────────────────────────────────────────────
 //  b.month       = 売上の発生月。月次PL・工事経歴書・完成工事高の基準。請求漏れでは動かさない
@@ -1662,6 +1665,14 @@ function getBilledMonth(c,ym){
   const bl=c.billings||[];
   if(!bl.length)return ((c.seikyuu_t||c.date||'').slice(0,7)===ym)?fn(c.jisha_s):0;   // 旧データ(billings未生成)は請求月/記入月に計上
   return bl.filter(b=>claimMonth(b)===ym).reduce((a,b)=>a+fn(b.amount),0);
+}
+// 当月の自社請求額（★発生月ベース＝b.month）。ダッシュボード・年度集計用（D-016）
+// 旧データ(billings未生成)の扱いは getBilledMonth と同一にして、ダッシュボードの
+// 請求金額の計上と粗利の計上がズレないようにする
+function getBilledMonthRaw(c,ym){
+  const bl=c.billings||[];
+  if(!bl.length)return ((c.seikyuu_t||c.date||'').slice(0,7)===ym)?fn(c.jisha_s):0;
+  return bl.filter(b=>(b.month||'').slice(0,7)===ym).reduce((a,b)=>a+fn(b.amount),0);
 }
 function getNyukinMonth(c,ym){
   const bl=c.billings||[];
@@ -2652,15 +2663,17 @@ function renderDash(){
   const fyMonths=fyMonthKeys(dashFY),fySet=new Set(fyMonths);
   const pct=(a,b)=>b>0?(a/b*100):0;
 
-  // ── 事業年度集計（出来高は「請求月の事業年度」で按分。粗利は率ベース） ──
+  // ── 事業年度集計（出来高は「請求月の事業年度」で按分。粗利は実額ベース・D-038） ──
   const billByMonth={};fyMonths.forEach(mk=>billByMonth[mk]={js:0,ny:0,ksr:0,ar:0});
   let tjs=0,tny=0,tky=0,tunbilled=0,tar=0;
   S.cases.forEach(c=>{
-    const rate=projArariRate(c);
     const bl=(c.billings&&c.billings.length)?c.billings:(fn(c.jisha_s)>0?[{month:(c.seikyuu_t||c.date||'').slice(0,7),amount:c.jisha_s,nyukin:c.nyukin}]:[]);
     let billed=0;
-    bl.forEach(b=>{const mk=(b.month||'').slice(0,7);const amt=fn(b.amount);billed+=amt;if(billByMonth[mk]){const bny=fn(b.nyukin);billByMonth[mk].js+=amt;billByMonth[mk].ny+=bny;billByMonth[mk].ar+=amt*rate;tjs+=amt;tny+=bny;tar+=amt*rate;}});
+    bl.forEach(b=>{const mk=(b.month||'').slice(0,7);const amt=fn(b.amount);billed+=amt;if(billByMonth[mk]){const bny=fn(b.nyukin);billByMonth[mk].js+=amt;billByMonth[mk].ny+=bny;tjs+=amt;tny+=bny;}});
     (c.kyousha_list||[]).forEach(k=>{const kbl=(k.billings&&k.billings.length)?k.billings:(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);kbl.forEach(b=>{const mk=(b.month||'').slice(0,7);if(billByMonth[mk]){billByMonth[mk].ksr+=fn(b.amount);tky+=fn(b.amount);}});});
+    // 粗利合計＝月別画面と同じ実額の年度合計（D-038）。請求額×率の積算はやめる。
+    // 発生月ベース（D-016）。粗利を出さない案件は月別画面と同じく合計に入れない
+    if(showArariOf(c))fyMonths.forEach(mk=>{const a=arariMonthOf(c,mk,'month');if(a){billByMonth[mk].ar+=a;tar+=a;}});
     const remaining=Math.max(0,fn(c.jisha_h)-billed);
     if(remaining>0&&fySet.has(caseCompletionMonth(c)))tunbilled+=remaining;  // 完成する事業年度に未請求残を計上
   });
@@ -2688,7 +2701,7 @@ function renderDash(){
     <div class="kpi g"><div class="kl">入金金額 合計</div><div class="kv">¥${fmt(tny)}</div><div class="ks">請求の ${fmtP(pct(tny,tjs))}</div></div>
     <div class="kpi r"><div class="kl">未収金 合計</div><div class="kv">¥${fmt(tmi)}</div><div class="ks">請求 − 入金</div></div>
     <div class="kpi o"><div class="kl">協力会社 請求合計</div><div class="kv">¥${fmt(tky)}</div><div class="ks">外注原価</div></div>
-    <div class="kpi p"><div class="kl">粗利 合計</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tar,tjs))}</div></div>
+    <div class="kpi p" title="月別入力の当月粗利（実額＝当月請求−当月の協社請求）を年度で合計した金額です。請求額×率の積算ではありません。粗利率は 粗利合計 ÷ 請求金額合計"><div class="kl">粗利 合計</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tar,tjs))}</div></div>
   </div>`;
 
   // ── 発注→請求→入金 の相関ファネル ──
@@ -2867,15 +2880,15 @@ function renderDash(){
 function printDashSummary(){
   if(dashFY==null)dashFY=curFYStart();
   const fyMonths=fyMonthKeys(dashFY),fySet=new Set(fyMonths);
-  // KPI・月次推移・内訳とも 出来高（請求月の事業年度）で按分。粗利は率ベース
+  // KPI・月次推移・内訳とも 出来高（請求月の事業年度）で按分。粗利は実額ベース（D-038・ダッシュボードと同値）
   const billByMonth={};fyMonths.forEach(mk=>billByMonth[mk]={js:0,ny:0,ksr:0,ar:0});
   let tjs=0,tny=0,tky=0,tunbilled=0,tar=0;
   S.cases.forEach(c=>{
-    const rate=projArariRate(c);
     const bl=(c.billings&&c.billings.length)?c.billings:(fn(c.jisha_s)>0?[{month:(c.seikyuu_t||c.date||'').slice(0,7),amount:c.jisha_s,nyukin:c.nyukin}]:[]);
     let billed=0;
-    bl.forEach(b=>{const mk=(b.month||'').slice(0,7);const amt=fn(b.amount);billed+=amt;if(billByMonth[mk]){const bny=fn(b.nyukin);billByMonth[mk].js+=amt;billByMonth[mk].ny+=bny;billByMonth[mk].ar+=amt*rate;tjs+=amt;tny+=bny;tar+=amt*rate;}});
+    bl.forEach(b=>{const mk=(b.month||'').slice(0,7);const amt=fn(b.amount);billed+=amt;if(billByMonth[mk]){const bny=fn(b.nyukin);billByMonth[mk].js+=amt;billByMonth[mk].ny+=bny;tjs+=amt;tny+=bny;}});
     (c.kyousha_list||[]).forEach(k=>{const kbl=(k.billings&&k.billings.length)?k.billings:(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);kbl.forEach(b=>{const mk=(b.month||'').slice(0,7);if(billByMonth[mk]){billByMonth[mk].ksr+=fn(b.amount);tky+=fn(b.amount);}});});
+    if(showArariOf(c))fyMonths.forEach(mk=>{const a=arariMonthOf(c,mk,'month');if(a){billByMonth[mk].ar+=a;tar+=a;}});   // 粗利＝実額の年度合計（D-038）
     const remaining=Math.max(0,fn(c.jisha_h)-billed);if(remaining>0&&fySet.has(caseCompletionMonth(c)))tunbilled+=remaining;
   });
   const fyList=S.cases.map(c=>({c,x:caseFYContrib(c,fySet)})).filter(o=>o.x.inFY);
