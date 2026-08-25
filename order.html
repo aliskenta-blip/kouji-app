@@ -3259,9 +3259,6 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
     const nyPrev=getNyukinPrev(c,mk);
     const arariMonth=arariMonthOf(c,mk);   // 当月粗利＝実額ベース（D-012）。マイナスになる月は仕様
     const genkaOk=genkaKakuteiOf(c);       // 原価未確定なら金額は「—」（率は従来どおり出す・Phase 10-3b）
-    // 動きのない月は ¥0 のまま薄く出す。★「—」（計算できない）と「¥0」（計算した結果ゼロ）は
-    //   別の意味なので、テキストは変えず書式だけで目立たなくする（D-061 / D-062）
-    const arariZero=showArari&&genkaOk&&Math.round(arariMonth)===0;
     // 受注高＝当月に新規で受注した契約金額（D-019）。繰越・出来高で再掲された案件を
     // 毎月フル計上すると月をまたいで足せない数字になるため、記入月が当月の案件だけ合計する。
     // 初回記入月（date_orig）を優先し、未請の繰越で記入月が動いた案件の二重計上を防ぐ
@@ -3314,6 +3311,10 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
     else if(!isSelf&&hasKyou){sekouType='単独';sekouCls='sk-other';}
     else{sekouType='—';sekouCls='';}
     const showArari=showArariOf(c);
+    // 動きのない月は ¥0 のまま薄く出す。★「—」（計算できない）と「¥0」（計算した結果ゼロ）は
+    //   別の意味なので、テキストは変えず書式だけで目立たなくする（D-061 / D-062）
+    //   ★showArari の宣言より前に置かないこと（const は巻き上げされず ReferenceError になる）
+    const arariZero=showArari&&genkaOk&&Math.round(arariMonth)===0;
     const kakutei=arariKakutei(c);                      // 確定前は率の後ろに「予」（D-038）
     const ec=`style="cursor:pointer" title="クリックで編集"`;
     // 前月以前から残高ありで繰越（再掲）された行も、請済/入済・写真などをそのまま操作可能にする
