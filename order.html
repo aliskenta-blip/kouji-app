@@ -2423,20 +2423,21 @@ function miKeijoCost(cs,fyMonths){
   const mos=fyMonths||[];
   (cs||[]).forEach(c=>{
     if(!showArariOf(c))return;
-    let hit=false,unk=false;
+    let hit=false,unk=false,cCost=0;                             // cCost＝この案件の「見積のみ」の協社の見積合計
     (c.kyousha_list||[]).forEach(k=>{
       const kbl=(k.billings&&k.billings.length)?k.billings:[];
       if(kbl.length>0||fn(k.seikyuu)>0)return;                   // 請求が登録済み＝原価は計上されている
-      if(fn(k.mitsumori)>0){ hit=true; cost+=fn(k.mitsumori); }   // 見積のみ＝金額は分かる
+      if(fn(k.mitsumori)>0){ hit=true; cCost+=fn(k.mitsumori); }  // 見積のみ＝金額は分かる
       else unk=true;                                             // 見積も請求も未入力＝金額が分からない
     });
-    if(hit||unk){
-      // ignoreGenka を立てて「除外しなかった場合の粗利」を出す（この案件の当年度実額）
-      let a=0;mos.forEach(mk=>{a+=arariMonthOf(c,mk,true);});
-      if(unk)unkExc+=a; else exc+=a;
-    }
-    if(hit)cnt++;
-    if(unk){unkCnt++;unkNames.push(((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）');}
+    if(!hit&&!unk)return;
+    // ignoreGenka を立てて「除外しなかった場合の粗利」を出す（この案件の当年度実額）
+    let a=0;mos.forEach(mk=>{a+=arariMonthOf(c,mk,true);});
+    // ★案件単位で排他に振り分ける（D-065）。②を優先するのは、金額未入力の協社が残る案件は
+    //   請求を1件登録しても genkaKakuteiOf が false のままで粗利が戻らないため。
+    //   ①は「協社の請求を登録すれば粗利が戻る現場」の作業リストとして使う
+    if(unk){ unkCnt++; unkExc+=a; unkNames.push(((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）'); }
+    else { cnt++; cost+=cCost; exc+=a; }
   });
   return {cnt,cost,unkCnt,unkNames,exc,unkExc};
 }
@@ -3168,6 +3169,9 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
     const nyPrev=getNyukinPrev(c,mk);
     const arariMonth=arariMonthOf(c,mk);   // 当月粗利＝実額ベース（D-012）。マイナスになる月は仕様
     const genkaOk=genkaKakuteiOf(c);       // 原価未確定なら金額は「—」（率は従来どおり出す・Phase 10-3b）
+    // 動きのない月は ¥0 のまま薄く出す。★「—」（計算できない）と「¥0」（計算した結果ゼロ）は
+    //   別の意味なので、テキストは変えず書式だけで目立たなくする（D-061 / D-062）
+    const arariZero=showArari&&genkaOk&&Math.round(arariMonth)===0;
     // 受注高＝当月に新規で受注した契約金額（D-019）。繰越・出来高で再掲された案件を
     // 毎月フル計上すると月をまたいで足せない数字になるため、記入月が当月の案件だけ合計する。
     // 初回記入月（date_orig）を優先し、未請の繰越で記入月が動いた案件の二重計上を防ぐ
@@ -3260,7 +3264,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
       <td class="${r.miharai>0?'cw':'ca'}" style="cursor:pointer" onclick="togSub('${c.id}')">¥${fmt(r.miharai)}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
-      <td class="num big ${(showArari&&genkaOk)?(arariMonth>=0?'cp':'cl'):''}" title="${showArari&&!genkaOk?GENKA_MIKAKUTEI_TIP:'当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります'}">${(showArari&&genkaOk)?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
+      <td class="num big ${(showArari&&genkaOk&&!arariZero)?(arariMonth>=0?'cp':'cl'):''}"${arariZero?' style="color:#bbb;font-weight:400"':''} title="${showArari&&!genkaOk?GENKA_MIKAKUTEI_TIP:'当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります'+(arariZero?'&#10;この月は請求も協力会社の請求もありませんでした':'')}">${(showArari&&genkaOk)?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
       <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="${ARARI_RATE_MSG}${showArari&&!kakutei?'&#10;'+ARARI_YOTEI_MSG:''}">${showArari?fmtP(projArariRate(c)*100)+(kakutei?'':' 予'):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${seikyuuMonthOf(c,mk)==='✓'?`<span class="ck pk on" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;この月は未請求です。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
@@ -3693,6 +3697,12 @@ function renderDash(){
   <div style="text-align:center;margin-bottom:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn bg btn-sm" onclick="printDashSummary()">📄 決算サマリーを印刷 / PDF出力</button><button class="btn bo btn-sm" onclick="printShiharaiList()">🖨️ 協力会社 支払リスト</button></div>`;
 
   // ── 6つの合計KPI ──
+  // ── 今月の粗利（10-4）。ヘッダーで選択中の年月。計算は arariMonthOf をそのまま呼ぶので
+  //    月別入力のKPIと必ず一致する。原価未確定の除外も arariMonthOf のガードで自動的にかかる ──
+  const curMK=getMK(getYr(),getMo());
+  let tarCur=0;S.cases.forEach(c=>{if(showArariOf(c))tarCur+=arariMonthOf(c,curMK);});
+  const curInFY=fySet.has(curMK);
+
   const kpi=`<div class="kpis">
     <div class="kpi b"><div class="kl">発注金額 合計</div><div class="kv">¥${fmt(tjh)}</div><div class="ks">受注した工事の総額</div></div>
     <div class="kpi" title="売上の発生月ベース。請求漏れで翌月の請求リストへ送っても、この数字は動きません（工事経歴書・月次PLと同じ基準）"><div class="kl">請求金額 合計（発生ベース）</div><div class="kv">¥${fmt(tjs)}</div><div class="ks">発注の ${fmtP(pct(tjs,tjh))}</div></div>
@@ -3700,6 +3710,7 @@ function renderDash(){
     <div class="kpi r"><div class="kl">未収金 合計</div><div class="kv">¥${fmt(tmi)}</div><div class="ks">請求 − 入金</div></div>
     <div class="kpi o"><div class="kl">協力会社 請求合計</div><div class="kv">¥${fmt(tky)}</div><div class="ks">外注原価</div></div>
     <div class="kpi p" title="その月に発生した粗利の年度合計です。原価だけが発生した月も含むため、月別入力の粗利を12ヶ月足した数字とは一致しません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。請求額×率の積算ではありません。&#10;★金額と率で基準が違います。金額はその年度に発生した実額、率は契約ベース（案件ごとの率を受注額で加重平均したもの＝(受注額 − 外注費) の合計 ¥${fmt(tarNum)} ÷ 受注額の合計 ¥${fmt(tarBase)}）です。請求の進捗で率が振れないようにするためで、率 × 分母 は粗利合計と一致しません。&#10;率は外注案件のみで、自社施工分は分子にも分母にも含みません。自社施工の原価を kouji-cost から取り込めば、会社全体の粗利率にできます（Phase 6）"><div class="kl">粗利 合計（発生ベース）</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tarNum,tarBase))}（契約ベース・外注案件のみ）</div></div>
+    <div class="kpi g" title="今月に発生した粗利です。その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。原価が先に出た月はマイナスになります。全案件が対象です。&#10;月別入力のKPI「粗利（この月に発生した分）」と同じ数字です（ヘッダーで選んだ年月）。${curInFY?'':'&#10;※いま選ばれている年月は、表示中の事業年度の外です'}"><div class="kl">今月の粗利（${curMK}）</div><div class="kv">¥${fmt(tarCur)}</div><div class="ks">${curInFY?(tar>0?`年度合計の ${fmtP(pct(tarCur,tar))}`:'年度合計に対する割合は出せません'):'表示中の年度外'}</div></div>
   </div>`;
 
   // ── 未計上原価の注記（D-038）。協社請求が未登録の分だけ粗利が過大に出ていることを明示 ──
@@ -3708,7 +3719,7 @@ function renderDash(){
   const mkcRows=[];
   if(mkc.cnt>0)mkcRows.push(mkcRow(
     `⚠ 協力会社の請求が未登録の案件が <b>${mkc.cnt}件</b> あります。粗利 <b>¥${fmt(mkc.exc)}</b> を集計から除外しています（見積では原価 ¥${fmt(mkc.cost)}）。`,
-    '協力会社の見積は入っているが請求（協力会社明細の請求額）がまだ登録されていない案件です。原価がゼロのまま粗利が過大に出るため、上の粗利合計には入れていません。請求を登録すると粗利が計上されます。&#10;（見積は契約まるごとの金額で、その年度に請求した売上と土俵が揃わないため、原価としては使っていません）&#10;※同じ案件に「金額未入力」の協力会社もある場合、件数は下の行にも数えますが、除外額は下の行にだけ入れて二重計上を避けています'));
+    '協力会社の見積は入っているが請求（協力会社明細の請求額）がまだ登録されていない案件です。原価がゼロのまま粗利が過大に出るため、上の粗利合計には入れていません。請求を登録すると粗利が計上されます。&#10;（見積は契約まるごとの金額で、その年度に請求した売上と土俵が揃わないため、原価としては使っていません）'));
   if(mkc.unkCnt>0)mkcRows.push(mkcRow(
     `⚠ 協力会社の金額が未入力の案件が <b>${mkc.unkCnt}件</b> あります。原価が不明なため、粗利 <b>¥${fmt(mkc.unkExc)}</b> を集計から除外しています。`,
     '協力会社を登録しただけで見積も請求も入っていない案件です。原価がまったく分からないので、上の粗利合計には入れていません。&#10;対象：'
