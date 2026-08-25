@@ -360,6 +360,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <div class="tab" onclick="sw('master')">📋 マスター（全案件）</div>
   <div class="tab" onclick="sw('keireki')">📄 工事内容出力</div>
   <div class="tab" onclick="sw('log')">📝 操作ログ</div>
+  <div class="tab" onclick="sw('manual')">📖 マニュアル</div>
   <div class="tab master-only" onclick="sw('mst')">⚙️ 設定</div>
 </div>
 
@@ -591,6 +592,738 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <div class="card">
     <div class="card-body" id="logList" style="max-height:600px;overflow-y:auto"></div>
   </div>
+</div>
+
+<!-- マニュアル -->
+<style>
+#manView{font-size:13px;line-height:1.85;color:#333;word-break:break-word}
+#manView h1{font-size:19px;font-weight:800;color:var(--nav);border-bottom:2px solid var(--nav);padding-bottom:5px;margin:22px 0 12px}
+#manView h2{font-size:16px;font-weight:800;color:var(--nav2);border-left:5px solid var(--nav2);padding-left:9px;margin:20px 0 10px;scroll-margin-top:12px}
+#manView h3{font-size:14px;font-weight:700;color:#444;margin:16px 0 8px}
+#manView p{margin:0 0 10px}
+#manView ul,#manView ol{margin:0 0 10px;padding-left:22px}
+#manView li{margin-bottom:4px}
+#manView strong{font-weight:800;color:#111}
+#manView code{background:#f3f4f6;border:1px solid #e0e0e0;border-radius:4px;padding:1px 5px;font-size:12px;font-family:Consolas,monospace;color:#c7254e}
+#manView pre{background:#263238;color:#eceff1;border-radius:8px;padding:10px 12px;overflow-x:auto;font-size:12px;line-height:1.6;margin:0 0 12px}
+#manView pre code{background:none;border:none;color:inherit;padding:0}
+#manView hr{border:none;border-top:1px solid #e0e0e0;margin:18px 0}
+#manView table{border-collapse:collapse;width:100%;font-size:12px;margin:0 0 12px}
+#manView th,#manView td{border:1px solid #ddd;padding:5px 8px;text-align:left;vertical-align:top}
+#manView th{background:#eceff1;font-weight:700;white-space:nowrap}
+#manView .man-hit{background:#ffeb3b;border-radius:2px}
+#manToc a{display:block;font-size:12px;color:#1565c0;text-decoration:none;padding:3px 6px;border-radius:4px;line-height:1.5}
+#manToc a:hover{background:#e3f2fd}
+@media print{#p-manual .no-print{display:none}}
+</style>
+<div id="p-manual" class="panel">
+  <div class="no-print" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <input type="text" id="man_q" placeholder="🔍 本文を検索" oninput="manualSearch()"
+      style="flex:1;min-width:140px;max-width:280px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
+    <span id="man_hit" style="font-size:11px;color:#888"></span>
+    <button class="btn bn btn-sm" id="man_edit_btn" onclick="manualEdit()">✏️ 編集</button>
+    <button class="btn bg btn-sm" id="man_save_btn" onclick="manualSave()" style="display:none">💾 保存</button>
+    <button class="btn bx btn-sm" id="man_cancel_btn" onclick="manualCancel()" style="display:none">キャンセル</button>
+    <span style="font-size:11px;color:#888">誰でも編集できます。保存すると全員に反映されます</span>
+  </div>
+  <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+    <div class="card no-print" id="manTocWrap" style="width:210px;flex:0 0 auto;max-height:70vh;overflow-y:auto">
+      <div class="card-hdr ch-nav" style="font-size:12px">目次</div>
+      <div style="padding:6px" id="manToc"></div>
+    </div>
+    <div style="flex:1;min-width:300px">
+      <div class="card"><div class="card-body" id="manView"></div></div>
+      <textarea id="manEdit" style="display:none;width:100%;min-height:70vh;padding:12px;border:2px solid #1565c0;border-radius:8px;font-size:12px;line-height:1.7;font-family:Consolas,monospace;resize:vertical"></textarea>
+    </div>
+  </div>
+  <script type="text/plain" id="manualSeed">
+# 発注管理 Pro 操作マニュアル（草案）
+
+作成：2026-08-21 ／ 対象：株式会社アイル
+**第4版。** 添削を反映しました。 事実と違う箇所、説明が足りない箇所、業務用語が実態と合わない箇所を直してください。
+`【要確認】` を付けた箇所は、私の側で判断がつかなかった項目です。
+
+**第2版での修正**：実装（Phase 1〜3 完了時点・`0de71d5`）と突き合わせて、バックアップの場所・工事経歴書の引き継ぎ項目・入金日欄の削除・工期の入る経路・未請ボタンの条件・請求漏ボタンの条件を修正しました。発注書PDFの工期、未定の見た目、保存しても値が消えないことを追記しました。
+
+**第3版での修正**：「⚙️ 設定」タブがマスター管理者にしか表示されないことを追記。§10 の「安心してよいこと」から入金額を除外（入金額はフォームに欄があるため、理由が他の4項目と異なる）。
+
+**第4版での修正**：添削を反映（場所＝市区町村／工事名の記入例／見積番号の採番元＝kouji-cost の見積アプリ／㎥は残土数量で請求の証憑）。確認済みの `【要確認】` を通常の記述に変更。残る `【要確認】` は §10 の1箇所のみ。
+
+---
+
+## 目次
+
+1. 基本のルール（先に読む）
+2. 案件を登録する
+3. 請求を登録する（出来高請求）
+4. 月別入力の画面とボタン
+5. 工期のルール
+6. 未請と請求漏れの使い分け
+7. 協力会社の登録と粗利
+8. 建設工事の種類（業種）のルール
+9. 画面に出る数字の意味
+10. やってはいけないこと
+11. 困ったときは
+
+---
+
+# 1. 基本のルール（先に読む）
+
+## 金額はすべて「万円」で入力する
+
+画面のどの欄も、入力するのは**万円**です。
+
+| 実際の金額 | 入力する数字 |
+|---|---|
+| 100万円 | `100` |
+| 1,250万円 | `1250` |
+| 55万円 | `55` |
+| 5,000円 | `0.5` |
+
+保存されるときに自動で円に変換されます。**円で入力しないでください。**
+
+小数点は使えます（`12.5` = 12万5千円）。ただし**万円未満の端数は四捨五入される**ことがあります。
+
+## データが保存される場所
+
+入力したデータは**インターネット上（Firebase）に保存**されます。パソコンの中ではありません。
+
+- 別のパソコンやスマホからでも同じデータが見られます
+- ブラウザの履歴を消してもデータは消えません
+- **ただしバックアップは自分で取る必要があります**
+
+バックアップは「⚙️ 設定」タブ → 一番下の「**💾 自動バックアップ・復元**」→「**📤 JSONバックアップ**」です。
+
+**「⚙️ 設定」タブは、マスター管理者の権限を持つ人にしか表示されません。** それ以外の人がバックアップを取るときは、ダッシュボードにバックアップの警告が出ているときの「**💾 今すぐバックアップ**」を使ってください。こちらは権限に関係なく押せます。
+
+## 決算期は3月〜翌2月
+
+年度の集計はすべてこの区切りです。**1月〜12月でも4月〜3月でもありません。**
+
+「2026年度」と書かれていたら、**2026年3月〜2027年2月**のことです。
+
+---
+
+# 2. 案件を登録する
+
+月別入力の画面で「**＋ 案件追加**」を押します。
+
+## 必ず入力する項目
+
+| 項目 | 説明 |
+|---|---|
+| **記入月** | この案件を記録する月。発注書を受け取った月を入れます。空欄なら今月が入ります |
+| **場所** または **発注者** | **どちらか一方は必ず必要です。** 両方空だと保存できません |
+| **建設工事の種類** | **必ず選びます。** 工事経歴書と完成工事高の集計に使うため、空欄では保存できません |
+
+## 案件情報
+
+| 項目 | 説明 | 記入例 |
+|---|---|---|
+| 記入月 | 発注書を受け取った月 | 2026-08 |
+| 場所 | 工事をする場所・市区町村 | 市川市 |
+| 発注者 | 注文をくれた会社 | （マスタから選択） |
+| 支店 | 発注者の支店・営業所 | （マスタから選択） |
+| 担当 | 社内の担当者 | （マスタから選択） |
+| 工事区分 | 造成・給排水・舗装などの分け方 | （マスタから選択） |
+| 工事名・枝番 | 工事の名前 | 市川市八幡１１１① |
+| 見積番号 | **kouji-cost の見積アプリ**で見積書に自動採番された番号 | 2026-0003 |
+
+**発注者・支店・担当・工事区分・建設工事の種類はマスタから選びます。** 選択肢に無いものは、設定画面のマスタに先に登録してください。
+
+### 見積番号について
+
+- 形式は `2026-0003` のように**4桁-4桁**です。この形でないと保存できません
+- **空欄でも保存できます。** 見積を経ない案件があるためです
+- この番号が、原価管理アプリ（kouji-cost）と突き合わせる共通のキーになります
+- **kouji-cost で採番した番号を、こちらへ転記してください。** こちらで新しく番号を作らないこと
+
+## 工事経歴書用の項目
+
+建設業許可の更新や経営事項審査で必要になる項目です。
+
+| 項目 | 説明 |
+|---|---|
+| 元請/下請の別 | 発注者から直接受けたなら元請、他社の下請なら下請 |
+| JVの別 | 共同企業体なら JV、単独なら「なし」 |
+| 配置技術者名 | 現場に配置した技術者の氏名 |
+| 主任/監理の別 | 主任技術者か監理技術者か |
+| 工事現場 | 都道府県＋市区町村 |
+
+**次回のフォームに自動で引き継がれるのは4項目です。**
+
+| 引き継がれる | 引き継がれない |
+|---|---|
+| JVの別／配置技術者名／主任・監理の別／**建設工事の種類** | **元請/下請の別**（空なら「元請」が既定で入る）／**工事現場**（毎回入力） |
+
+同じ担当者・同じ区分が続くときに入力の手間が減ります。違う場合は上書きしてください。
+
+## 施工形態
+
+「**自社施工あり**」のチェックと、協力会社の有無で自動的に決まります。
+
+| 自社施工チェック | 協力会社 | 表示 | 意味 |
+|---|---|---|---|
+| ✓ | あり | **合同** | 自社と外注が両方入っている |
+| ✓ | なし | **自社** | 全部自社でやる |
+| なし | あり | **単独** | 全部外注に出す（中間マージン） |
+| なし | なし | — | どちらも入っていない |
+
+## 金額
+
+| 項目 | 説明 |
+|---|---|
+| 発注金額 | お客さんから受注した契約金額（万円） |
+| 入金済 | 入金された金額（万円）。**出来高請求を登録すると、そちらが優先されます** |
+| ㎥ | 残土数量。請求の証憑に使います |
+
+**入金日の欄はありません。** 入金ボタンを押すか、出来高請求の入金日欄で入ります。
+
+**「🚨 請求漏れとしてフラグ」のチェックもありません。** 請求漏れは月別一覧の「請求漏」ボタンで操作します。
+
+**工期の欄もありません。** 工期は着工ボタンと自動判定で入ります（→ 5章）。
+
+---
+
+# 3. 請求を登録する（出来高請求）
+
+**このアプリで一番大事な部分です。**
+
+## 出来高請求とは
+
+契約金額の一部を、月ごとに分けて請求する仕組みです。
+
+```
+発注100万円の工事
+   ↓
+1月に50万円を請求
+2月・3月は請求なし
+4月に残り50万円を請求 → 完了
+```
+
+## 登録のしかた
+
+1. 月別入力の一覧で、その案件の「**請求額**」のセルをクリック
+2. ポップアップが開くので、**年・月・金額（万円）**を入れて「**＋**」を押す
+3. 行が増えます。何ヶ月分でも登録できます
+4. 「閉じる」を押す
+
+**ポップアップは動かせます。** 青いヘッダー部分をドラッグしてください。
+
+## 請求額は自動で計算されます
+
+出来高請求を1件でも登録すると、以下は**自動で計算**されます。手で直す必要はありません。
+
+- 請求額（登録した金額の合計）
+- 請求月
+- 入金額（登録した入金の合計）
+- 入金日（一番新しい入金の日付）
+- 工期終了（→ 5章）
+- 請済チェック
+- 入済チェック
+- 完了チェック
+
+## 残りの請求（未請求残）
+
+```
+未請求残 = 発注金額 − これまでの請求の合計
+```
+
+**未請求残がある案件は、翌月以降の一覧にも自動で出続けます。** 請求を忘れないための仕組みです。
+
+上の例だと、2月と3月は請求していませんが、**「未請求残50万」として一覧に出ます。** 全額請求すると自動で消えます。
+
+---
+
+# 4. 月別入力の画面とボタン
+
+## 画面上部の数字（KPI）
+
+| 名前 | 意味 |
+|---|---|
+| 当月請求（税込） | この月にお客さんへ請求した金額の合計 |
+| 入金済 | この月に入金された金額 |
+| 未収金 | 請求したのにまだ入金されていない金額 |
+| 未請求残 | 発注額のうち、まだ請求していない残り |
+| 請求もれ | 請求漏れフラグが立っている案件の未収金 |
+| 協社請求計 | 協力会社からの請求＝外注の原価 |
+| 未払残計 | 協力会社へまだ払っていない金額 |
+| 粗利 | 当月請求 × 案件の粗利率。**現在は率で按分しています**（Phase 5 で実額ベースに変更予定） |
+
+## 行に出るボタン・チェック
+
+| 表示 | 意味 | 押すとどうなる |
+|---|---|---|
+| **着** | 着工 | 表示中の月が工期開始に入る（→ 5章） |
+| **請済** | 請求済 | 請求書を出したらチェック。請求を登録すると自動で付きます |
+| **入済** | 入金済 | 表示中の月の請求が入金されたらチェック |
+| **完** | 完了 | 発注額まで請求し、全額入金されると**自動で付きます**。手では押せません |
+| **未請** | 未請求で繰越 | 案件を翌月へ送る（→ 6章） |
+| **請求漏** | 請求漏れ | 請求を翌月の請求リストへ送る（→ 6章）。**請済が✓で、まだ入済が✓でない案件にだけ出ます** |
+| **漏解除** | 請求漏れ解除 | 請求漏れを1段階戻す |
+| **↩** | 繰越の印 | 前の月から繰り越されて表示されている行 |
+
+### 入済は「月ごと」です
+
+入済チェックは、**表示している月の請求分だけ**を入金済にします。他の月には影響しません。
+
+出来高請求で3ヶ月に分けている場合、月ごとに入金を管理できます。
+
+### 請済は「案件ごと」です
+
+請済は案件全体のチェックで、請求を1件でも登録すると自動で付きます。そのため出来高請求で分けている場合、**1ヶ月目を請求した時点で全部の月に請済が付いて見えます。**
+
+これは分かりにくいので、Phase 4 で月ごとに変える予定です。
+
+## 発注者別 当月請求合計
+
+画面の上のほうにある折りたたみです。クリックすると開きます。
+
+**お客さんから来る支払通知書と突き合わせるための表**です。
+
+| 列 | 意味 |
+|---|---|
+| 件数 | その発注者の案件数 |
+| 発注額計 | 契約金額の合計 |
+| **当月請求計** | **この月に請求した金額。支払通知書と比べる数字** |
+| 入金計 | この月に入金された金額 |
+
+**当月請求計と入金計の差額が0になれば、その月の請求と入金が一致しています。**
+
+---
+
+# 5. 工期のルール
+
+**ここが一番複雑なので、丁寧に説明します。**
+
+## 工期開始は「着工」ボタンで入れる
+
+工事を始めた月に、その案件の「**着**」を押します。**表示している月**が工期開始に入ります。
+
+```
+3月の画面で「着」を押す → 工期開始 = 2026-03
+```
+
+### 着工チェックは翌月以降も付いたまま
+
+3月に着工した案件は、4月・5月……と**ずっと✓が付いて表示されます。** 「もう着工済みの現場」という意味です。
+
+### 解除は「着工した月」でしか効きません
+
+**押した月と工期開始が同じときだけ、解除されます。**
+
+| 状況 | 「着」を押すと |
+|---|---|
+| 3月着工の案件を、**3月**の画面で押す | **解除される**（工期開始が空になる） |
+| 3月着工の案件を、**5月**の画面で押す | 工期開始が**5月に変わる**（3月は消える） |
+| まだ着工していない案件を押す | その月が工期開始に入る |
+
+**5月で押すと3月が5月に書き換わります。** 着工月を直したいとき以外は、他の月で押さないでください。
+
+## 工期終了は「自動」で入ります
+
+**ボタンはありません。** 累計の請求が発注金額に達した月が、自動で工期終了になります。
+
+```
+発注100万円の工事
+
+1月 50万円を請求 → 累計50万円  → まだ足りない → 工期終了は入らない
+2月 請求なし
+3月 請求なし
+4月 50万円を請求 → 累計100万円 → 到達！ → 工期終了 = 2026-04 ✅
+```
+
+### 判定に使うのは「請求した月」です
+
+請求漏れで翌月の請求リストへ送っても、**工期終了は元の月のまま**です。実際に工事が終わった月を記録するためです。
+
+### 発注額に届かない案件は入りません
+
+減額精算などで、請求額が発注額を下回ったまま終わることがあります。
+
+```
+発注100万円 → 実際は90万円で精算して終了
+   ↓
+累計90万円 < 100万円 → 工期終了は自動では入らない
+```
+
+この場合は**手で入れてください**（下記）。
+
+### 請求を減らすと、自動で入った工期終了は消えます
+
+```
+発注100万・請求100万 → 工期終了 4月（自動で入った）
+   ↓ 請求を80万に減額
+まだ完工していない扱いになる → 工期終了が空に戻る
+   ↓ 別の月に20万を追加請求
+その月が工期終了に入る
+```
+
+**手で入れた工期終了は、この対象外です。消えません。**
+
+## 工期を手で直す
+
+月別一覧の「**工期**」の欄をクリックすると、開始と終了を選ぶ画面が出ます。
+
+- 年月を選んで「✓」で保存
+- 「**未定**」も選べます
+
+### 手で直すと、自動判定が止まります
+
+**工期終了を手で入れた案件は、その後どれだけ請求を変えても自動で書き換わりません。**
+
+減額精算の案件など、自動では正しく入らないものはここで入れてください。
+
+**工期開始だけを直した場合は、工期終了の自動判定は止まりません。**
+
+## 「未定」の扱い
+
+工期が決まっていない案件は、工期セルをクリックして「未定」を選びます。
+
+- **未定のまま満額請求しても、自動で書き換わりません**
+- 発注書PDFの工期が「未定」だった場合も、そのまま「未定」で入ります
+
+## 工期が入る経路は4つ
+
+| 入れ方 | 何が入るか |
+|---|---|
+| **着工ボタン** | 工期開始 |
+| **自動判定** | 工期終了 |
+| **工期セルをクリック** | 開始・終了の両方を手で修正 |
+| **発注書PDFの読み取り** | 工期開始のみ。**新規案件を保存するときだけ** |
+
+**出来高請求のポップアップに工期の欄はありません。** 案件ごとに1組だけ持ちます。
+
+### 発注書PDFから入る工期
+
+発注書PDFを読み込むと、ステータス行に「**工期開始: 2026-04**」のようにPDFから読んだ値が表示されます。その値は、**新規案件として保存したときだけ**工期開始に入ります。
+
+- **工期終了は取り込みません。** 発注書の工期終了は契約上の予定であって、実際にいつ完工したかとは別だからです
+- **既存の案件を開いてPDFを読み直しても、工期は上書きされません。** 着工ボタンで入れた実績が予定に戻ってしまわないようにするためです
+
+### 「未定」の見た目
+
+未定を含む案件は、月別一覧で**オレンジの点線枠**に「未定〜2026-09」のような文字で表示されます。**クリックすると編集画面が開きます。**
+
+---
+
+# 6. 未請と請求漏れの使い分け
+
+**この2つは別物です。間違えると数字が合わなくなります。**
+
+## 見分け方
+
+| | 未請 | 請求漏れ |
+|---|---|---|
+| **請求書を** | まだ出していない | **もう出した** |
+| **状況** | 工事が完了しなかった／着工しなかった | 請求したが入金が確認できない |
+| **押すタイミング** | その月のうち | **後日、その月に戻って押す** |
+
+## 未請（今月は請求しない）
+
+発注書は記入したけれど、**工事が完了しなかった・着工しなかった**ので、請求を来月にずらす場合です。
+
+1. その月の画面で「**未請**」を押す
+2. 案件が翌月へ移動します
+
+**まだ請求書を出していないので、売上も発生していません。** そのため案件ごと翌月へ動かします。
+
+**記入月が動くのは、表示している月がその案件の記入月と同じときだけです。** 繰越で再掲された行（↩ が付いた行）から押した場合、記入月は動かず、請求だけが翌月へ移ります。
+
+### 未請ボタンが出る条件
+
+**「当月に請求が無い」かつ「未請求残がある、または発注額が未入力」** のときに出ます。
+
+| 状況 | 出るか |
+|---|---|
+| 当月に請求を登録した | **出ない**（請求済みなので「請求漏」を使う） |
+| 発注額まで全部請求し終えた | **出ない**（繰り越すものがない） |
+| 請求がまだで、残りがある | 出る |
+| 発注額を入れていない | **出る**（単価契約など金額が確定しない案件のため） |
+
+## 請求漏れ（請求したのに入金がない）
+
+**実務の流れはこうです。**
+
+```
+6月  請求書を出す
+     ↓
+7月19日  お客さんから支払通知書が届く
+     ↓
+     6月の「発注者別 当月請求合計」と支払通知書を突き合わせる
+     ↓
+     金額が合わない → 通知書に載っていない現場を探す
+     ↓
+     6月の画面に戻って、その現場の「請求漏」を押す
+     ↓
+6月の請求計から外れ、7月の請求リストに乗る
+→ 支払通知書と6月の請求計が一致する（差額0）
+```
+
+### 大事なこと：損益（PL）の数字は動きません
+
+請求漏れにしても、**6月の売上は6月のままです。**
+
+材料費などの支払いはすでに6月に発生しているので、売上だけ7月にずらすと損益が狂います。そのため**アプリの請求管理だけを翌月へ動かし、会計上の売上は動かさない**仕組みになっています。
+
+| 数字 | 請求漏れで動くか |
+|---|---|
+| 月別入力の「当月請求」 | **動く**（翌月へ） |
+| 発注者別 当月請求合計 | **動く**（翌月へ） |
+| ダッシュボードの「請求金額 合計」 | **動かない** |
+| 工事経歴書の完成工事高 | **動かない** |
+| 原価管理アプリ（kouji-cost）の月次PL | **動かない** |
+
+### 請求漏れは何回でも送れます
+
+7月にも入金が確認できなければ、7月の画面でもう一度「請求漏」を押します。8月へ送られます。
+
+**「漏解除」は1回押すごとに1段ずつ戻ります。** 2回送った案件は2回押してください（8月→7月→6月）。
+
+### 請求のない月では押せません
+
+その月に請求が登録されていない案件で「請求漏」を押すと、警告が出て何も起きません。**請求漏れは「請求済みの案件」に使うもの**だからです。
+
+---
+
+# 7. 協力会社の登録と粗利
+
+## 協力会社の登録
+
+案件の編集画面で「**＋ 協社を追加**」を押します。複数社を登録できます。
+
+| 項目 | 説明 |
+|---|---|
+| 協社名 | マスタから選択 |
+| 工種・作業 | 掘削・舗装など |
+| 見積金額 | 協力会社からの見積（万円） |
+| **自社受注額** | **この外注に対応する自社の売上（万円）** |
+| 出来高請求 | 協力会社からの請求。月ごとに登録 |
+| 支払月 | いつ払うか |
+| 支払済 | 実際に払った金額（万円） |
+
+**協力会社の請求額は、出来高請求の合計で自動計算されます。** 直接入力する欄はありません。
+
+## 「自社受注額」とは
+
+**大きい現場で、外注部分だけの粗利を見るための欄です。**
+
+```
+5,000万円の造成工事
+   そのうち舗装1,000万円を自社が受注
+   舗装を800万円で外注に出した
+   → この外注の粗利は 200万円
+```
+
+この場合、協力会社の行に**自社受注額 1,000万円**を入れます。
+
+**3社に出す現場なら3行それぞれに入れます。** それぞれの粗利が計算されます。
+
+## ★重要：入れるなら全部入れる
+
+**1社でも自社受注額を入れたら、他の協力会社にも全部入れてください。**
+
+自社受注額が空の協力会社は、**粗利の計算から丸ごと除外されます。原価も一緒に消えます。**
+
+```
+A社 自社受注1,000万 / 原価800万  → 計算される
+B社 自社受注（空）  / 原価600万  → 無視される（原価600万が消える）
+C社 自社受注（空）  / 原価400万  → 無視される（原価400万が消える）
+```
+
+粗利200万と表示されますが、**B社C社の原価1,000万が抜けた数字**です。
+
+この警告を画面に出す改修を Phase 5 で予定しています。
+
+## 粗利の計算方法は2通り
+
+| 自社受注額 | 計算方法 |
+|---|---|
+| **入れていない** | 受注額 − 外注原価 |
+| **入れている** | 外注ごとに（自社受注額 − その外注の原価）を合計 |
+
+原価は、**協力会社の請求額**があればそれを使い、無ければ見積額を使います。
+
+## 粗利が「—」や0で表示される場合
+
+**バグではありません。** 次の場合は粗利を出しません。
+
+| 状況 | 理由 |
+|---|---|
+| 協力会社が登録されていない | 原価が分からないため |
+| **合同（自社＋外注）で自社受注額が空** | 自社の人件費が原価に入らず、粗利が実際より大きく見えてしまうため |
+
+合同の案件で粗利を見たいときは、**自社受注額を入れてください。**
+
+自社施工分の原価は、将来 kouji-cost から取り込む予定です（Phase 6）。
+
+---
+
+# 8. 建設工事の種類（業種）のルール
+
+## アイルが持っている許可は7業種
+
+土木一式 ／ とび・土工・コンクリート ／ 石 ／ 鋼構造物 ／ 舗装 ／ しゅんせつ ／ 水道施設
+
+## 「管」は許可がありません
+
+**管工事（建物の給排水・空調・ガス配管など）の許可は持っていません。**
+
+税込500万円以上の管工事を単独で受注すると**建設業法違反**になります。500万円未満（軽微工事）なら適法です。
+
+保存しようとすると警告が出ます。記録は残せますが、集計画面で警告表示されます。
+
+## 業種は「契約単位」で決めます
+
+**工事経歴書は1契約＝1行です。**
+
+```
+5,000万円の造成工事を1本の契約で受注
+   そのうち舗装1,000万円を外注に出した
+   ↓
+経歴書には「土木一式 5,000万円」を1行だけ書く
+舗装1,000万円は経歴書に出さない
+```
+
+**大きい現場だからといって業種を分けません。**
+
+## 500万円は「分ける基準」ではありません
+
+500万円は、**許可のない業種（管）を独立した契約で受注できるかどうか**の線です。
+
+| ケース | 可否 |
+|---|---|
+| 5,000万円の一式契約に給排水1,000万円が含まれ、外注に出す | **問題なし**（元請は一式の許可でよい） |
+| 給排水1,000万円を**独立した契約**で受注 | **建設業法違反**（管の許可がない） |
+| 給排水を独立契約で、税込500万円未満で受注 | 軽微工事として適法 |
+
+**危ないのは「大きい現場」ではなく、「契約を分けた結果、管工事が単独で500万円を超えること」です。**
+
+## 業種を選ぶときの注意
+
+選択画面に各業種の説明が出ます。特に間違えやすいもの：
+
+| 業種 | 注意 |
+|---|---|
+| **土木一式** | 元請として複数の専門工事をまとめて企画・調整する大規模工事のみ。作業が多いだけでは該当しません |
+| **とび・土工・コンクリート** | 掘削・残土・地盤改良・擁壁・ブロック積みなど。日常の案件の多くはここ |
+| **舗装** | 独立発注なら20〜100万円でも必ず舗装で計上。とび・土工に混ぜないこと |
+| **水道施設** | 公共インフラ（浄水場・配水管・下水本管）。**建物の給排水は「管」で別業種** |
+
+**判断に迷う案件は行政書士に確認してください。**
+
+---
+
+# 9. 画面に出る数字の意味
+
+## 3つの経営指標
+
+| 指標 | 意味 | 画面での名前 |
+|---|---|---|
+| **受注高** | その月にいくら契約したか | 発注金額 合計 |
+| **完成工事高** | その月にいくら請求したか | 請求金額 合計 |
+| **繰越工事高** | まだ請求していない残り | 未請求残 |
+
+**同じ画面に2つの表記があります。** 上のKPIカードは「発注金額 合計」、その下の「🔗 発注 → 請求 → 入金 の流れ」では「発注金額」と省略されています。中身は同じです。月次推移の行は「請求金額(出来高)」と出ます。
+
+## 受注高と完成工事高は一致しません
+
+**これは不具合ではありません。** 理由は4つあります。
+
+| 理由 | 例 |
+|---|---|
+| **年度をまたぐ工事** | 2月に3,000万受注 → 工事は4月〜6月 → 受注は今年度、売上は翌年度 |
+| **減額精算** | 発注100万・請求90万で終了 |
+| **追加工事** | 契約後に増額 |
+| **期末の仕掛工事** | まだ請求していない分は売上に立たない |
+
+## 検算のしかた
+
+```
+前期の繰越工事高 ＋ 当期の受注高 − 当期の完成工事高 ＝ 次期の繰越工事高
+```
+
+**この式が合わなければ、発注額の入力漏れか請求の付け忘れがあります。**
+
+## 経審に使うのは「完成工事高」
+
+経営事項審査と工事経歴書で使うのは**完成工事高（請求ベース）**です。受注高は社内の管理用で、行政には出しません。
+
+---
+
+# 10. やってはいけないこと
+
+## 「📥 復元する」を安易に押さない
+
+設定画面にある「復元」は、**ファイルの内容で全データを上書きします。** 押す前に必ず内容を確認してください。
+
+## kouji-cost の見積番号をこちらで作らない
+
+見積番号は kouji-cost で採番したものを**転記するだけ**です。こちらで新しい番号を作ると、突き合わせができなくなります。
+
+## 金額を円で入力しない
+
+すべて万円です。100万円は `100` です。
+
+## 業種を「よく分からないから」で適当に選ばない
+
+工事経歴書と完成工事高の集計キーになります。**経審の結果に直結します。**
+
+## 【要確認】その他、追加すべき注意事項があれば書き足してください（残り1箇所）
+
+---
+
+## 安心してよいこと
+
+**案件を開いて保存しても、ボタンで入れた値は消えません。**
+
+着工（工期開始）／完工月／請求漏れフラグ／入金日 —— **これらはフォームに欄がなくても、そのまま残ります。**
+
+以前のバージョンでは保存のたびに消えていましたが、修正済みです。**保存をためらう必要はありません。**
+
+---
+
+# 11. 困ったときは
+
+## 画面が古いまま更新されない
+
+**Ctrl + Shift + R**（スーパーリロード）を押してください。
+
+## データが消えたように見える
+
+**まず落ち着いてください。** データはインターネット上に保存されているので、簡単には消えません。
+
+- 表示している月が違うだけかもしれません
+- 繰越で別の月に移動しているかもしれません
+- 検索欄に文字が残っているかもしれません
+
+## 数字が合わない
+
+**まず「請求の重複」を疑ってください。** 同じ月・同じ金額の請求が2件入っていることがあります。
+
+請求額のセルをクリックして、行が重複していないか確認してください。重複していたら、余分な行の「×」で削除します。
+
+**過去に、出来高請求のポップアップが2枚開いて同じ金額が2回入る不具合がありました。これは修正済みです。** ただし、その時期に入った重複データは残っている可能性があります。
+
+## バックアップの取り方
+
+「⚙️ 設定」タブを開き、一番下の「**💾 自動バックアップ・復元**」の中にある「**📤 JSONバックアップ**」を押すと、ファイルが保存されます。**OneDrive に置いてください。**
+
+**「⚙️ 設定」タブが見当たらない場合**は、マスター管理者の権限がありません。ダッシュボードにバックアップの警告が出ているときの「**💾 今すぐバックアップ**」を使ってください。同じファイルが保存されます。
+
+**大きな変更をする前には必ず取ってください。**
+
+---
+
+## 添削のお願い
+
+残っているのは1点だけです。
+
+- **§10「やってはいけないこと」に追加はないか** —— 現場で実際に起きたトラブルがあれば足してください。無ければこのままで完成です
+
+そのほか、使いながら気づいた点があればいつでも直してください。
+
+  </script>
 </div>
 
 <!-- マスタ設定 -->
@@ -1853,6 +2586,11 @@ function viewCasePdf(id,type){
 
 // ── タブ ──
 function sw(name){
+  // マニュアルを編集中なら、保存していない変更があることを知らせてから移動する
+  if(name!=='manual'&&typeof manualDirty==='function'&&manualDirty()){
+    if(!confirm('マニュアルに保存していない変更があります。破棄して移動しますか？'))return;
+    manualExitEdit();
+  }
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   document.getElementById('p-'+name).classList.add('on');
@@ -5487,8 +6225,164 @@ async function clearLog(){
   actLog=[];await saveLog();renderLog();
 }
 
+// ── マニュアル（S.masters.manual・誰でも編集可）──
+// 外部ライブラリは足さない（単一HTMLファイル主義・D-001）。Markdown の変換は自前。
+// ★XSS対策：変換の前に必ず esc() で HTML エスケープする。利用者が編集する本文なので
+//   <script> や onerror= が書けてはいけない。innerHTML に入るのは esc 済みの文字列と
+//   このコードが自分で組み立てたタグだけ
+let _manualEditing=false;
+function manualSeedText(){
+  const el=document.getElementById('manualSeed');
+  return el?el.textContent.replace(/^\r?\n/,''):'';
+}
+function manualText(){
+  const v=S.masters&&S.masters.manual;
+  return (typeof v==='string'&&v.length)?v:manualSeedText();
+}
+// インライン記法。★引数は esc() 済みであること
+function mdInline(t){
+  return t.replace(/`([^`]+)`/g,'<code>$1</code>')
+          .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+}
+function mdToHtml(src){
+  const lines=String(src==null?'':src).split(/\r?\n/);
+  const out=[];let i=0,hn=0,li=null,fence=false,fbuf=[];
+  const closeList=()=>{if(li){out.push(li==='ul'?'</ul>':'</ol>');li=null;}};
+  const openList=k=>{if(li!==k){closeList();out.push(k==='ul'?'<ul>':'<ol>');li=k;}};
+  while(i<lines.length){
+    const raw=lines[i];
+    if(/^\s*```/.test(raw)){                                  // コードブロック
+      if(fence){out.push('<pre><code>'+fbuf.join('\n')+'</code></pre>');fbuf=[];fence=false;}
+      else{closeList();fence=true;}
+      i++;continue;
+    }
+    if(fence){fbuf.push(esc(raw));i++;continue;}
+    const line=raw.replace(/\s+$/,'');
+    if(!line.trim()){closeList();i++;continue;}
+    if(/^---+$/.test(line.trim())){closeList();out.push('<hr>');i++;continue;}
+    let m;
+    if((m=/^(#{1,3})\s+(.*)$/.exec(line))){
+      closeList();
+      const lv=m[1].length, txt=mdInline(esc(m[2]));
+      if(lv===2)out.push('<h2 id="man-h-'+(hn++)+'">'+txt+'</h2>');
+      else out.push('<h'+lv+'>'+txt+'</h'+lv+'>');
+      i++;continue;
+    }
+    if(/^\s*\|.*\|\s*$/.test(line)&&i+1<lines.length&&/^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1])){
+      closeList();
+      const cells=s=>s.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(x=>mdInline(esc(x.trim())));
+      let h='<table><thead><tr>'+cells(line).map(c=>'<th>'+c+'</th>').join('')+'</tr></thead><tbody>';
+      i+=2;
+      while(i<lines.length&&/^\s*\|.*\|\s*$/.test(lines[i])){
+        h+='<tr>'+cells(lines[i]).map(c=>'<td>'+c+'</td>').join('')+'</tr>';i++;
+      }
+      out.push(h+'</tbody></table>');continue;
+    }
+    if((m=/^\s*[-*]\s+(.*)$/.exec(line))){openList('ul');out.push('<li>'+mdInline(esc(m[1]))+'</li>');i++;continue;}
+    if((m=/^\s*\d+\.\s+(.*)$/.exec(line))){openList('ol');out.push('<li>'+mdInline(esc(m[1]))+'</li>');i++;continue;}
+    closeList();
+    const para=[mdInline(esc(line))];i++;
+    while(i<lines.length&&lines[i].trim()&&!/^\s*(#{1,3}\s|[-*]\s|\d+\.\s|\||```|---+$)/.test(lines[i])){
+      para.push(mdInline(esc(lines[i].replace(/\s+$/,''))));i++;
+    }
+    out.push('<p>'+para.join('<br>')+'</p>');
+  }
+  if(fence)out.push('<pre><code>'+fbuf.join('\n')+'</code></pre>');
+  closeList();
+  return out.join('\n');
+}
+// 検索語のハイライト。DOM のテキストノードだけを差し替えるのでタグは壊れず、
+// textContent 経由なので新たな注入経路にもならない
+function manualHighlight(root,q){
+  if(!q)return 0;
+  const ql=q.toLowerCase();let n=0;
+  (function walk(el){
+    Array.prototype.slice.call(el.childNodes).forEach(node=>{
+      if(node.nodeType===3){
+        const t=node.nodeValue,tl=t.toLowerCase();
+        if(tl.indexOf(ql)<0)return;
+        const frag=document.createDocumentFragment();let i=0,p;
+        while((p=tl.indexOf(ql,i))>=0){
+          if(p>i)frag.appendChild(document.createTextNode(t.slice(i,p)));
+          const mk=document.createElement('mark');mk.className='man-hit';mk.textContent=t.slice(p,p+q.length);
+          frag.appendChild(mk);n++;i=p+q.length;
+        }
+        if(i<t.length)frag.appendChild(document.createTextNode(t.slice(i)));
+        el.replaceChild(frag,node);
+      }else if(node.nodeType===1&&node.tagName!=='MARK'){walk(node);}
+    });
+  })(root);
+  return n;
+}
+function renderManual(){
+  const view=document.getElementById('manView');if(!view)return;
+  if(_manualEditing)return;                                   // 編集中は入力中の内容を上書きしない
+  view.innerHTML=mdToHtml(manualText());
+  const toc=document.getElementById('manToc');
+  if(toc){
+    const hs=view.querySelectorAll('h2');
+    toc.innerHTML=hs.length?Array.prototype.map.call(hs,h=>`<a href="#" onclick="manualJump('${h.id}');return false">${esc(h.textContent)}</a>`).join(''):'<div style="font-size:11px;color:#bbb;padding:4px">見出しなし</div>';
+  }
+  const q=(vg('man_q')||'').trim();
+  const hit=document.getElementById('man_hit');
+  if(!q){if(hit)hit.textContent='';return;}
+  const n=manualHighlight(view,q);
+  if(hit)hit.textContent=n?`${n}件`:'見つかりません';
+}
+function manualJump(id){
+  const h=document.getElementById(id);
+  if(h)h.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function manualSearch(){
+  const view=document.getElementById('manView');if(!view||_manualEditing)return;
+  renderManual();                                             // 前回のハイライトを消して貼り直し、新しい語で付け直す
+  const first=view.querySelector('mark.man-hit');
+  if(first)first.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function manualEdit(){
+  const ta=document.getElementById('manEdit');if(!ta)return;
+  ta.value=manualText();
+  _manualEditing=true;
+  document.getElementById('manView').parentElement.style.display='none';
+  document.getElementById('manTocWrap').style.display='none';
+  ta.style.display='';
+  document.getElementById('man_edit_btn').style.display='none';
+  document.getElementById('man_save_btn').style.display='';
+  document.getElementById('man_cancel_btn').style.display='';
+  ta.focus();
+}
+function manualExitEdit(){
+  _manualEditing=false;
+  const ta=document.getElementById('manEdit');
+  if(ta)ta.style.display='none';
+  document.getElementById('manView').parentElement.style.display='';
+  document.getElementById('manTocWrap').style.display='';
+  document.getElementById('man_edit_btn').style.display='';
+  document.getElementById('man_save_btn').style.display='none';
+  document.getElementById('man_cancel_btn').style.display='none';
+}
+async function manualSave(){
+  const ta=document.getElementById('manEdit');if(!ta)return;
+  if(!S.masters)S.masters={};
+  S.masters.manual=ta.value;
+  manualExitEdit();
+  await sv();                                                 // Firebase へ反映（JSONバックアップにも入る）
+  addLog('edit','マニュアルを保存');
+  renderManual();
+}
+function manualCancel(){
+  const ta=document.getElementById('manEdit');
+  if(ta&&ta.value!==manualText()&&!confirm('保存していない変更があります。破棄しますか？'))return;
+  manualExitEdit();
+  renderManual();
+}
+function manualDirty(){
+  const ta=document.getElementById('manEdit');
+  return !!(_manualEditing&&ta&&ta.value!==manualText());
+}
+
 // ── 全体 ──
-function renderAll(){renderDash();renderSeikyuu();renderMonthly();renderMaster();renderPrint();renderKeireki();renderLog();renderMstUI();renderJisha();renderClientLinkUI();renderAccountInfo();if(isMaster())renderUserMgt();updateSels();}
+function renderAll(){renderDash();renderSeikyuu();renderMonthly();renderMaster();renderPrint();renderKeireki();renderLog();renderMstUI();renderJisha();renderClientLinkUI();renderAccountInfo();renderManual();if(isMaster())renderUserMgt();updateSels();}
 document.addEventListener('DOMContentLoaded',async()=>{
   await initAuth();
   await ld();
@@ -5497,6 +6391,12 @@ document.addEventListener('DOMContentLoaded',async()=>{
   // 建設工事の種類29業種プリセット
   if(S.masters.kouji_type.length===0){
     S.masters.kouji_type=['土木一式','建築一式','大工','左官','とび・土工・コンクリート','石','屋根','電気','管','タイル・れんが・ブロック','鋼構造物','鉄筋','舗装','しゅんせつ','板金','ガラス','塗装','防水','内装仕上','機械器具設置','熱絶縁','電気通信','造園','さく井','建具','水道施設','消防施設','清掃施設','解体'];
+    sv();
+  }
+  // マニュアルの初期値（v4 の本文）。S.masters に持たせるので JSONバックアップにも自動で入る。
+  // localStorage キーも Firebase ノードも増やさない
+  if(typeof S.masters.manual!=='string'||!S.masters.manual.length){
+    S.masters.manual=manualSeedText();
     sv();
   }
   _syncHash=JSON.stringify(S);
