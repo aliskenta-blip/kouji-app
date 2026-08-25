@@ -1785,6 +1785,16 @@ function getNyukinPrev(c,ym){
   const bl=c.billings||[];
   return bl.filter(b=>claimMonth(b)<ym).reduce((a,b)=>a+fn(b.nyukin),0);
 }
+// その月に請求があるか。★月別入力・請求画面の「請済」チェックの表示にだけ使う。
+// c.seikyuu_c は案件全体のフラグとして現行のまま残す（支払サイトの期限判定・請求漏れの
+// 自動判定・完了チェックの前提・マスター一覧/CSV/Excel/並び替えはすべて c.seikyuu_c のまま）。
+// 請求管理月ベース（claimMonth）なので、請求漏れで翌月へ送った請求は翌月の行で ✓ になり、
+// 入済（getNyukinMonth）と粒度が揃う
+function seikyuuMonthOf(c,ym){
+  return getBilledMonth(c,ym)>0?'✓':'';
+}
+// 請済セルのツールチップ（月別入力・請求画面用）。マスター一覧は案件全体のフラグなので別文言のまま
+const SEIKYUU_MONTH_TIP='この月に請求があると自動で✓になります（出来高請求から算出）';
 // 完工（全て完了）＝発注額まで請求済 かつ 未収金なし（全額入金済）
 function isDone(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0&&r.misu<=0;}
 // 振替（記録用）案件か。発注書の出ない工事を、別の現場に上乗せして発注してもらった分。
@@ -2242,7 +2252,7 @@ function renderSeikyuu(){
     <th title="この月の請求額（請求管理ベース）。クリックで出来高請求を編集">請求額</th>
     <th title="発注額−累計請求額（まだ請求していない残り）">未請求残</th>
     <th title="この月に入金された額">当月入金</th>
-    <th>備考</th><th title="この月の請求の有無">請済</th><th title="この月の請求分の入金">入済</th>
+    <th>備考</th><th title="${SEIKYUU_MONTH_TIP}">請済</th><th title="この月の請求分の入金">入済</th>
     <th title="工事写真の有無（全部確認用と同じチェック）">写真</th><th title="残土伝票の有無（全部確認用と同じチェック）">伝票</th>
     <th>操作</th>
   </tr>`;
@@ -2266,7 +2276,7 @@ function renderSeikyuu(){
       <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">${r.js>r.jh?`<span style="color:#c62828;font-weight:700" title="累計請求が発注額を超えています。金額を確認してください">▲¥${fmt(r.js-r.jh)}超過</span>`:'¥'+fmt(r.remaining)}</td>
       <td class="num" onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td style="cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.biko||'')}　クリックでメモ編集" onclick="editMemo('${c.id}',this)">${c.biko?'📝':'＋'}</td>
-      <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
+      <td class="ctr">${seikyuuMonthOf(c,mk)==='✓'?`<span class="ck pk on" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;この月は未請求です。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
       <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
       <td class="ctr">${mkCk2(c.shashin,c.id,'shashin','p','写')}</td>
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
@@ -2370,7 +2380,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
     <th title="前月までに入金済みの累計額">既入金</th>
     ${sM('arari','粗利')}<th title="粗利率（粗利÷受注額）">率</th>
     <th title="数量（㎥）。工事経歴書に使用">㎥</th>
-    <th class="pg sortable" title="請求書を出したらチェック（請求済）" onclick="doSort('seikyuu_c','monthly')">請済</th>
+    <th class="pg sortable" title="${SEIKYUU_MONTH_TIP}&#10;※並び替えは案件全体の請求済フラグ（マスター一覧と同じ）で行います" onclick="doSort('seikyuu_c','monthly')">請済</th>
     <th class="pg sortable" title="入金を確認したらチェック（入金済）" onclick="doSort('nyukin_c','monthly')">入済</th>
     <th class="pg" title="現場写真を撮ったらチェック">写</th><th class="pg" title="残土伝票を受け取ったらチェック">伝票</th>
     <th class="pg" title="その月に着工したらチェック→工期開始に自動入力（再クリックで解除）。手入力も可">着工</th>
@@ -2480,7 +2490,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
       <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
       <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="${ARARI_RATE_MSG}${showArari&&!kakutei?'&#10;'+ARARI_YOTEI_MSG:''}">${showArari?fmtP(projArariRate(c)*100)+(kakutei?'':' 予'):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
-      <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
+      <td class="ctr">${seikyuuMonthOf(c,mk)==='✓'?`<span class="ck pk on" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;この月は未請求です。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
       <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
       <td class="ctr">${mkCk2(c.shashin,c.id,'shashin','p','写')}</td>
       <td class="ctr">${mkCk2(c.zando,c.id,'zando','p','伝')}</td>
