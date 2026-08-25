@@ -2869,7 +2869,7 @@ function renderKdBillings(ki){
   el.innerHTML=bl.map((b,bi)=>`<div style="display:flex;gap:4px;align-items:center;padding:2px 0">
     <span style="font-weight:700;color:#e65100">${b.month}</span> ¥${fmt(fn(b.amount))}
     <button onclick="delKdBilling(${ki},${bi})" style="background:none;border:none;color:#e53935;cursor:pointer">×</button>
-  </div>`).join('')||'<span style="color:#bbb">請求なし</span>';
+  </div>`).join('')||'<span style="color:#bbb">請求なし</span><span style="font-size:10px;color:#e65100">　※未入力だとこの案件の粗利が出ません</span>';
   el.innerHTML+=`<div style="font-size:11px;margin-top:4px">請求計: <b>¥${fmt(sum)}</b>　残: <b style="color:${rem>0?'#e65100':'#2e7d32'}">¥${fmt(rem)}</b></div>`;
 }
 function editKyoSelect(caseId,el){
@@ -4587,6 +4587,13 @@ function keJuchuWarnHtml(){
   if(!g)return '';
   return `<div style="background:#fff3e0;border:1.5px solid #ef6c00;border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:12px;color:#bf360c;line-height:1.7">${juchuGapMsg(g)}</div>`;
 }
+// 協力会社明細のラベルの説明（10-2a）。「出来高請求」という同じ言葉が自社側（売上）と
+// 協社側（原価）の両方で使われているため、どちら向きの金額かを画面から読めるようにする。
+// ★見出しの文言・DOM構造・保存項目は変えない。title を足すだけ
+const KE_TIP_BILLINGS='協力会社がこちらに請求してきた金額（＝外注原価）です。自社が客先に出す請求とは別のものです。&#10;届いた請求書の月と金額を入れてください。この月に原価が立つので、支払った月ではなく請求書の月を入れます。&#10;すべての協力会社に入るまで、この案件の粗利は「—」のまま集計から除外されます。';
+const KE_TIP_MITSUMORI='協力会社からの見積です。原価としては使いません（契約まるごとの金額なので、年度で区切った売上と期間が揃わないため）。請求が入るまでの目安と、粗利率の計算に使います。';
+const KE_TIP_SHIHARAI_T='実際に振り込む（振り込んだ）月です。粗利には影響しません（原価は協力会社が請求してきた月に立ちます）。';
+const KE_TIP_SHIHARAI='実際に支払った金額です。粗利には影響しません。未払残の計算に使います。';
 function renderKE(){
   const el=document.getElementById('kEntries');if(!el)return;
   el.innerHTML=`<div id="keJuchuWarn">${keJuchuWarnHtml()}</div>`+KD.map((k,i)=>`
@@ -4601,10 +4608,10 @@ function renderKE(){
             </select>
           </div>
           <div class="fg"><label>工種・作業</label><input type="text" value="${k.type||''}" placeholder="掘削・舗装等" oninput="KD[${i}].type=this.value"></div>
-          <div class="fg"><label>見積金額（万円）</label><input type="number" value="${fn(k.mitsumori)?parseFloat((fn(k.mitsumori)/10000).toFixed(4)):''}" placeholder="" inputmode="decimal" step="0.1" oninput="KD[${i}].mitsumori=String(Math.round(parseFloat(this.value||0)*10000))"></div>
+          <div class="fg"><label title="${KE_TIP_MITSUMORI}">見積金額（万円）</label><input type="number" value="${fn(k.mitsumori)?parseFloat((fn(k.mitsumori)/10000).toFixed(4)):''}" placeholder="" inputmode="decimal" step="0.1" oninput="KD[${i}].mitsumori=String(Math.round(parseFloat(this.value||0)*10000))"></div>
           <div class="fg"><label>この外注に対応する自社の受注額（万円）<span style="font-size:9px;color:#888">粗利＝この金額−外注原価。入れるなら全ての協社に入れること</span></label><input type="number" value="${fn(k.juchu)?parseFloat((fn(k.juchu)/10000).toFixed(4)):''}" placeholder="外注分の自社受注額" inputmode="decimal" step="0.1" oninput="KD[${i}].juchu=String(Math.round(parseFloat(this.value||0)*10000));renderKEArari(${i})"></div>
           <div class="fg"><label>この外注の粗利</label><div id="ke_arari_${i}" style="padding:8px;font-weight:700;font-size:13px"></div></div>
-          <div class="fg"><label>📋 出来高請求</label>
+          <div class="fg"><label title="${KE_TIP_BILLINGS}">📋 出来高請求<span style="font-size:9px;color:#888">（協力会社からの請求＝原価）</span></label>
             <div id="kd_bl_${i}" style="font-size:11px;margin-bottom:6px"></div>
             <div style="display:flex;gap:4px">
               <input type="month" id="kd_bl_mo_${i}" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:11px">
@@ -4612,8 +4619,8 @@ function renderKE(){
               <button class="btn bb btn-sm" onclick="addKdBilling(${i})">＋</button>
             </div>
           </div>
-          <div class="fg"><label>支払月</label><input type="month" value="${k.shiharai_t||''}" oninput="KD[${i}].shiharai_t=this.value"></div>
-          <div class="fg"><label>支払済（万円）</label><input type="number" value="${fn(k.shiharai)?parseFloat((fn(k.shiharai)/10000).toFixed(4)):''}" placeholder="" inputmode="decimal" step="0.1" oninput="KD[${i}].shiharai=String(Math.round(parseFloat(this.value||0)*10000))"></div>
+          <div class="fg"><label title="${KE_TIP_SHIHARAI_T}">支払月</label><input type="month" value="${k.shiharai_t||''}" oninput="KD[${i}].shiharai_t=this.value"></div>
+          <div class="fg"><label title="${KE_TIP_SHIHARAI}">支払済（万円）</label><input type="number" value="${fn(k.shiharai)?parseFloat((fn(k.shiharai)/10000).toFixed(4)):''}" placeholder="" inputmode="decimal" step="0.1" oninput="KD[${i}].shiharai=String(Math.round(parseFloat(this.value||0)*10000))"></div>
         </div>
       </div>
     </div>`).join('');
