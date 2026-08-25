@@ -355,7 +355,8 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 
 <div class="tabs">
   <div class="tab on" onclick="sw('dash')">📊 ダッシュボード</div>
-  <div class="tab" onclick="sw('monthly')">📅 月別入力</div>
+  <div class="tab" onclick="sw('seikyuu')">💴 請求</div>
+  <div class="tab" onclick="sw('monthly')">📋 全部確認用</div>
   <div class="tab" onclick="sw('master')">📋 マスター（全案件）</div>
   <div class="tab" onclick="sw('keireki')">📄 工事内容出力</div>
   <div class="tab" onclick="sw('log')">📝 操作ログ</div>
@@ -369,7 +370,30 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <div id="dashRoot"></div>
 </div>
 
-<!-- 月別 -->
+<!-- 請求（支払通知書との突合用）。案件の選定・金額は全部確認用と同じ関数を使う -->
+<div id="p-seikyuu" class="panel">
+  <div class="no-print" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <input type="text" id="srch_s" placeholder="🔍 検索" oninput="renderSeikyuu()"
+      style="flex:1;min-width:120px;max-width:240px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
+    <span style="font-size:11px;color:#888">支払通知書との突合用。詳しい内容は「全部確認用」タブで見られます</span>
+  </div>
+  <div class="kpis" id="sKpi"></div>
+  <div id="sClientWrap"></div>
+  <div id="sRemind"></div>
+  <div class="card">
+    <div class="card-hdr ch-nav"><span id="sTitle">請求</span>
+      <span style="font-size:11px;opacity:.75">請求額をクリックで出来高請求</span></div>
+    <div class="twrap">
+      <table id="sTbl">
+        <thead id="sHead"></thead>
+        <tbody id="sBody"></tbody>
+        <tfoot id="sFoot"></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 月別（全部確認用） -->
 <div id="p-monthly" class="panel">
   <div class="print-hdr" id="printHdrM">
     <h2 id="printTitleM">月別発注一覧</h2>
@@ -2131,25 +2155,25 @@ function caseInMonth(c,mk){
   if(dm===mk&&(!bl.length||calc(c).remaining>0))return true;       // 記入月かつ未請求残あり
   return false;
 }
-function renderMonthly(){
-  const yr=getYr(),mo=getMo(),mk=getMK(yr,mo);
-  const srch=(vg('srch_m')||'').toLowerCase();
-  document.getElementById('mTitle').textContent=`${yr}年 ${mo}月 発注一覧`;
+// その月に出す案件。★「請求」タブと「全部確認用」タブで顔ぶれが違ってはいけないので、
+// 選定条件はこの1箇所だけに置く（中身は renderMonthly にあった処理をそのまま移したもの）。
+// 表示対象の拡張：①前月以前の記入で残高あり（未請求残 or 未収金）＝繰越
+//                 ②当月に請求 or 入金がある現場（出来高請求）
+function monthlyCases(mk,srch){
   let cases=S.cases.filter(c=>caseInMonth(c,mk));
   if(srch)cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch)));
-  // 表示対象を拡張（KPI・発注者別集計にも反映させるためここで cases に追加）：
-  //  ①前月以前の記入で残高あり（未請求残 or 未収金 or 請求漏れ）＝繰越　②当月に請求 or 入金がある現場（出来高請求）
-  {
-    const ids=new Set(cases.map(c=>c.id));
-    const matchSrch=c=>!srch||[c.place,c.client,c.tantou,c.kouji,c.kubun].some(v=>(v||'').toLowerCase().includes(srch));
-    S.cases.forEach(c=>{
-      if(ids.has(c.id)||!matchSrch(c))return;
-      const dm=(c.date||'').slice(0,7);
-      if(dm&&dm<mk){const r=calc(c);if(r.remaining>0||r.misu>0){cases.push(c);ids.add(c.id);return;}}  // 残高（未請求残 or 未収金）があるうちだけ繰越。入金で残ゼロになれば自動で消える
-      if(getBilledMonth(c,mk)>0||getNyukinMonth(c,mk)>0){cases.push(c);ids.add(c.id);}
-    });
-  }
-
+  const ids=new Set(cases.map(c=>c.id));
+  const matchSrch=c=>!srch||[c.place,c.client,c.tantou,c.kouji,c.kubun].some(v=>(v||'').toLowerCase().includes(srch));
+  S.cases.forEach(c=>{
+    if(ids.has(c.id)||!matchSrch(c))return;
+    const dm=(c.date||'').slice(0,7);
+    if(dm&&dm<mk){const r=calc(c);if(r.remaining>0||r.misu>0){cases.push(c);ids.add(c.id);return;}}  // 残高（未請求残 or 未収金）があるうちだけ繰越。入金で残ゼロになれば自動で消える
+    if(getBilledMonth(c,mk)>0||getNyukinMonth(c,mk)>0){cases.push(c);ids.add(c.id);}
+  });
+  return cases;
+}
+// 月別・請求画面のKPIの元になる集計。両画面で数字が食い違わないよう1箇所にまとめる
+function monthlyTotals(cases,mk){
   let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tmore=0,tmoreCnt=0;
   cases.forEach(c=>{
     const r=calc(c);const bm=getBilledMonth(c,mk);const nyM=getNyukinMonth(c,mk);
@@ -2157,6 +2181,19 @@ function renderMonthly(){
     tar+=arariMonthOf(c,mk);                        // 粗利＝当月の実額（D-012/D-038）。表の合計行 tot.ar と同じ式にして画面内で一致させる
     if(c.more_flag==='✓'){tmore+=r.misu;tmoreCnt++;} // 請求もれ（請求漏れフラグの未収金）
   });
+  return {ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt};
+}
+// 振替（記録用）のバッジ。月別・請求画面で同じものを出す
+function furikaeBadge(c){
+  return isFurikae(c)?'<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:4px;background:#fff3e0;border:1px solid #e65100;color:#e65100;font-size:9px;font-weight:700;vertical-align:middle" title="記録用の案件です。粗利には含まれますが、完成工事高・工事経歴書には計上されません">振替</span>':'';
+}
+function renderMonthly(){
+  const yr=getYr(),mo=getMo(),mk=getMK(yr,mo);
+  const srch=(vg('srch_m')||'').toLowerCase();
+  document.getElementById('mTitle').textContent=`${yr}年 ${mo}月 発注一覧`;
+  let cases=monthlyCases(mk,srch);
+  const _T=monthlyTotals(cases,mk);
+  const ts=_T.ts,tn=_T.tn,tmi=_T.tmi,tar=_T.tar,tky=_T.tky,tmp=_T.tmp,trem=_T.trem,tmore=_T.tmore,tmoreCnt=_T.tmoreCnt;
   document.getElementById('mKpi').innerHTML=`
     <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${cases.length}件</div></div>
     <div class="kpi g" title="この月に入金された金額の合計"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
@@ -2167,7 +2204,84 @@ function renderMonthly(){
     <div class="kpi r" title="協力会社へまだ支払っていない合計"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
     <div class="kpi g" title="この月に請求した現場の粗利です。協力会社の請求だけがあって自社の請求がない現場は、この一覧に出ないため含まれません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。下の表の合計行と同じ数字です（協力会社なしは対象外）"><div class="kl">粗利（この月に請求した分）</div><div class="kv">¥${fmt(tar)}</div></div>`;
 
-  // 発注者別当月請求合計
+  let clEl=document.getElementById('mClientWrap');
+  if(!clEl){clEl=document.createElement('div');clEl.id='mClientWrap';document.getElementById('mKpi').after(clEl);}
+  clEl.innerHTML=monthlyClientSummaryHtml(cases,mk,ts);
+  let remEl=document.getElementById('mRemind');
+  if(!remEl){remEl=document.createElement('div');remEl.id='mRemind';document.getElementById('mKpi').after(remEl);}
+  remEl.innerHTML=monthlyRemindHtml(mk);
+  renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt);
+}
+// ── 請求画面（支払通知書との突合用）──
+// 表示だけの画面。案件の選定（monthlyCases）・金額（getBilledMonth / getNyukinMonth / calc）・
+// 操作（togMorei / clearMorei / miSeikyuu / togNyukinMonth / editBillings / editCell / editMemo）は
+// すべて全部確認用と同じ関数を呼ぶ。判定を書き直さないので、出る案件と金額は必ず一致する
+function renderSeikyuu(){
+  const body=document.getElementById('sBody'); if(!body)return;
+  const yr=getYr(),mo=getMo(),mk=getMK(yr,mo);
+  const srch=(vg('srch_s')||'').toLowerCase();
+  const ti=document.getElementById('sTitle'); if(ti)ti.textContent=`${yr}年 ${mo}月 請求一覧`;
+  let cases=monthlyCases(mk,srch);
+  const T=monthlyTotals(cases,mk);
+  // KPIは5つ。協社請求計・未払残計・粗利は請求業務に不要なので出さない
+  document.getElementById('sKpi').innerHTML=`
+    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(T.ts)}</div><div class="ks">${cases.length}件</div></div>
+    <div class="kpi g" title="この月に入金された金額の合計"><div class="kl">入金済</div><div class="kv">¥${fmt(T.tn)}</div></div>
+    <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）"><div class="kl">未収金</div><div class="kv">¥${fmt(T.tmi)}</div></div>
+    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）"><div class="kl">未請求残</div><div class="kv">¥${fmt(T.trem)}</div></div>
+    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計"><div class="kl">請求もれ</div><div class="kv">¥${fmt(T.tmore)}</div><div class="ks">${T.tmoreCnt}件</div></div>`;
+  document.getElementById('sClientWrap').innerHTML=monthlyClientSummaryHtml(cases,mk,T.ts);
+  document.getElementById('sRemind').innerHTML=monthlyRemindHtml(mk);
+
+  cases=sortCases(cases,'monthly');   // 並び順も全部確認用に合わせる（突合しやすいように）
+  document.getElementById('sHead').innerHTML=`<tr>
+    <th style="width:34px">No</th>
+    <th style="text-align:left">場所</th><th style="text-align:left">発注者</th><th>担当</th>
+    <th style="text-align:left">工事名</th><th>区分</th>
+    <th title="契約金額（発注額）">発注額</th>
+    <th title="この月の請求額（請求管理ベース）。クリックで出来高請求を編集">請求額</th>
+    <th title="発注額−累計請求額（まだ請求していない残り）">未請求残</th>
+    <th title="この月に入金された額">当月入金</th>
+    <th>備考</th><th title="この月の請求の有無">請済</th><th title="この月の請求分の入金">入済</th><th>操作</th>
+  </tr>`;
+  const ec=`style="cursor:pointer" title="クリックで編集"`;
+  let tj=0,tb=0,tr=0,tny=0;
+  const rows=cases.map((c,i)=>{
+    const r=calc(c);
+    const bm=getBilledMonth(c,mk);
+    const nyMonth=getNyukinMonth(c,mk);
+    tj+=fn(c.jisha_h);tb+=bm;tr+=r.remaining;tny+=nyMonth;
+    const morei=c.more_flag==='✓';
+    return `<tr class="${i%2?'alt':''}"${morei?' style="background:#fff8e1"':''}>
+      <td class="ctr">${i+1}</td>
+      <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}</td>
+      <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
+      <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
+      <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${furikaeBadge(c)}</td>
+      <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
+      <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
+      <td class="num" onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)" title="クリックで出来高請求を編集">¥${fmt(bm)}</td>
+      <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">${r.js>r.jh?`<span style="color:#c62828;font-weight:700" title="累計請求が発注額を超えています。金額を確認してください">▲¥${fmt(r.js-r.jh)}超過</span>`:'¥'+fmt(r.remaining)}</td>
+      <td class="num" onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
+      <td style="cursor:pointer;max-width:80px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.biko||'')}　クリックでメモ編集" onclick="editMemo('${c.id}',this)">${c.biko?'📝':'＋'}</td>
+      <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
+      <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
+      <td class="ctr" style="white-space:nowrap">
+        ${(bm<=0&&(r.remaining>0||fn(c.jisha_h)<=0))?`<button class="btn bx btn-sm edit-only" onclick="miSeikyuu('${c.id}')" title="この月は未請求。未請求残を来月へ繰越">未請</button>`:''}
+        ${c.seikyuu_c==='✓'&&c.nyukin_c!=='✓'?`<button class="btn bx btn-sm edit-only" onclick="togMorei('${c.id}')" title="請求済だが着金未確認→次月へ" style="font-size:9px;color:#c62828">請求漏</button>`:''}
+        ${morei?`<button class="btn bx btn-sm edit-only" onclick="clearMorei('${c.id}')" title="請求漏れ解除" style="font-size:9px">漏解除</button>`:''}
+      </td>
+    </tr>`;
+  });
+  body.innerHTML=rows.join('')||`<tr><td colspan="14" class="empty">この月のデータなし</td></tr>`;
+  document.getElementById('sFoot').innerHTML=`<tr class="tot">
+    <td colspan="6">合計（${cases.length}件）</td>
+    <td class="num big">¥${fmt(tj)}</td><td class="num">¥${fmt(tb)}</td><td class="num">¥${fmt(tr)}</td><td class="num">¥${fmt(tny)}</td>
+    <td colspan="4"></td>
+  </tr>`;
+}
+// 発注者別 当月請求合計（支払通知書との突合の中心）。月別・請求画面で同じものを出す
+function monthlyClientSummaryHtml(cases,mk,ts){
   const byClient={};
   cases.forEach(c=>{
     const cl=c.client||'（未設定）';
@@ -2194,11 +2308,10 @@ function renderMonthly(){
       </div>
     </div>`;
   }
-  let clEl=document.getElementById('mClientWrap');
-  if(!clEl){clEl=document.createElement('div');clEl.id='mClientWrap';document.getElementById('mKpi').after(clEl);}
-  clEl.innerHTML=clSummary;
-
-  // 未収金繰越・請求漏れリマインド
+  return clSummary;
+}
+// リマインド（未収金繰越・請求漏れ・未請求残・入金/支払期限超過）。月別・請求画面で同じものを出す
+function monthlyRemindHtml(mk){
   const prevMisu=S.cases.filter(c=>{const cm=cMo(c);return cm&&cm<mk&&cm!=='未定'&&calc(c).misu>0;});
   const moreCases=S.cases.filter(c=>{if(isDone(c))return false;return c.more_flag==='✓'&&(c.date||'').slice(0,7)<mk;});
   const remainCases=S.cases.filter(c=>calc(c).remaining>0&&(c.date||'').slice(0,7)<mk);
@@ -2216,9 +2329,6 @@ function renderMonthly(){
     remind+=remindCard('#e3f2fd','#1565c0','#1565c0',`📋 未請求残 ${remainCases.length}件（下記一覧に含む）`,`合計 ¥${fmt(totalRemain)}`,remainCases.map(c=>{const r=calc(c);return`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;cursor:pointer;border-bottom:1px solid #bbdefb" onclick="editBillings('${c.id}',this)"><span>📝 ${esc(c.place||'')} ${esc(c.client||'')} ${esc(c.kouji||'')}</span><span style="font-weight:700;color:#1565c0">残¥${fmt(r.remaining)} / ¥${fmt(r.jh)}</span></div>`;}).join(''),'発注額のうち、まだ請求していない残りがある案件です。出来高請求の漏れ防止に。クリックで請求を入力できます。');
   }
 
-  let remEl=document.getElementById('mRemind');
-  if(!remEl){remEl=document.createElement('div');remEl.id='mRemind';document.getElementById('mKpi').after(remEl);}
-
   // 入金・支払遅延リマインド
   const overdues=getOverdueReminders(mk);
   const odClient=overdues.filter(o=>o.type==='client');
@@ -2230,8 +2340,11 @@ function renderMonthly(){
     remind+=remindCard('#fff3e0','#e65100','#e65100',`⏰ 支払期限超過 ${odKyousha.length}件`,'',odKyousha.map(o=>`<div style="font-size:12px;padding:4px 0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffe0b2;cursor:pointer" onclick="editCase('${o.id}')"><span>📝 ${esc(o.place)} → ${esc(o.client)}（${o.termStr}）</span><span style="font-weight:700;color:#e65100">${o.days}日超過 / 残¥${fmt(o.amount)}</span></div>`).join(''),'協力会社への支払期日（設定の支払条件で計算）を過ぎても、まだ支払っていない案件です。');
   }
 
-  remEl.innerHTML=remind;
-
+  return remind;
+}
+// 月別入力の表本体（列・挙動は現行のまま）
+function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
+  const yr=getYr(),mo=getMo();
   // ソート適用
   cases=sortCases(cases,'monthly');
 
@@ -2345,7 +2458,7 @@ function renderMonthly(){
       <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
-      <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${isFurikae(c)?'<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:4px;background:#fff3e0;border:1px solid #e65100;color:#e65100;font-size:9px;font-weight:700;vertical-align:middle" title="記録用の案件です。粗利には含まれますが、完成工事高・工事経歴書には計上されません">振替</span>':''}${pdfs.join('')}</td>
+      <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${furikaeBadge(c)}${pdfs.join('')}</td>
       <td class="ctr" style="font-size:10px;white-space:nowrap;color:#555" title="kouji-cost の見積番号">${esc(c.mitsumori_no||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
@@ -5361,7 +5474,7 @@ async function clearLog(){
 }
 
 // ── 全体 ──
-function renderAll(){renderDash();renderMonthly();renderMaster();renderPrint();renderKeireki();renderLog();renderMstUI();renderJisha();renderClientLinkUI();renderAccountInfo();if(isMaster())renderUserMgt();updateSels();}
+function renderAll(){renderDash();renderSeikyuu();renderMonthly();renderMaster();renderPrint();renderKeireki();renderLog();renderMstUI();renderJisha();renderClientLinkUI();renderAccountInfo();if(isMaster())renderUserMgt();updateSels();}
 document.addEventListener('DOMContentLoaded',async()=>{
   await initAuth();
   await ld();
