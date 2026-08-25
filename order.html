@@ -355,7 +355,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 
 <div class="tabs">
   <div class="tab on" onclick="sw('dash')">📊 ダッシュボード</div>
-  <div class="tab" onclick="sw('monthly')">📅 月別入力画面（全部確認用）</div>
+  <div class="tab" onclick="sw('monthly')">📅 月別入力</div>
   <div class="tab" onclick="sw('seikyuu')">💴 請求モード</div>
   <div class="tab" onclick="sw('master')">📋 マスター（全案件）</div>
   <div class="tab" onclick="sw('keireki')">📄 工事内容出力</div>
@@ -376,7 +376,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <div class="no-print" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <input type="text" id="srch_s" placeholder="🔍 検索" oninput="renderSeikyuu()"
       style="flex:1;min-width:120px;max-width:240px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
-    <span style="font-size:11px;color:#888">支払通知書との突合用。詳しい内容は「月別入力画面（全部確認用）」タブで見られます</span>
+    <span style="font-size:11px;color:#888">支払通知書との突合用。詳しい内容は「月別入力」タブで見られます</span>
   </div>
   <div class="kpis" id="sKpi"></div>
   <div id="sClientWrap"></div>
