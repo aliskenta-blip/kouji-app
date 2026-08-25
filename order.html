@@ -1621,6 +1621,8 @@ function arariKakutei(c){
 }
 // 「予」のツールチップに出す理由（D-038）
 const ARARI_YOTEI_MSG='確定前です（発注額まで請求していない／入金が未完了／協力会社の請求が未登録）。';
+// 率の列のツールチップ。分母の定義を画面から読めるようにする
+const ARARI_RATE_MSG='案件の粗利率＝粗利 ÷ その外注に対応する自社の受注額（単独＝発注金額／合同＝自社受注額の合計）。自社施工分は分母に入れません。';
 // 協社の請求が未登録（見積のみ）で、原価が粗利計算から抜けている案件（D-038）。
 // 粗利が過大に出ている理由をダッシュボードから読めるようにする。
 // cs には粗利合計と同じ年度の案件を渡す（ダッシュボードの数字と対象を揃えるため）
@@ -1637,21 +1639,25 @@ function miKeijoCost(cs){
   });
   return {cnt,cost};
 }
-// 案件の粗利率（分母＝案件の総請求額。未請求なら発注額）。粗利が意味を持つ案件のみ
-function projArariRate(c){
+// 率の分母＝その外注に対応する自社の受注額（D-015 を置換）。
+//   単独（協社あり・自社施工なし）：発注金額（未入力なら累計請求額）
+//   合同（協社あり・自社施工✓）  ：自社受注額（juchu）の合計
+// 分母を「案件の総請求額」にすると、外注に対応しない自社施工分まで分母に入る
+function arariBaseOf(c){
   const r=calc(c);
-  if(r.cnt<=0)return 0;                       // 協力会社なし＝原価不明で対象外
-  const isSelf=c.jisha_sekou==='✓';
-  if(!r.hasJuchu&&isSelf)return 0;            // 合同(自社+外注)は自社労務が入らず粗利が過大→対象外
-  // ★分母は案件の総請求額に統一する（無ければ発注額）。中間マージン案件で
-  //   分母が自社受注額の合計だと、案件全体の請求に掛けたときに粗利が過大になる
-  const base=r.js>0?r.js:fn(c.jisha_h);
+  if(r.hasJuchu)return (c.kyousha_list||[]).reduce((a,k)=>a+fn(k.juchu),0);
+  return fn(c.jisha_h)>0?fn(c.jisha_h):r.js;
+}
+// 案件の粗利率＝粗利 ÷ その外注に対応する自社の受注額。粗利が意味を持つ案件のみ。
+// 分子 calc(c).arari は変更しない（分母だけの差し替え）。率はどこにも掛けない表示専用の指標
+function projArariRate(c){
+  if(!showArariOf(c))return 0;                // 協力会社なし／合同で自社受注額なし＝対象外
+  const r=calc(c);
+  // 単独で協力原価（請求も見積も）が未入力＝粗利不明→0（率100%表示のバグ防止・従来どおり）
+  if(!r.hasJuchu&&(r.ksr>0?r.ksr:r.km)<=0)return 0;
+  const base=arariBaseOf(c);
   if(base<=0)return 0;
-  if(r.hasJuchu)return r.arari/base;
-  // 原価＝協力会社の請求（実額）があればそれを優先、無ければ見積
-  const cost=r.ksr>0?r.ksr:r.km;
-  if(cost<=0)return 0;                        // 協力原価が未入力＝粗利不明→0（率100%表示のバグ防止）
-  return (base-cost)/base;
+  return r.arari/base;
 }
 // 当月の協力会社請求額（★発生月ベース。協社 billings に claim_month は無い）
 function getKyoBilledMonth(c,ym){
@@ -2311,7 +2317,7 @@ function renderMonthly(){
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
       <td class="num big ${showArari?(arariMonth>=0?'cp':'cl'):''}" title="当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります">${showArari?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
-      <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）${showArari&&!kakutei?'&#10;'+ARARI_YOTEI_MSG:''}">${showArari?fmtP(projArariRate(c)*100)+(kakutei?'':' 予'):'—'}</td>
+      <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="${ARARI_RATE_MSG}${showArari&&!kakutei?'&#10;'+ARARI_YOTEI_MSG:''}">${showArari?fmtP(projArariRate(c)*100)+(kakutei?'':' 予'):'—'}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${bm>0?`<span class="ck pk on" style="cursor:pointer" title="この月に請求(出来高)あり。クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="この月は未請求。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
       <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
@@ -2457,7 +2463,7 @@ function renderMaster(){
       <td class="num">¥${fmt(r.ksh)}</td>
       <td class="${r.miharai>0?'cw':'ca'}">¥${fmt(r.miharai)}</td>
       <td class="${shA?(r.arari>=0?'cp':'cl'):''}" style="font-weight:700" title="${shA?'案件の粗利（累計）':'協力会社なし、または合同で自社受注額が未入力のため粗利を出しません'}">${shA?'¥'+fmt(r.arari):'—'}</td>
-      <td class="ctr" title="案件の粗利率（分母＝案件の総請求額。未請求なら発注額）${shA&&!kkA?'&#10;'+ARARI_YOTEI_MSG:''}">${shA?fmtP(projArariRate(c)*100)+(kkA?'':' 予'):'—'}</td>
+      <td class="ctr" title="${ARARI_RATE_MSG}${shA&&!kkA?'&#10;'+ARARI_YOTEI_MSG:''}">${shA?fmtP(projArariRate(c)*100)+(kkA?'':' 予'):'—'}</td>
       <td class="ctr">${fn(c.m3)||''}</td>
       <td class="ctr">${ck(c.seikyuu_c)}</td><td class="ctr">${ck(c.nyukin_c)}</td>
       <td class="ctr">${ck(c.shashin)}</td><td class="ctr">${ck(c.zando)}</td>
@@ -2718,6 +2724,8 @@ function renderDash(){
   // 内訳カード用：案件ごとの当年度寄与（KPI/月次と突合する）
   const fyList=S.cases.map(c=>({c,x:caseFYContrib(c,fySet)})).filter(o=>o.x.inFY);
   const casesFY=fyList.map(o=>o.c);
+  // 粗利率の分母＝外注に対応する自社の受注額の合計（外注案件のみ）。年度の絞りは内訳カードと同じ casesFY
+  let tarBase=0;casesFY.forEach(c=>{if(showArariOf(c))tarBase+=arariBaseOf(c);});
   let tmp=0;fyList.forEach(o=>{tmp+=calc(o.c).miharai;});
   const tjh=tjs+tunbilled;          // 発注金額(当期) ＝ 当期の請求 ＋ 当期に完成する案件の未請求残
   const tmi=Math.max(0,tjs-tny);    // 未収金 ＝ 請求 − 入金
@@ -2739,7 +2747,7 @@ function renderDash(){
     <div class="kpi g"><div class="kl">入金金額 合計</div><div class="kv">¥${fmt(tny)}</div><div class="ks">請求の ${fmtP(pct(tny,tjs))}</div></div>
     <div class="kpi r"><div class="kl">未収金 合計</div><div class="kv">¥${fmt(tmi)}</div><div class="ks">請求 − 入金</div></div>
     <div class="kpi o"><div class="kl">協力会社 請求合計</div><div class="kv">¥${fmt(tky)}</div><div class="ks">外注原価</div></div>
-    <div class="kpi p" title="その月に発生した粗利の年度合計です。原価だけが発生した月も含むため、月別入力の粗利を12ヶ月足した数字とは一致しません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。請求額×率の積算ではありません。粗利率は 粗利合計 ÷ 請求金額合計"><div class="kl">粗利 合計（発生ベース）</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tar,tjs))}</div></div>
+    <div class="kpi p" title="その月に発生した粗利の年度合計です。原価だけが発生した月も含むため、月別入力の粗利を12ヶ月足した数字とは一致しません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。請求額×率の積算ではありません。&#10;粗利率＝粗利合計 ÷ 外注に対応する受注額の合計（¥${fmt(tarBase)}）。外注案件のみで、自社施工分は分子にも分母にも含みません。自社施工の原価を kouji-cost から取り込めば、会社全体の粗利率にできます（Phase 6）"><div class="kl">粗利 合計（発生ベース）</div><div class="kv">¥${fmt(tar)}</div><div class="ks">粗利率 ${fmtP(pct(tar,tarBase))}（外注案件のみ）</div></div>
   </div>`;
 
   // ── 未計上原価の注記（D-038）。協社請求が未登録の分だけ粗利が過大に出ていることを明示 ──
@@ -2808,18 +2816,18 @@ function renderDash(){
   // ── 発注者別 年間分析 ──
   const clMap={};
   // 粗利だけ実額（arFY）に差し替え。売上・入金・発注額の年度按分は caseFYContrib のまま（D-038）
-  fyList.forEach(({c,x})=>{const cl=c.client||'（未設定）';const d=(clMap[cl]=clMap[cl]||{cnt:0,jh:0,js:0,ny:0,ksr:0,ar:0});d.cnt++;d.jh+=x.jh;d.js+=x.js;d.ny+=x.ny;d.ksr+=x.ksr;d.ar+=(arFY[c.id]||0);});
+  fyList.forEach(({c,x})=>{const cl=c.client||'（未設定）';const d=(clMap[cl]=clMap[cl]||{cnt:0,jh:0,js:0,ny:0,ksr:0,ar:0,ab:0});d.cnt++;d.jh+=x.jh;d.js+=x.js;d.ny+=x.ny;d.ksr+=x.ksr;d.ar+=(arFY[c.id]||0);d.ab+=(showArariOf(c)?arariBaseOf(c):0);});
   const clArr=Object.entries(clMap).sort((a,b)=>b[1].js-a[1].js);
   const clMaxV=Math.max(1,...clArr.map(([,d])=>d.js));
-  const clBody=clArr.length?clArr.map(([n,d])=>{const mi=Math.max(0,d.js-d.ny);return `<tr><td style="min-width:130px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,clMaxV)}%;height:100%;background:var(--nav2)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="${mi>0?'cl':'ca'}">¥${fmt(mi)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">データなし</td></tr>';
+  const clBody=clArr.length?clArr.map(([n,d])=>{const mi=Math.max(0,d.js-d.ny);return `<tr><td style="min-width:130px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,clMaxV)}%;height:100%;background:var(--nav2)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.jh)}</td><td class="num">¥${fmt(d.js)}</td><td class="num ca">¥${fmt(d.ny)}</td><td class="${mi>0?'cl':'ca'}">¥${fmt(mi)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr" title="${ARARI_RATE_MSG}">${d.ab>0?fmtP(pct(d.ar,d.ab)):'—'}</td></tr>`;}).join(''):'<tr><td colspan="8" class="empty">データなし</td></tr>';
   const clCard=`<div class="card"><div class="card-hdr ch-nav">🏢 発注者別 年間分析（請求シェア順）</div><div class="twrap"><table style="min-width:640px"><thead><tr><th style="text-align:left">発注者</th><th>件数</th><th>発注額</th><th>請求額</th><th>入金</th><th>未収金</th><th>粗利</th><th>率</th></tr></thead><tbody>${clBody}</tbody></table></div></div>`;
 
   // ── 工種・区分別 集計 ──
   const kbMap={};
-  fyList.forEach(({c,x})=>{const kb=c.kubun||'（未分類）';const d=(kbMap[kb]=kbMap[kb]||{cnt:0,js:0,ksr:0,ar:0});d.cnt++;d.js+=x.js;d.ksr+=x.ksr;d.ar+=(arFY[c.id]||0);});
+  fyList.forEach(({c,x})=>{const kb=c.kubun||'（未分類）';const d=(kbMap[kb]=kbMap[kb]||{cnt:0,js:0,ksr:0,ar:0,ab:0});d.cnt++;d.js+=x.js;d.ksr+=x.ksr;d.ar+=(arFY[c.id]||0);d.ab+=(showArariOf(c)?arariBaseOf(c):0);});
   const kbArr=Object.entries(kbMap).sort((a,b)=>b[1].js-a[1].js);
   const kbMaxV=Math.max(1,...kbArr.map(([,d])=>d.js));
-  const kbBody=kbArr.length?kbArr.map(([n,d])=>`<tr><td style="min-width:120px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,kbMaxV)}%;height:100%;background:var(--purp)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.js)}</td><td class="num">¥${fmt(d.ksr)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr">${fmtP(pct(d.ar,d.js))}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
+  const kbBody=kbArr.length?kbArr.map(([n,d])=>`<tr><td style="min-width:120px"><b>${esc(n)}</b><div style="height:5px;background:#eee;border-radius:3px;margin-top:3px;overflow:hidden"><div style="width:${pct(d.js,kbMaxV)}%;height:100%;background:var(--purp)"></div></div></td><td class="ctr">${d.cnt}件</td><td class="num">¥${fmt(d.js)}</td><td class="num">¥${fmt(d.ksr)}</td><td class="num cp">¥${fmt(d.ar)}</td><td class="ctr" title="${ARARI_RATE_MSG}">${d.ab>0?fmtP(pct(d.ar,d.ab)):'—'}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">データなし</td></tr>';
   const kbCard=`<div class="card"><div class="card-hdr ch-gry">🧱 工種・区分別 集計</div><div class="twrap"><table style="min-width:520px"><thead><tr><th style="text-align:left">区分</th><th>件数</th><th>請求額</th><th>協力原価</th><th>粗利</th><th>率</th></tr></thead><tbody>${kbBody}</tbody></table></div></div>`;
 
   // ── 担当者別・支店別 集計 ──
@@ -2889,7 +2897,7 @@ function renderDash(){
   </div>`;
 
   // ── 赤字・低粗利アラート（粗利率15%未満。協力会社のある案件のみ） ──
-  const lp=S.cases.filter(c=>{const r=calc(c);const isSelf=c.jisha_sekou==='✓';const applicable=r.cnt>0&&(r.hasJuchu||!isSelf)&&(r.ksr>0||r.km>0)&&fn(c.jisha_h)>0;return applicable&&projArariRate(c)<0.15;}).map(c=>{const rate=projArariRate(c);return {c,rate,gp:Math.round(fn(c.jisha_h)*rate)};}).sort((a,b)=>a.rate-b.rate);
+  const lp=S.cases.filter(c=>{const r=calc(c);const isSelf=c.jisha_sekou==='✓';const applicable=r.cnt>0&&(r.hasJuchu||!isSelf)&&(r.ksr>0||r.km>0)&&fn(c.jisha_h)>0;return applicable&&projArariRate(c)<0.15;}).map(c=>{const rate=projArariRate(c);return {c,rate,gp:Math.round(calc(c).arari)};}).sort((a,b)=>a.rate-b.rate);   // 粗利は実額。発注額×率は分母が発注額でない案件（合同）でずれる
   const lpBody=lp.length?lp.map(({c,rate,gp})=>{const red=gp<0;return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #eee;cursor:pointer" onclick="editCase('${c.id}')"><span style="font-size:12px">${red?'🔴':'🟡'} ${esc(c.place||'')} ${esc(c.kouji||'')} <span style="color:#999">${esc(c.client||'')}</span></span><span style="font-weight:700;color:${red?'#c62828':'#e65100'};white-space:nowrap">粗利¥${fmt(gp)}（${fmtP(rate*100)}）</span></div>`;}).join(''):'<div class="empty" style="padding:14px">赤字・低粗利の案件はありません ✓</div>';
   const lpCard=`<div class="card"><div class="card-hdr ch-red">⚠️ 赤字・低粗利アラート（粗利率15%未満 / ${lp.length}件）</div><div class="card-body" style="max-height:300px;overflow-y:auto">${lpBody}</div></div>`;
 
