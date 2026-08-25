@@ -355,12 +355,12 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 
 <div class="tabs">
   <div class="tab on" onclick="sw('dash')">📊 ダッシュボード</div>
-  <div class="tab" onclick="sw('seikyuu')">💴 請求</div>
-  <div class="tab" onclick="sw('monthly')">📋 全部確認用</div>
+  <div class="tab" onclick="sw('monthly')">📅 月別入力画面（全部確認用）</div>
+  <div class="tab" onclick="sw('seikyuu')">💴 請求モード</div>
   <div class="tab" onclick="sw('master')">📋 マスター（全案件）</div>
   <div class="tab" onclick="sw('keireki')">📄 工事内容出力</div>
-  <div class="tab" onclick="sw('log')">📝 操作ログ</div>
   <div class="tab" onclick="sw('manual')">📖 マニュアル</div>
+  <div class="tab" onclick="sw('log')">📝 操作ログ</div>
   <div class="tab master-only" onclick="sw('mst')">⚙️ 設定</div>
 </div>
 
@@ -376,7 +376,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <div class="no-print" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
     <input type="text" id="srch_s" placeholder="🔍 検索" oninput="renderSeikyuu()"
       style="flex:1;min-width:120px;max-width:240px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
-    <span style="font-size:11px;color:#888">支払通知書との突合用。詳しい内容は「全部確認用」タブで見られます</span>
+    <span style="font-size:11px;color:#888">支払通知書との突合用。詳しい内容は「月別入力画面（全部確認用）」タブで見られます</span>
   </div>
   <div class="kpis" id="sKpi"></div>
   <div id="sClientWrap"></div>
@@ -2466,9 +2466,12 @@ function getKyoBilledMonth(c,ym){
 // 当月の粗利（★実額ベース。率按分ではない・D-012）
 // 中間マージン案件は「協社の請求月」に、その外注のマージンを按分して計上する。
 // 原価が先に来る月はマイナスになるが、それが正確な情報なので0で丸めない
-// basis: 'claim'（既定・月別入力用＝請求管理月ベース）/ 'month'（発生月ベース・ダッシュボード用・D-016）
-//   中間マージン案件は元から協社の請求月（b.month）で按分しているので basis の影響を受けない
-function arariMonthOf(c,ym,basis){
+// ★粗利は常に発生月ベース。請求管理月（claim_month）は一切使わない。
+//   月別粗利 ＝ その月に請求した額（発生月）− その月に協力会社が請求してきた額（発生月）
+//   入金・請求漏れ・繰越は粗利に無関係。資金繰りと損益を分ける（Phase 10）。
+//   以前は単独案件だけ自社側が請求管理月で、協社側が発生月という混在だった。
+//   中間マージン案件は元から協社の請求月（b.month）ベースなので変更なし
+function arariMonthOf(c,ym){
   const r=calc(c);
   if(r.cnt<=0)return 0;                      // 協力会社なし＝原価不明
   const isSelf=c.jisha_sekou==='✓';
@@ -2487,9 +2490,8 @@ function arariMonthOf(c,ym,basis){
     });
     return a;
   }
-  // 単独：当月請求 − 当月の協社請求
-  const bm=(basis==='month')?getBilledMonthRaw(c,ym):getBilledMonth(c,ym);
-  return bm-getKyoBilledMonth(c,ym);
+  // 単独：当月請求 − 当月の協社請求。どちらも発生月ベース
+  return getBilledMonthRaw(c,ym)-getKyoBilledMonth(c,ym);
 }
 // ── 請求月の二層化 ────────────────────────────────────────────────
 //  b.month       = 売上の発生月。月次PL・工事経歴書・完成工事高の基準。請求漏れでは動かさない
@@ -2920,17 +2922,23 @@ function monthlyCases(mk,srch){
   });
   return cases;
 }
-// 月別・請求画面のKPIの元になる集計。両画面で数字が食い違わないよう1箇所にまとめる
+// 月別・請求画面のKPIの元になる集計。両画面で数字が食い違わないよう1箇所にまとめる。
+// ★KPI には S.cases 全件を渡す（Phase 10）。表示中の案件で絞ると、請求漏れで一覧から
+//   消えた案件の粗利がKPIから抜け、検索で絞り込むと未収金・未請求残まで変わってしまう。
+//   KPI＝会社の状態、表の合計行＝いま画面に出ているものの縦計、と役割を分ける
 function monthlyTotals(cases,mk){
-  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tmore=0,tmoreCnt=0;
+  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tmore=0,tmoreCnt=0,tsCnt=0;
   cases.forEach(c=>{
     const r=calc(c);const bm=getBilledMonth(c,mk);const nyM=getNyukinMonth(c,mk);
     ts+=bm;tn+=nyM;tmi+=r.misu;tky+=r.ksr;tmp+=r.miharai;trem+=r.remaining;
-    tar+=arariMonthOf(c,mk);                        // 粗利＝当月の実額（D-012/D-038）。表の合計行 tot.ar と同じ式にして画面内で一致させる
+    if(bm>0)tsCnt++;                                // 当月に請求のある案件数（KPIの件数表示用）
+    tar+=arariMonthOf(c,mk);                        // 粗利＝当月の実額（D-012/D-038）。★発生月ベース（Phase 10）
     if(c.more_flag==='✓'){tmore+=r.misu;tmoreCnt++;} // 請求もれ（請求漏れフラグの未収金）
   });
-  return {ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt};
+  return {ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt,tsCnt};
 }
+// KPIのツールチップに共通で付ける注記
+const KPI_ALL_NOTE='&#10;全案件が対象です（検索で絞り込んでも変わりません）。';
 // 振替（記録用）のバッジ。月別・請求画面で同じものを出す
 function furikaeBadge(c){
   return isFurikae(c)?'<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:4px;background:#fff3e0;border:1px solid #e65100;color:#e65100;font-size:9px;font-weight:700;vertical-align:middle" title="記録用の案件です。粗利には含まれますが、完成工事高・工事経歴書には計上されません">振替</span>':'';
@@ -2940,21 +2948,22 @@ function renderMonthly(){
   const srch=(vg('srch_m')||'').toLowerCase();
   document.getElementById('mTitle').textContent=`${yr}年 ${mo}月 発注一覧`;
   let cases=monthlyCases(mk,srch);
-  const _T=monthlyTotals(cases,mk);
+  const _T=monthlyTotals(S.cases,mk);   // ★KPIは全案件（検索・請求漏れで一覧から消えても変わらない）
+  const _V=monthlyTotals(cases,mk);     // 発注者別 当月請求合計の合計行用＝表示中の案件
   const ts=_T.ts,tn=_T.tn,tmi=_T.tmi,tar=_T.tar,tky=_T.tky,tmp=_T.tmp,trem=_T.trem,tmore=_T.tmore,tmoreCnt=_T.tmoreCnt;
   document.getElementById('mKpi').innerHTML=`
-    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${cases.length}件</div></div>
-    <div class="kpi g" title="この月に入金された金額の合計"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
-    <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）"><div class="kl">未収金</div><div class="kv">¥${fmt(tmi)}</div></div>
-    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）"><div class="kl">未請求残</div><div class="kv">¥${fmt(trem)}</div></div>
-    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計"><div class="kl">請求もれ</div><div class="kv">¥${fmt(tmore)}</div><div class="ks">${tmoreCnt}件</div></div>
-    <div class="kpi o" title="協力会社からの請求合計＝外注の原価"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
-    <div class="kpi r" title="協力会社へまだ支払っていない合計"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
-    <div class="kpi g" title="この月に請求した現場の粗利です。協力会社の請求だけがあって自社の請求がない現場は、この一覧に出ないため含まれません。&#10;粗利＝当月請求 − 当月の協力会社請求（実額）。下の表の合計行と同じ数字です（協力会社なしは対象外）"><div class="kl">粗利（この月に請求した分）</div><div class="kv">¥${fmt(tar)}</div></div>`;
+    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません${KPI_ALL_NOTE}"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${_T.tsCnt}件</div></div>
+    <div class="kpi g" title="この月に入金された金額の合計${KPI_ALL_NOTE}"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
+    <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）${KPI_ALL_NOTE}"><div class="kl">未収金</div><div class="kv">¥${fmt(tmi)}</div></div>
+    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}"><div class="kl">未請求残</div><div class="kv">¥${fmt(trem)}</div></div>
+    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計${KPI_ALL_NOTE}"><div class="kl">請求もれ</div><div class="kv">¥${fmt(tmore)}</div><div class="ks">${tmoreCnt}件</div></div>
+    <div class="kpi o" title="協力会社からの請求合計＝外注の原価${KPI_ALL_NOTE}"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
+    <div class="kpi r" title="協力会社へまだ支払っていない合計${KPI_ALL_NOTE}"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
+    <div class="kpi g" title="この月に発生した粗利です。その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。入金や請求漏れは関係しません。原価が先に出た月はマイナスになります。&#10;全案件が対象です。請求漏れで一覧から消えた案件や、検索で絞り込んだ場合も、この月に発生した粗利の合計を表示します。&#10;※下の表の合計行（表示中の案件）とは一致しません"><div class="kl">粗利（この月に発生した分）</div><div class="kv">¥${fmt(tar)}</div></div>`;
 
   let clEl=document.getElementById('mClientWrap');
   if(!clEl){clEl=document.createElement('div');clEl.id='mClientWrap';document.getElementById('mKpi').after(clEl);}
-  clEl.innerHTML=monthlyClientSummaryHtml(cases,mk,ts);
+  clEl.innerHTML=monthlyClientSummaryHtml(cases,mk,_V.ts);   // 一覧と一致させる＝表示中の案件のまま
   let remEl=document.getElementById('mRemind');
   if(!remEl){remEl=document.createElement('div');remEl.id='mRemind';document.getElementById('mKpi').after(remEl);}
   remEl.innerHTML=monthlyRemindHtml(mk);
@@ -2970,15 +2979,16 @@ function renderSeikyuu(){
   const srch=(vg('srch_s')||'').toLowerCase();
   const ti=document.getElementById('sTitle'); if(ti)ti.textContent=`${yr}年 ${mo}月 請求一覧`;
   let cases=monthlyCases(mk,srch);
-  const T=monthlyTotals(cases,mk);
+  const T=monthlyTotals(S.cases,mk);   // ★KPIは全案件（全部確認用と同じ値になる）
+  const V=monthlyTotals(cases,mk);     // 発注者別 当月請求合計の合計行用＝表示中の案件
   // KPIは5つ。協社請求計・未払残計・粗利は請求業務に不要なので出さない
   document.getElementById('sKpi').innerHTML=`
-    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(T.ts)}</div><div class="ks">${cases.length}件</div></div>
-    <div class="kpi g" title="この月に入金された金額の合計"><div class="kl">入金済</div><div class="kv">¥${fmt(T.tn)}</div></div>
-    <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）"><div class="kl">未収金</div><div class="kv">¥${fmt(T.tmi)}</div></div>
-    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）"><div class="kl">未請求残</div><div class="kv">¥${fmt(T.trem)}</div></div>
-    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計"><div class="kl">請求もれ</div><div class="kv">¥${fmt(T.tmore)}</div><div class="ks">${T.tmoreCnt}件</div></div>`;
-  document.getElementById('sClientWrap').innerHTML=monthlyClientSummaryHtml(cases,mk,T.ts);
+    <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません${KPI_ALL_NOTE}"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(T.ts)}</div><div class="ks">${T.tsCnt}件</div></div>
+    <div class="kpi g" title="この月に入金された金額の合計${KPI_ALL_NOTE}"><div class="kl">入金済</div><div class="kv">¥${fmt(T.tn)}</div></div>
+    <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）${KPI_ALL_NOTE}"><div class="kl">未収金</div><div class="kv">¥${fmt(T.tmi)}</div></div>
+    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}"><div class="kl">未請求残</div><div class="kv">¥${fmt(T.trem)}</div></div>
+    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計${KPI_ALL_NOTE}"><div class="kl">請求もれ</div><div class="kv">¥${fmt(T.tmore)}</div><div class="ks">${T.tmoreCnt}件</div></div>`;
+  document.getElementById('sClientWrap').innerHTML=monthlyClientSummaryHtml(cases,mk,V.ts);   // 一覧と一致させる＝表示中の案件のまま
   document.getElementById('sRemind').innerHTML=monthlyRemindHtml(mk);
 
   cases=sortCases(cases,'monthly');   // 並び順も全部確認用に合わせる（突合しやすいように）
@@ -3027,7 +3037,7 @@ function renderSeikyuu(){
   });
   body.innerHTML=rows.join('')||`<tr><td colspan="16" class="empty">この月のデータなし</td></tr>`;
   document.getElementById('sFoot').innerHTML=`<tr class="tot">
-    <td colspan="6">合計（${cases.length}件）</td>
+    <td colspan="6" title="一覧に表示されている案件の合計です。上のKPI（全案件）とは一致しません">合計（${cases.length}件）</td>
     <td class="num big">¥${fmt(tj)}</td><td class="num">¥${fmt(tb)}</td><td class="num">¥${fmt(tr)}</td><td class="num">¥${fmt(tny)}</td>
     <td colspan="6"></td>
   </tr>`;
@@ -3249,7 +3259,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem,tmore,tmoreCnt){
 
   const tr2=tot.js>0?tot.ar/tot.js*100:0;
   document.getElementById('mFoot').innerHTML=`<tr class="tot">
-    <td colspan="10">合計（${cases.length}件）</td>
+    <td colspan="10" title="一覧に表示されている案件の合計です。上のKPI（全案件）とは一致しません">合計（${cases.length}件）</td>
     <td class="num big" title="受注高＝この月に新規で受注した契約金額の合計。繰越・出来高で再掲された案件は含みません（行の発注額の単純合計とは一致しません）">¥${fmt(tot.jh)}</td><td class="num">¥${fmt(tot.js)}</td><td class="num">¥${fmt(tot.rem)}</td><td class="num">¥${fmt(tot.mi)}</td>
     <td></td>
     <td class="num big" title="この月に新規で受注した案件の協力会社見積の合計。繰越で再掲された案件は含みません">¥${fmt(tot.km)}</td><td class="num">¥${fmt(tot.ks)}</td><td></td><td></td>
@@ -3628,7 +3638,7 @@ function renderDash(){
     // 発生月ベース（D-016）。粗利を出さない案件は月別画面と同じく合計に入れない。
     // ★振替案件もここには含める（原価は実在するので粗利は正しく出す）
     let cAr=0;
-    if(showArariOf(c))fyMonths.forEach(mk=>{const a=arariMonthOf(c,mk,'month');if(a){billByMonth[mk].ar+=a;cAr+=a;}});
+    if(showArariOf(c))fyMonths.forEach(mk=>{const a=arariMonthOf(c,mk);if(a){billByMonth[mk].ar+=a;cAr+=a;}});
     arFY[c.id]=cAr;tar+=cAr;
     const remaining=Math.max(0,fn(c.jisha_h)-billed);
     if(!fk&&remaining>0&&fySet.has(caseCompletionMonth(c)))tunbilled+=remaining;  // 完成する事業年度に未請求残を計上
@@ -3868,7 +3878,7 @@ function printDashSummary(){
     bl.forEach(b=>{const mk=(b.month||'').slice(0,7);const amt=fn(b.amount);billed+=amt;if(!fk&&billByMonth[mk]){const bny=fn(b.nyukin);billByMonth[mk].js+=amt;billByMonth[mk].ny+=bny;tjs+=amt;tny+=bny;}});
     (c.kyousha_list||[]).forEach(k=>{const kbl=(k.billings&&k.billings.length)?k.billings:(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);kbl.forEach(b=>{const mk=(b.month||'').slice(0,7);if(billByMonth[mk]){billByMonth[mk].ksr+=fn(b.amount);tky+=fn(b.amount);}});});
     let cAr=0;   // 粗利＝実額の年度合計（D-038）。振替案件もここには含める
-    if(showArariOf(c))fyMonths.forEach(mk=>{const a=arariMonthOf(c,mk,'month');if(a){billByMonth[mk].ar+=a;cAr+=a;}});
+    if(showArariOf(c))fyMonths.forEach(mk=>{const a=arariMonthOf(c,mk);if(a){billByMonth[mk].ar+=a;cAr+=a;}});
     arFY[c.id]=cAr;tar+=cAr;
     const remaining=Math.max(0,fn(c.jisha_h)-billed);if(!fk&&remaining>0&&fySet.has(caseCompletionMonth(c)))tunbilled+=remaining;
   });
