@@ -1623,21 +1623,26 @@ function arariKakutei(c){
 const ARARI_YOTEI_MSG='確定前です（発注額まで請求していない／入金が未完了／協力会社の請求が未登録）。';
 // 率の列のツールチップ。分母の定義を画面から読めるようにする
 const ARARI_RATE_MSG='粗利率＝（対応する自社の受注額 − 外注費）÷ その受注額（単独＝発注金額／合同＝自社受注額の合計）。契約ベースなので請求の進捗では動きません。金額の粗利は実額なので、率と基準が違います。自社施工分は分母に入れません。';
-// 協社の請求が未登録（見積のみ）で、原価が粗利計算から抜けている案件（D-038）。
-// 粗利が過大に出ている理由をダッシュボードから読めるようにする。
+// 原価が粗利計算から抜けている案件（D-038）。粗利が過大に出ている理由を画面から読めるようにする。
+// 2種類あり、意味が違うので分けて返す：
+//   cnt / cost … 協社の請求が未登録（見積のみ）。金額が分かるので過大分を出せる
+//   unkCnt     … 協社の見積も請求も未入力。原価がゼロ扱いになるが、いくら過大かは出せない
 // cs には粗利合計と同じ年度の案件を渡す（ダッシュボードの数字と対象を揃えるため）
 function miKeijoCost(cs){
-  let cnt=0,cost=0;
+  let cnt=0,cost=0,unkCnt=0;const unkNames=[];
   (cs||[]).forEach(c=>{
     if(!showArariOf(c))return;
-    let hit=false;
+    let hit=false,unk=false;
     (c.kyousha_list||[]).forEach(k=>{
       const kbl=(k.billings&&k.billings.length)?k.billings:[];
-      if(kbl.length===0&&fn(k.seikyuu)<=0&&fn(k.mitsumori)>0){ hit=true; cost+=fn(k.mitsumori); }
+      if(kbl.length>0||fn(k.seikyuu)>0)return;                   // 請求が登録済み＝原価は計上されている
+      if(fn(k.mitsumori)>0){ hit=true; cost+=fn(k.mitsumori); }   // 見積のみ＝金額は分かる
+      else unk=true;                                             // 見積も請求も未入力＝金額が分からない
     });
     if(hit)cnt++;
+    if(unk){unkCnt++;unkNames.push(((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）');}
   });
-  return {cnt,cost};
+  return {cnt,cost,unkCnt,unkNames};
 }
 // 率の分母＝その外注に対応する自社の受注額（D-015 を置換）。
 //   単独（協社あり・自社施工なし）：発注金額（未入力なら累計請求額）
@@ -2771,7 +2776,16 @@ function renderDash(){
 
   // ── 未計上原価の注記（D-038）。協社請求が未登録の分だけ粗利が過大に出ていることを明示 ──
   const mkc=miKeijoCost(casesFY);
-  const mkcNote=mkc.cnt>0?`<div style="margin:-4px 0 12px;padding:8px 12px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:12px;color:#7a5900" title="協力会社の見積は入っているが請求（協力会社明細の請求額）がまだ登録されていない案件です。請求を登録すると粗利はこの金額の分だけ下がります">⚠ 協力会社の請求が未登録の案件が <b>${mkc.cnt}件</b> あります。原価 <b>¥${fmt(mkc.cost)}</b> が粗利に反映されていません（${fyLabel(dashFY)}の案件）。</div>`:'';
+  const mkcRow=(txt,tip)=>`<div style="padding:8px 12px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:12px;color:#7a5900" title="${tip}">${txt}</div>`;
+  const mkcRows=[];
+  if(mkc.cnt>0)mkcRows.push(mkcRow(
+    `⚠ 協力会社の請求が未登録の案件が <b>${mkc.cnt}件</b> あります。原価 <b>¥${fmt(mkc.cost)}</b> が粗利に反映されていません（${fyLabel(dashFY)}の案件）。`,
+    '協力会社の見積は入っているが請求（協力会社明細の請求額）がまだ登録されていない案件です。請求を登録すると粗利はこの金額の分だけ下がります'));
+  if(mkc.unkCnt>0)mkcRows.push(mkcRow(
+    `⚠ 協力会社の金額が未入力の案件が <b>${mkc.unkCnt}件</b> あります。原価が不明なため、粗利が過大に出ています。`,
+    '協力会社を登録しただけで見積も請求も入っていない案件です。原価がゼロとして計算されるため粗利・粗利率が実態より大きく出ますが、金額が分からないのでいくら過大かは出せません（率の集計からは除外しています）。&#10;対象：'
+      +esc(mkc.unkNames.slice(0,15).join(' ／ '))+(mkc.unkNames.length>15?` ほか${mkc.unkNames.length-15}件`:'')));
+  const mkcNote=mkcRows.length?`<div style="display:flex;flex-direction:column;gap:6px;margin:-4px 0 12px">${mkcRows.join('')}</div>`:'';
 
   // ── 発注→請求→入金 の相関ファネル ──
   const seg=s=>s.w>0.3?`<div title="${s.t||''}" style="width:${s.w}%;background:${s.c};display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden">${s.l||''}</div>`:'';
