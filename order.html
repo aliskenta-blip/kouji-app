@@ -358,6 +358,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
   <div class="tab" onclick="sw('monthly')">📅 月別入力</div>
   <div class="tab" onclick="sw('seikyuu')">💴 請求モード</div>
   <div class="tab" onclick="sw('master')">📋 マスター（全案件）</div>
+  <div class="tab" onclick="sw('check')">⚠ 要確認 <span id="chkBadge"></span></div>
   <div class="tab" onclick="sw('keireki')">📄 工事内容出力</div>
   <div class="tab" onclick="sw('manual')">📖 マニュアル</div>
   <div class="tab" onclick="sw('log')">📝 操作ログ</div>
@@ -472,6 +473,11 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
       </table>
     </div>
   </div>
+</div>
+
+<!-- ⚠ 要確認（Phase 12）。不備を1画面に集める。確認済みフラグは持たず、データを直せば自動で消える -->
+<div id="p-check" class="panel">
+  <div id="checkRoot"></div>
 </div>
 
 <!-- 受発注一覧（印刷用） -->
@@ -6554,8 +6560,137 @@ function manualDirty(){
   return !!(_manualEditing&&ta&&ta.value!==manualText());
 }
 
+// ── ⚠ 要確認（Phase 12）──
+// 機能追加のたびに出る「過去データの記入もれ」を1画面に集め、上から潰していけるようにする。
+// ★「確認済み」フラグは作らない。状態はデータそのものが持ち、データを直せば自動で消える。
+//   保存項目は1つも増やさない（§13-B。kouji-cost 側の修正は不要）。
+// ★判定はすべて既存の関数を「読むだけ」。calc / showArariOf / genkaKakuteiOf / miKeijoCost /
+//   juchuGapOf / arariMonthOf には一切手を入れない。粗利合計・他のKPIは1円も動かない。
+// ★対象は常に全案件。検索・表示月・ダッシュボードの年度切替では件数が変わらない。
+//   A1/A2 だけは「粗利の内訳の除外」と数字を完全に一致させるため、今期（curFYStart）の
+//   miKeijoCost の結果をそのまま使う（再実装しない）。
+// 運用は「この欄が0件になれば整備完了」とする。
+
+// 表示用の1行。c を持つ行は現場名クリックで案件が開く。amt は並び順（金額の大きい順）に使う
+function chkRow(c,sub,amt){
+  return {c:c,name:((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）',
+    client:c.client||'',sub:sub||'',amt:amt||0,date:(c.date||'').slice(0,7)};
+}
+// 会社単位の行（C2・C3）。案件ではないので現場名クリックの対象にしない
+function chkCoRow(name,sub,amt){
+  return {c:null,name:name||'（名称未設定）',client:'',sub:sub||'',amt:amt||0,date:''};
+}
+// 各項目の中は金額の大きい順。金額が無い（0）行どうしは記入月の新しい順
+function chkSortRows(rows){
+  return rows.slice().sort((x,y)=>{
+    const d=Math.abs(y.amt)-Math.abs(x.amt);
+    if(d!==0)return d;
+    return (y.date||'').localeCompare(x.date||'');
+  });
+}
+// A1/A2 は「粗利の内訳の除外」と同じ数字でなければ作業リストとして意味がないので、
+// ダッシュボードの注記と同じ引数（今期の casesFY と12ヶ月）で miKeijoCost をそのまま呼ぶ。
+// ★ダッシュボードの年度切替（dashFY）には追随しない。要確認タブは常に今期を見る
+function chkMiKeijo(){
+  const fy=curFYStart(),fyMonths=fyMonthKeys(fy),fySet=new Set(fyMonths);
+  const casesFY=S.cases.filter(c=>caseFYContrib(c,fySet).inFY);
+  return {mkc:miKeijoCost(casesFY,fyMonths),fy:fy};
+}
+// 検出する項目の一覧。{grp,key,label,why,rows[]} を返す。0件の項目もここでは返し、表示側で落とす
+function chkItems(){
+  const items=[];
+  const add=(grp,key,label,why,rows)=>{items.push({grp:grp,key:key,label:label,why:why,rows:chkSortRows(rows)});};
+  const notFurikae=S.cases.filter(c=>!isFurikae(c));
+
+  // ── A. 粗利が出ない・不正確 ──
+  const mk=chkMiKeijo();
+  add('A','A1','協力会社の請求が未登録',
+    '原価が確定しないため、粗利を集計から除外しています。請求書が届いたら、協力会社明細の「📋 出来高請求」に入れてください。',
+    mk.mkc.rows.map(o=>chkRow(o.c,
+      `発注 ¥${fmt(fn(o.c.jisha_h))}　<span style="color:#bf360c">除外中の粗利 ¥${fmt(Math.round(o.a))}</span>`,
+      fn(o.c.jisha_h))));
+  add('A','A2','協力会社の金額が未入力',
+    '協力会社を登録しただけで、見積も請求も入っていません。原価がまったく分からないため粗利を集計から除外しています。請求を1件入れても、金額未入力の協力会社が残っているかぎり粗利は戻りません。',
+    mk.mkc.unkRows.map(o=>chkRow(o.c,
+      `発注 ¥${fmt(fn(o.c.jisha_h))}　<span style="color:#bf360c">除外中の粗利 ¥${fmt(Math.round(o.a))}</span>`,
+      fn(o.c.jisha_h))));
+  const gapRows=[];
+  S.cases.forEach(c=>{const g=juchuGapOf(c.kyousha_list);if(!g)return;
+    gapRows.push(chkRow(c,`自社受注額は ${g.total}社中 ${g.withJ}社だけ　<span style="color:#bf360c">抜けている原価 ¥${fmt(g.cost)}</span>`,g.cost));});
+  add('A','A3','自社受注額が一部だけ未入力',
+    '自社受注額が空の協力会社は、原価ごと粗利の計算から外れます。粗利が実態より大きく出ているので、入れるなら全ての協力会社に入れてください。',
+    gapRows);
+
+  // ── B. 行政提出書類に影響（工事経歴書）──
+  // 振替（記録用）の案件は経歴書に出ないため対象外
+  const keirekiWhy='工事経歴書の記載項目です。空欄があると経歴書を行政に出せません。';
+  [['B1','建設工事の種類が未分類','工事経歴書の集計キーです。空欄だと経歴書に計上されません。',c=>!c.kouji_type],
+   ['B2','元請／下請が未入力',keirekiWhy,c=>!c.moto_shita],
+   ['B3','配置技術者名が未入力',keirekiWhy,c=>!c.haichi_gishi],
+   ['B4','主任／監理の別が未入力',keirekiWhy,c=>!c.gishi_type]
+  ].forEach(d=>add('B',d[0],d[1],d[2]+'（振替の案件は経歴書に出ないため対象外です）',
+    notFurikae.filter(d[3]).map(c=>chkRow(c,`発注 ¥${fmt(fn(c.jisha_h))}`,fn(c.jisha_h)))));
+
+  return items;
+}
+const CHK_GRP={A:'A. 粗利が出ない・不正確',B:'B. 行政提出書類に影響（工事経歴書）',
+  C:'C. 集計から漏れる',D:'D. 数字の矛盾（入力ミスの疑い）'};
+function renderCheck(){
+ try{
+  const root=document.getElementById('checkRoot');if(!root)return;
+  const items=chkItems();
+  const shown=items.filter(it=>it.rows.length>0);   // 0件の項目は表示しない
+  let nobu=0,coCnt=0;const ids=new Set();
+  items.forEach(it=>it.rows.forEach(r=>{nobu++;if(r.c)ids.add(r.c.id);else coCnt++;}));
+  const badge=document.getElementById('chkBadge');
+  if(badge)badge.innerHTML=nobu>0
+    ? `<span style="background:var(--yell2,#ffb300);color:#3e2723;border-radius:9px;padding:1px 7px;font-size:11px;font-weight:800">${nobu}</span>`
+    : '✅';
+  if(!shown.length){
+    root.innerHTML=`<div style="text-align:center;padding:48px 16px">
+      <div style="font-size:40px">✅</div>
+      <div style="font-size:16px;font-weight:800;color:#2e7d32;margin-top:8px">要確認の項目はありません</div>
+      <div style="font-size:12px;color:#888;margin-top:6px">この欄が0件なら整備完了です。</div></div>`;
+    return;
+  }
+  const rowHtml=r=>{
+    const cl=r.client?`<span style="color:#888">（${esc(r.client)}）</span>`:'';
+    const clickable=!!r.c;
+    return `<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;padding:6px 2px;border-bottom:1px solid #f0f0f0;font-size:12px${clickable?';cursor:pointer':''}"
+      ${clickable?`onclick="editCase('${r.c.id}')" title="クリックで案件が開きます"`:''}>
+      <span style="flex:1;min-width:140px">${clickable?'':'<span style="color:#bbb">■</span> '}${esc(r.name)}${cl}</span>
+      <span style="white-space:nowrap;color:#555;text-align:right">${r.sub}</span>
+    </div>`;
+  };
+  let html='';let curGrp='';
+  shown.forEach(it=>{
+    if(it.grp!==curGrp){curGrp=it.grp;
+      html+=`<div style="font-size:12px;font-weight:800;color:var(--nav2);margin:16px 0 6px;padding-bottom:3px;border-bottom:2px solid var(--nav2)">${esc(CHK_GRP[it.grp]||it.grp)}</div>`;}
+    html+=`<div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;overflow:hidden;background:#fff">
+      <div style="padding:9px 12px;background:#fafafa;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#333"
+        onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'':'none';this.querySelector('span:first-child').textContent=(b.style.display==='none'?'▶ ':'▼ ')+this.getAttribute('data-lbl')"
+        data-lbl="${esc(it.label)}"><span>▼ ${esc(it.label)}</span><span style="color:#c62828;white-space:nowrap">${it.rows.length}件</span></div>
+      <div style="padding:8px 12px 10px">
+        <div style="font-size:11px;color:#7a5900;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:6px 9px;margin-bottom:6px;line-height:1.6">${it.why}</div>
+        ${it.rows.map(rowHtml).join('')}
+      </div>
+    </div>`;
+  });
+  const jitsu=ids.size;
+  root.innerHTML=`<div style="margin-bottom:6px">
+      <div style="font-size:18px;font-weight:800;color:var(--nav)">⚠ 要確認　<span style="font-size:14px;color:#c62828">延べ ${nobu}件 / 実案件 ${jitsu}件</span></div>
+      <div style="font-size:11px;color:#888;margin-top:4px">
+        同じ案件が複数の項目に出るのは正しい動作です（別々の不備なので）。${coCnt?`延べ件数には会社単位の行 ${coCnt}件を含みます。`:''}
+        <b>「確認済み」の操作はありません。データを直して保存すれば、その項目から自動で消えます。</b>
+        検索や表示月では件数が変わりません（全案件が対象）。</div>
+    </div>${html}`;
+ }catch(e){
+  const root=document.getElementById('checkRoot');
+  if(root)root.innerHTML=`<div style="padding:16px;color:#c62828;font-size:12px">表示でエラーが発生しました：${esc(String((e&&e.message)||e))}</div>`;
+ }
+}
 // ── 全体 ──
-function renderAll(){renderDash();renderSeikyuu();renderMonthly();renderMaster();renderPrint();renderKeireki();renderLog();renderMstUI();renderJisha();renderClientLinkUI();renderAccountInfo();renderManual();if(isMaster())renderUserMgt();updateSels();}
+function renderAll(){renderDash();renderSeikyuu();renderMonthly();renderMaster();renderCheck();renderPrint();renderKeireki();renderLog();renderMstUI();renderJisha();renderClientLinkUI();renderAccountInfo();renderManual();if(isMaster())renderUserMgt();updateSels();}
 document.addEventListener('DOMContentLoaded',async()=>{
   await initAuth();
   await ld();
