@@ -6571,6 +6571,18 @@ function manualDirty(){
 //   miKeijoCost の結果をそのまま使う（再実装しない）。
 // 運用は「この欄が0件になれば整備完了」とする。
 
+// D4 のしきい値。協力会社の請求月・支払月が案件の記入月より「何ヶ月以上」過去なら疑う。
+// ★1ヶ月にすると、実データ288件で35件出るうち19件が「協力会社が前月に請求している」だけの
+//   正常パターンになる（原価が先に来るのは D-012 で仕様と決めた挙動）。年の打ち間違い
+//   （2025-09 ＝ 2026-09 の誤入力）に絞るため6ヶ月とする。しきい値はここだけを直す
+const CHK_D4_MONTHS=6;
+// 'YYYY-MM' どうしの月差（a − b）。new Date は使わない（D-053）。読めない値は null
+function chkMonthDiff(a,b){
+  const re=/^(\d{4})-(\d{2})$/;
+  const ma=re.exec((a||'').slice(0,7)),mb=re.exec((b||'').slice(0,7));
+  if(!ma||!mb)return null;
+  return (+ma[1]*12+ +ma[2])-(+mb[1]*12+ +mb[2]);
+}
 // 表示用の1行。c を持つ行は現場名クリックで案件が開く。amt は並び順（金額の大きい順）に使う
 function chkRow(c,sub,amt){
   return {c:c,name:((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）',
@@ -6630,6 +6642,60 @@ function chkItems(){
    ['B4','主任／監理の別が未入力',keirekiWhy,c=>!c.gishi_type]
   ].forEach(d=>add('B',d[0],d[1],d[2]+'（振替の案件は経歴書に出ないため対象外です）',
     notFurikae.filter(d[3]).map(c=>chkRow(c,`発注 ¥${fmt(fn(c.jisha_h))}`,fn(c.jisha_h)))));
+
+  // ── C. 集計から漏れる ──
+  // C1 は振替（記録用）の案件を対象外にする。振替はそもそも受注高・完成工事高から
+  // 除外する運用（D-046）なので、発注額が0円でも不備ではない
+  add('C','C1','発注額が0円',
+    '発注額が入っていないと受注高に乗らず、「前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越」の検算式が合わなくなります（§14）。単価契約で金額が確定しない案件は、確定した時点で入れてください。（振替の案件は受注高の対象外なので除きます）',
+    notFurikae.filter(c=>fn(c.jisha_h)<=0).map(c=>chkRow(c,`請求 ¥${fmt(calc(c).js)}`,calc(c).js)));
+  // C2・C3 は会社ごとに1行（案件ごとではない）。支払サイトは「⚙️ 設定」タブで登録する
+  const kt=S.masters.kyousha_terms||{},kyoAgg={};
+  S.cases.forEach(c=>(c.kyousha_list||[]).forEach(k=>{
+    const n=(k.name||'').trim();if(!n)return;
+    if(!kyoAgg[n])kyoAgg[n]={cnt:0,zan:0};
+    kyoAgg[n].cnt++;kyoAgg[n].zan+=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));}));
+  add('C','C2','協力会社の支払サイトが未登録',
+    '支払サイトが無いと、いつ支払う分なのかが決まらず、キャッシュフロー予測と協力会社 支払リストから漏れます。「⚙️ 設定」タブの支払サイトに登録してください。',
+    Object.keys(kyoAgg).filter(n=>!kt[n]).map(n=>chkCoRow(n,`${kyoAgg[n].cnt}件の案件　未払残 ¥${fmt(kyoAgg[n].zan)}`,kyoAgg[n].zan)));
+  const ct=S.masters.client_terms||{},cliAgg={};
+  S.cases.forEach(c=>{const n=(c.client||'').trim();if(!n)return;
+    if(!cliAgg[n])cliAgg[n]={cnt:0,mi:0};
+    const r=calc(c);cliAgg[n].cnt++;cliAgg[n].mi+=r.misu;});
+  add('C','C3','発注者の支払サイトが未登録',
+    '支払サイトが無いと入金予定月が決まらず、キャッシュフロー予測から漏れます。「⚙️ 設定」タブの支払サイトに登録してください。',
+    Object.keys(cliAgg).filter(n=>!ct[n]).map(n=>chkCoRow(n,`${cliAgg[n].cnt}件の案件　未収金 ¥${fmt(cliAgg[n].mi)}`,cliAgg[n].mi)));
+
+  // ── D. 数字の矛盾（入力ミスの疑い）──
+  // ★正常なケースもあるが、正しく直せば消える。追加工事なら発注額を増額し、減額なら
+  //   発注額を実額に是正する。どちらも本来やるべき修正であり D-049 の方針と一致する
+  const d1=[],d2=[],d3=[],d4=[];
+  S.cases.forEach(c=>{
+    const r=calc(c),jh=fn(c.jisha_h);
+    // D1：振替は発注書が出ない記録用の案件なので、発注額0円のまま請求があるのが正常
+    if(!isFurikae(c)&&r.js>jh)d1.push(chkRow(c,`請求 ¥${fmt(r.js)} − 発注 ¥${fmt(jh)} ＝ <span style="color:#c62828">超過 ¥${fmt(r.js-jh)}</span>`,r.js-jh));
+    if(r.ny>r.js)d2.push(chkRow(c,`入金 ¥${fmt(r.ny)} − 請求 ¥${fmt(r.js)} ＝ <span style="color:#c62828">超過 ¥${fmt(r.ny-r.js)}</span>`,r.ny-r.js));
+    if(c.kouki_e&&c.kouki_e!=='未定'&&r.remaining>0)
+      d3.push(chkRow(c,`工期終了 ${esc(c.kouki_e)}　<span style="color:#c62828">未請求残 ¥${fmt(r.remaining)}</span>`,r.remaining));
+    // D4：過去方向だけを見る。未来方向は年度をまたぐ長期工事で正常に起こるため見ない
+    let worst=null;
+    (c.kyousha_list||[]).forEach(k=>{
+      const chk=(m,kind)=>{const d=chkMonthDiff(m,c.date);
+        if(d==null||d>-CHK_D4_MONTHS)return;
+        if(!worst||d<worst.d)worst={d:d,m:(m||'').slice(0,7),kind:kind,name:(k.name||'').trim()||'（協力会社名なし）'};};
+      (k.billings||[]).forEach(b=>chk(b.month,'請求月'));
+      chk(k.shiharai_t,'支払月');
+    });
+    if(worst)d4.push(chkRow(c,`${esc(worst.name)} の${worst.kind} <b style="color:#c62828">${esc(worst.m)}</b>　記入月 ${esc((c.date||'').slice(0,7))} より ${-worst.d}ヶ月前`,0));
+  });
+  add('D','D1','請求額が発注額を超えている',
+    '追加工事で実際に増えたのであれば、<b>発注額を増額して実額に合わせてください</b>。発注額のままだと受注高が実態より小さくなります。',d1);
+  add('D','D2','入金額が請求額を超えている',
+    '入金の入れすぎか、請求額の入力もれです。未収金がマイナス方向にずれるので、どちらかの数字を直してください。',d2);
+  add('D','D3','工期終了が入っているのに未請求残がある',
+    'もう入らない減額分であれば、請求漏れとして繰り越さず<b>発注額を実額に是正してください</b>（D-049）。発注額を直せば未請求残が0になります。まだ請求する分が残っているなら、出来高請求を登録してください。',d3);
+  add('D','D4','協力会社の請求月・支払月が案件の記入月より大きく過去',
+    `年の打ち間違い（例：2025-09 ＝ 2026-09 の誤入力）の疑いがあります。原価が実際より前の月に立ち、その月の粗利が狂います。<b>${CHK_D4_MONTHS}ヶ月以上さかのぼるものだけ</b>を出しています（協力会社が前月・数ヶ月前に請求してくるのは正常なため）。未来方向は年度をまたぐ長期工事で正常に起こるので見ていません。`,d4);
 
   return items;
 }
