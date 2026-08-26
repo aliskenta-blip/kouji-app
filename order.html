@@ -2861,22 +2861,59 @@ function addKdBilling(ki){
   document.getElementById('kd_bl_amt_'+ki).value='';
   renderKdBillings(ki);
 }
+// 原価0円で登録する（Phase 13）。1つの現場に発注書が複数枚あり、外注費が別の発注書に
+// 付いているために、この発注書には計上すべき外注費が無い場合に使う。
+// ★既存の addKdBilling（＋ボタン）の「0円を弾く」挙動は誤入力の防止として残す。
+//   こちらは確認ダイアログを必ず通す別経路にする。
+// ★新しいデータ項目は作らない。billings[] に amount:'0' の通常の行を1件足すだけ。
+//   これで genkaKakuteiOf / miKeijoCost / showArariOf / arariMonthOf が
+//   billings.length>0 を見て自動的に正しく動く（分岐を足さない）
+function addKdBillingZero(ki){
+  const mo=document.getElementById('kd_bl_mo_'+ki).value;
+  if(!mo){alert('月を入力してください');return;}          // 原価0でも「いつ確定したか」の記録は要る
+  // ★saveCase は kyousha_list を KD.filter(k=>k.name||fn(k.seikyuu)) で絞る。0円だと
+  //   fn(k.seikyuu)===0 なので、協社名が空のままだと保存時にこの協社ごと黙って捨てられる
+  if(!(KD[ki].name||'').trim()){alert('先に協社名を選んでください。\n\n原価0円だと金額での判定ができないため、協社名が空のままでは保存時にこの協力会社ごと消えます。');return;}
+  // ★見積が入っていると calc / projArariRate のフォールバック（請求合計が0なら見積を原価に使う）に
+  //   落ちるため、粗利の「金額」は0円・「率」は見積ベースと基準が食い違う。押す前に知らせる
+  const mit=fn(KD[ki].mitsumori);
+  if(!confirm(
+    '原価0円で登録します。\n\n'+
+    'この発注書には外注費が発生しない場合（費用が別の発注書に付いている等）に\n'+
+    'のみ使用してください。\n\n'+
+    '通常は協力会社からの請求額を入れてください。'+
+    (mit>0?'\n\n⚠ この協力会社には見積 ¥'+fmt(mit)+' が入っています。\n'+
+      '請求の合計が0円のままだと、粗利率と一覧の粗利欄は見積を原価として計算し、\n'+
+      '月別・ダッシュボードの粗利の金額は0円で計算されます（基準が食い違います）。\n'+
+      '食い違わせないためには、見積金額も空にしてください。':'')
+  ))return;
+  if(!KD[ki].billings)KD[ki].billings=[];
+  KD[ki].billings.push({month:mo,amount:'0'});
+  KD[ki].seikyuu=String(KD[ki].billings.reduce((a,b)=>a+fn(b.amount),0));
+  KD[ki].seikyuu_t=KD[ki].billings[KD[ki].billings.length-1].month;
+  document.getElementById('kd_bl_amt_'+ki).value='';
+  renderKdBillings(ki);renderKEArari(ki);
+}
 function delKdBilling(ki,bi){
   KD[ki].billings.splice(bi,1);
   KD[ki].seikyuu=String((KD[ki].billings||[]).reduce((a,b)=>a+fn(b.amount),0));
   KD[ki].seikyuu_t=(KD[ki].billings||[]).length?KD[ki].billings[KD[ki].billings.length-1].month:'';
   renderKdBillings(ki);
 }
+// 原価0円で登録した行のツールチップ（Phase 13）。「請求なし」（billings が空）とは別物
+const KE_TIP_ZERO='外注費が発生しない発注書として登録されています。費用は別の発注書に計上されています。';
 function renderKdBillings(ki){
   const el=document.getElementById('kd_bl_'+ki);if(!el)return;
   const bl=KD[ki].billings||[];
   const sum=bl.reduce((a,b)=>a+fn(b.amount),0);
   const mit=fn(KD[ki].mitsumori);
   const rem=Math.max(0,mit-sum);
-  el.innerHTML=bl.map((b,bi)=>`<div style="display:flex;gap:4px;align-items:center;padding:2px 0">
-    <span style="font-weight:700;color:#e65100">${b.month}</span> ¥${fmt(fn(b.amount))}
+  el.innerHTML=bl.map((b,bi)=>{
+    const zero=fn(b.amount)===0;   // ★0円で登録した行。薄いグレーで「請求なし」と見分ける
+    return `<div style="display:flex;gap:4px;align-items:center;padding:2px 0"${zero?` title="${KE_TIP_ZERO}"`:''}>
+    <span style="font-weight:700;color:${zero?'#999':'#e65100'}">${b.month}</span> <span${zero?' style="color:#999"':''}>¥${fmt(fn(b.amount))}${zero?' (原価なし)':''}</span>
     <button onclick="delKdBilling(${ki},${bi})" style="background:none;border:none;color:#e53935;cursor:pointer">×</button>
-  </div>`).join('')||'<span style="color:#bbb">請求なし</span><span style="font-size:10px;color:#e65100">　※未入力だとこの案件の粗利が出ません</span>';
+  </div>`;}).join('')||'<span style="color:#bbb">請求なし</span><span style="font-size:10px;color:#e65100">　※未入力だとこの案件の粗利が出ません</span>';
   el.innerHTML+=`<div style="font-size:11px;margin-top:4px">請求計: <b>¥${fmt(sum)}</b>　残: <b style="color:${rem>0?'#e65100':'#2e7d32'}">¥${fmt(rem)}</b></div>`;
 }
 function editKyoSelect(caseId,el){
@@ -4612,6 +4649,7 @@ function keJuchuWarnHtml(){
 // 協力会社明細のラベルの説明（10-2a）。「出来高請求」という同じ言葉が自社側（売上）と
 // 協社側（原価）の両方で使われているため、どちら向きの金額かを画面から読めるようにする。
 // ★見出しの文言・DOM構造・保存項目は変えない。title を足すだけ
+const KE_TIP_ZERO_BTN='1つの現場に発注書が複数枚あり、外注費が別の発注書に付いているため、この発注書には計上すべき外注費が無いときに使います。&#10;原価0円の請求として登録すると、粗利が「—」ではなく実額で出るようになります。&#10;協力会社請求合計・未払残・支払リストは0円なので変わりません。&#10;通常は協力会社からの請求額を入れてください。';
 const KE_TIP_BILLINGS='協力会社がこちらに請求してきた金額（＝外注原価）です。自社が客先に出す請求とは別のものです。&#10;届いた請求書の月と金額を入れてください。この月に原価が立つので、支払った月ではなく請求書の月を入れます。&#10;すべての協力会社に入るまで、この案件の粗利は「—」のまま集計から除外されます。';
 const KE_TIP_MITSUMORI='協力会社からの見積です。原価としては使いません（契約まるごとの金額なので、年度で区切った売上と期間が揃わないため）。請求が入るまでの目安と、粗利率の計算に使います。';
 const KE_TIP_SHIHARAI_T='実際に振り込む（振り込んだ）月です。粗利には影響しません（原価は協力会社が請求してきた月に立ちます）。';
@@ -4639,6 +4677,7 @@ function renderKE(){
               <input type="month" id="kd_bl_mo_${i}" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:11px">
               <input type="number" id="kd_bl_amt_${i}" placeholder="万円" inputmode="decimal" step="0.1" style="width:70px;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:11px">
               <button class="btn bb btn-sm" onclick="addKdBilling(${i})">＋</button>
+              <button class="btn bx btn-sm" onclick="addKdBillingZero(${i})" style="white-space:nowrap" title="${KE_TIP_ZERO_BTN}">0円で登録</button>
             </div>
           </div>
           <div class="fg"><label title="${KE_TIP_SHIHARAI_T}">支払月</label><input type="month" value="${k.shiharai_t||''}" oninput="KD[${i}].shiharai_t=this.value"></div>
