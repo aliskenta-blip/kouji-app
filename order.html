@@ -6626,12 +6626,27 @@ function chkItems(){
     mk.mkc.unkRows.map(o=>chkRow(o.c,
       `発注 ¥${fmt(fn(o.c.jisha_h))}　<span style="color:#bf360c">除外中の粗利 ¥${fmt(Math.round(o.a))}</span>`,
       fn(o.c.jisha_h))));
-  const gapRows=[];
-  S.cases.forEach(c=>{const g=juchuGapOf(c.kyousha_list);if(!g)return;
-    gapRows.push(chkRow(c,`自社受注額は ${g.total}社中 ${g.withJ}社だけ　<span style="color:#bf360c">抜けている原価 ¥${fmt(g.cost)}</span>`,g.cost));});
-  add('A','A3','自社受注額が一部だけ未入力',
-    '自社受注額が空の協力会社は、原価ごと粗利の計算から外れます。粗利が実態より大きく出ているので、入れるなら全ての協力会社に入れてください。',
+  // 自社受注額（juchu）の未入力は2種類ある。直し方は同じでも「いま画面がどう見えているか」が
+  // 違うので行を分ける。
+  //   A3-1 一部だけ未入力 … 粗利は出ているが、空の協社の原価が抜けていて過大（juchuGapOf）
+  //   A3-2 全社未入力     … 合同（自社施工✓＋協社あり）で showArariOf が false になり粗利が「—」。
+  //                         juchuGapOf は「全社入力済み／全社空」を正常として null を返すので拾えない
+  const gapRows=[],noJuchuRows=[];
+  S.cases.forEach(c=>{
+    const g=juchuGapOf(c.kyousha_list);
+    if(g){gapRows.push(chkRow(c,`自社受注額は ${g.total}社中 ${g.withJ}社だけ　<span style="color:#bf360c">抜けている原価 ¥${fmt(g.cost)}</span>`,g.cost));return;}
+    // 判定は calc / showArariOf を読むだけ。合同かつ juchu が1社も無い＝粗利を出さない案件
+    const r=calc(c);
+    if(c.jisha_sekou!=='✓'||r.cnt<=0||r.hasJuchu)return;
+    const jh=fn(c.jisha_h),genka=r.ksr>0?r.ksr:r.km;
+    noJuchuRows.push(chkRow(c,`発注 ¥${fmt(jh)}　協力会社 ${r.cnt}社（原価 ¥${fmt(genka)}）　<span style="color:#bf360c">粗利 —</span>`,jh>0?jh:r.js));
+  });
+  add('A','A3-1','自社受注額が一部だけ未入力（粗利が不正確）',
+    '自社受注額が入っている協力会社と、空の協力会社が混在しています。<b>空の協力会社は原価ごと粗利の計算から外れる</b>ため、いまの粗利は実態より大きく出ています。入れるなら全ての協力会社に入れてください。',
     gapRows);
+  add('A','A3-2','自社受注額が全社未入力（粗利が出ない）',
+    '自社施工（合同）の案件で、自社受注額がどの協力会社にも入っていません。自社の労務費が原価に入らず粗利が過大に見えるため、<b>粗利を「—」にして集計から外しています</b>（仕様であってバグではありません）。協力会社ごとに自社受注額を入れると、中間マージン方式で粗利が出るようになります。<b>A3-1 が「出ているが不正確」なのに対し、こちらは「そもそも出ていない」状態です。</b>',
+    noJuchuRows);
 
   // ── B. 行政提出書類に影響（工事経歴書）──
   // 振替（記録用）の案件は経歴書に出ないため対象外
