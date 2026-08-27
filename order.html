@@ -3060,8 +3060,8 @@ function renderMonthly(){
     <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません${KPI_ALL_NOTE}"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${_T.tsCnt}件</div></div>
     <div class="kpi g" title="この月に入金された金額の合計${KPI_ALL_NOTE}"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
     <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillMisu()"><div class="kl">未収金 🔍</div><div class="kv">¥${fmt(tmi)}</div></div>
-    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}"><div class="kl">未請求残</div><div class="kv">¥${fmt(trem)}</div></div>
-    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計${KPI_ALL_NOTE}"><div class="kl">請求もれ</div><div class="kv">¥${fmt(tmore)}</div><div class="ks">${tmoreCnt}件</div></div>
+    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillRem()"><div class="kl">未請求残 🔍</div><div class="kv">¥${fmt(trem)}</div></div>
+    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillMore()"><div class="kl">請求もれ 🔍</div><div class="kv">¥${fmt(tmore)}</div><div class="ks">${tmoreCnt}件</div></div>
     <div class="kpi o" title="協力会社からの請求合計＝外注の原価${KPI_ALL_NOTE}"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
     <div class="kpi r" title="協力会社へまだ支払っていない合計${KPI_ALL_NOTE}"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
     <div class="kpi g" title="この月に発生した粗利です。その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。入金や請求漏れは関係しません。原価が先に出た月はマイナスになります。&#10;全案件が対象です。請求漏れで一覧から消えた案件や、検索で絞り込んだ場合も、この月に発生した粗利の合計を表示します。&#10;※下の表の合計行（表示中の案件）とは一致しません&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillArari('${mk}')"><div class="kl">粗利（この月に発生した分）🔍</div><div class="kv">¥${fmt(tar)}</div></div>`;
@@ -3106,8 +3106,8 @@ function renderSeikyuu(){
     <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません${KPI_ALL_NOTE}"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(T.ts)}</div><div class="ks">${T.tsCnt}件</div></div>
     <div class="kpi g" title="この月に入金された金額の合計${KPI_ALL_NOTE}"><div class="kl">入金済</div><div class="kv">¥${fmt(T.tn)}</div></div>
     <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillMisu()"><div class="kl">未収金 🔍</div><div class="kv">¥${fmt(T.tmi)}</div></div>
-    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}"><div class="kl">未請求残</div><div class="kv">¥${fmt(T.trem)}</div></div>
-    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計${KPI_ALL_NOTE}"><div class="kl">請求もれ</div><div class="kv">¥${fmt(T.tmore)}</div><div class="ks">${T.tmoreCnt}件</div></div>`;
+    <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillRem()"><div class="kl">未請求残 🔍</div><div class="kv">¥${fmt(T.trem)}</div></div>
+    <div class="kpi r" title="請求漏れ（請求済だが着金未確認で繰越）の未収金合計${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillMore()"><div class="kl">請求もれ 🔍</div><div class="kv">¥${fmt(T.tmore)}</div><div class="ks">${T.tmoreCnt}件</div></div>`;
   document.getElementById('sClientWrap').innerHTML=monthlyClientSummaryHtml(cases,mk,V.ts);   // 一覧と一致させる＝表示中の案件のまま
   document.getElementById('sRemind').innerHTML=monthlyRemindHtml(mk);
 
@@ -3292,36 +3292,34 @@ function kpiDrillMisu(mode,fyStart){
   rows.sort((a,b)=>b.v-a.v);                         // 金額の大きい順
   return {rows:rows,sum:sum,kpi:sum,isFY:false,fyStart:null};
 }
-function openKpiDrillMisu(mode,fyStart){
+// ── 内訳モーダルの共通の枠（10-3c2）──
+// 未収金・未請求残・請求もれで同じ見た目・同じ操作にする。ここには集計を書かない。
+// cfg: {title, note, rows[{c,f,v}], total（＝KPIの数字）, sum（行の合計）, minusOK}
+function openKpiDrillList(cfg){
   kpiDrillClose();                                   // ★2枚重ならないよう先に消す（§5 #8 の罠）
-  const d=kpiDrillMisu(mode,fyStart);
   const nm=c=>esc(((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）');
   const line=o=>`<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #eee;cursor:pointer;font-size:12px" onclick="kpiDrillClose();editCase('${o.c.id}')" title="クリックで案件を開く">
       <span style="flex:1;min-width:120px">${nm(o.c)}${esc(o.c.client?'（'+o.c.client+'）':'')}${furikaeBadge(o.c)}</span>
-      <span style="white-space:nowrap;color:#555">請求 <b>¥${fmt(o.js)}</b> − 入金 <b>¥${fmt(o.ny)}</b></span>
-      <span style="white-space:nowrap;font-weight:700;width:96px;text-align:right;color:${o.v<0?'#2e7d32':'#c62828'}">${o.v<0?'−':''}¥${fmt(Math.abs(o.v))}</span>
+      <span style="white-space:nowrap;color:#555">${o.f}</span>
+      <span style="white-space:nowrap;font-weight:700;width:96px;text-align:right;color:${o.v<0?'#2e7d32':(o.v>0?'#c62828':'#999')}">${o.v<0?'−':''}¥${fmt(Math.abs(o.v))}</span>
     </div>`;
-  const note=d.isFY
-    ? `<b>${fyLabel(d.fyStart)}</b>に請求した額 − その入金額です。ダッシュボードの「未収金 合計（請求 − 入金）」と同じ範囲で、振替（記録用）の案件は含みません。年度をまたぐ未収金や年度外の請求は入らないため、<b>月別入力・請求モードの「未収金」（全期間・全案件の累計請求 − 累計入金）とは数字が違います</b>。`
-    : '請求したのに入金されていない残高です。累計請求 − 累計入金。<b>全案件が対象で、検索や表示月では変わりません</b>。入金済の案件（0円以下）は出していません。';
-  const title=d.isFY?fyLabel(d.fyStart)+'の未収金':'未収金（累計請求 − 累計入金）';
-  const minus=d.rows.filter(o=>o.v<0).length;
+  const minus=cfg.rows.filter(o=>o.v<0).length;
   const wrap=document.createElement('div');
   wrap.id='kpiDrillWrap';
   wrap.style.cssText='position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:12px';
   wrap.innerHTML=`<div style="background:#fff;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,.3);width:720px;max-width:100%;max-height:88vh;overflow-y:auto">
     <div style="position:sticky;top:0;padding:12px 16px;background:var(--nav);color:#fff;border-radius:12px 12px 0 0;display:flex;justify-content:space-between;align-items:center">
-      <span style="font-weight:700;font-size:14px">${title}　¥${fmt(d.kpi)}（${d.rows.length}件）</span>
+      <span style="font-weight:700;font-size:14px">${cfg.title}　¥${fmt(cfg.total)}（${cfg.rows.length}件）</span>
       <span onclick="kpiDrillClose()" style="cursor:pointer;font-size:24px;line-height:1;padding:0 6px" title="閉じる">×</span>
     </div>
     <div style="padding:14px">
-      <div style="font-size:11px;color:#666;margin-bottom:8px">${note}${minus?'　<span style="color:#2e7d32">緑のマイナスは入金が請求を上回っている案件です（要確認タブの D2）。</span>':''}</div>
-      <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px">現場ごとの内訳　${d.rows.length}件</div>
-      ${d.rows.length?d.rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>'}
+      <div style="font-size:11px;color:#666;margin-bottom:8px">${cfg.note}${minus?'　<span style="color:#2e7d32">緑のマイナスは入金が請求を上回っている案件です（要確認タブの D2）。</span>':''}</div>
+      <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px">現場ごとの内訳　${cfg.rows.length}件</div>
+      ${cfg.rows.length?cfg.rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>'}
       <div style="display:flex;justify-content:space-between;font-weight:800;font-size:13px;padding:8px 0;border-top:2px solid #333;margin-top:4px">
-        <span>合計</span><span>¥${fmt(d.kpi)}</span>
+        <span>合計</span><span>¥${fmt(cfg.total)}</span>
       </div>
-      ${d.sum<0?'<div style="font-size:11px;color:#c62828;margin-top:6px">内訳の差引は ¥'+fmt(d.sum)+' ですが、KPIは0円で止めています。</div>':''}
+      ${(cfg.sum!=null&&cfg.sum!==cfg.total)?'<div style="font-size:11px;color:#c62828;margin-top:6px">内訳の差引は ¥'+fmt(cfg.sum)+' ですが、KPIは0円で止めています。</div>':''}
       <div style="display:flex;justify-content:flex-end;margin-top:12px">
         <button class="btn bn btn-sm" onclick="kpiDrillClose()">閉じる</button>
       </div>
@@ -3329,6 +3327,60 @@ function openKpiDrillMisu(mode,fyStart){
   </div>`;
   wrap.addEventListener('mousedown',e=>{if(e.target===wrap)kpiDrillClose();});
   document.body.appendChild(wrap);
+}
+function openKpiDrillMisu(mode,fyStart){
+  const d=kpiDrillMisu(mode,fyStart);
+  openKpiDrillList({
+    title:d.isFY?fyLabel(d.fyStart)+'の未収金':'未収金（累計請求 − 累計入金）',
+    note:d.isFY
+      ? `<b>${fyLabel(d.fyStart)}</b>に請求した額 − その入金額です。ダッシュボードの「未収金 合計（請求 − 入金）」と同じ範囲で、振替（記録用）の案件は含みません。年度をまたぐ未収金や年度外の請求は入らないため、<b>月別入力・請求モードの「未収金」（全期間・全案件の累計請求 − 累計入金）とは数字が違います</b>。`
+      : '請求したのに入金されていない残高です。累計請求 − 累計入金。<b>全案件が対象で、検索や表示月では変わりません</b>。入金済の案件（0円以下）は出していません。',
+    rows:d.rows.map(o=>({c:o.c,f:`請求 <b>¥${fmt(o.js)}</b> − 入金 <b>¥${fmt(o.ny)}</b>`,v:o.v})),
+    total:d.kpi,sum:d.sum});
+}
+// ── 未請求残（10-3c2）──
+// KPI＝monthlyTotals の trem＝Σ calc(c).remaining（＝Math.max(0,発注額−累計請求)）。
+// ★振替（記録用）の案件もKPIに入っているので内訳でも除外しない（バッジで見分ける）
+function kpiDrillRem(){
+  const rows=[];let sum=0;
+  S.cases.forEach(c=>{
+    const r=calc(c);
+    if(r.remaining<=0)return;                        // 0以下の案件は出さない
+    rows.push({c:c,jh:r.jh,js:r.js,v:r.remaining});sum+=r.remaining;
+  });
+  rows.sort((a,b)=>b.v-a.v);                         // 金額の大きい順
+  return {rows:rows,sum:sum};
+}
+function openKpiDrillRem(){
+  const d=kpiDrillRem();
+  openKpiDrillList({
+    title:'未請求残（発注額 − 累計請求）',
+    note:'発注額のうち、まだ請求していない残りです。減額精算で残る場合は<b>発注額を実額に是正</b>してください（D-049）。<b>全案件が対象で、検索や表示月では変わりません</b>。請求済の案件（0円以下）は出していません。',
+    rows:d.rows.map(o=>({c:o.c,f:`発注 <b>¥${fmt(o.jh)}</b> − 請求 <b>¥${fmt(o.js)}</b>`,v:o.v})),
+    total:d.sum,sum:d.sum});
+}
+// ── 請求もれ（10-3c2）──
+// KPI＝monthlyTotals の tmore/tmoreCnt。条件は more_flag==='✓' の1つだけ。
+// ★件数をKPI（tmoreCnt）と一致させるため、未収金が0円の案件も行として出す
+function kpiDrillMore(){
+  const rows=[];let sum=0;
+  S.cases.forEach(c=>{
+    if(c.more_flag!=='✓')return;
+    const r=calc(c);
+    rows.push({c:c,js:r.js,ny:r.ny,v:r.misu});sum+=r.misu;
+  });
+  rows.sort((a,b)=>b.v-a.v);
+  return {rows:rows,sum:sum};
+}
+function openKpiDrillMore(){
+  const d=kpiDrillMore();
+  const zero=d.rows.filter(o=>o.v<=0).length;
+  openKpiDrillList({
+    title:'請求もれ（請求済・着金未確認で繰越）',
+    note:'請求書は出したが、客先の支払通知書に無かったため翌月へ送った分です。金額は未収金（累計請求 − 累計入金）。<b>全案件が対象で、検索や表示月では変わりません</b>。'
+      +(zero?`件数をKPIと合わせるため、<b>入金済で未収金が0円の ${zero}件も出しています</b>（請求漏れのチェックが残ったままの案件です）。`:''),
+    rows:d.rows.map(o=>({c:o.c,f:`請求 <b>¥${fmt(o.js)}</b> − 入金 <b>¥${fmt(o.ny)}</b>`,v:o.v})),
+    total:d.sum,sum:d.sum});
 }
 // 発注者別 当月請求合計（支払通知書との突合の中心）。月別・請求画面で同じものを出す
 function monthlyClientSummaryHtml(cases,mk,ts){
