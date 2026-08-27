@@ -2842,12 +2842,36 @@ function editKyoBillings(caseId,ki,el){
   pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-336))+'px';
   document.body.appendChild(pop);
 }
+// 自動記入した支払月のツールチップ。★syncShiharaiTUI より手前で宣言する（§5 #12）
+const KE_TIP_SHIHARAI_AUTO='協力会社の請求月と支払サイトから自動で入れました。違う場合は直してください。一度入っている値は自動では上書きされません。';
+// ── 協力会社への支払月の自動記入（Phase 11 / D-063）──
+// 支払月 ＝ dueMonthOf(協力会社が請求してきた月, その協力会社の支払サイト)
+// ★基準日は k.seikyuu_t（協社が請求してきた月）。自社が客先に請求した日ではない（D-063）
+// ★計算は既存の dueMonthOf / calcDueDate をそのまま使う。書き直さない
+// ★書き込むのは k.shiharai_t が空のときだけ。手で直した値は絶対に上書きしない。
+//   前払い・先方が今月請求しない等の例外があり、手修正が常に優先される
+// 戻り値：書き込んだら新しい支払月、何もしなければ null（呼び出し元の表示更新用）
+function autoShiharaiT(k){
+  if(!k)return null;
+  if((k.shiharai_t||'').trim())return null;                      // すでに入っている＝触らない
+  const ym=(k.seikyuu_t||'').slice(0,7);
+  if(!/^\d{4}-\d{2}$/.test(ym))return null;                      // 協社の請求月が無い＝何もしない
+  const term=(S.masters.kyousha_terms||{})[(k.name||'').trim()];
+  if(!term)return null;                                          // 支払サイト未登録＝空のまま（要確認タブの C2 に出る）
+  // calcDueDate は基準日の「年と月」しか見ない。'YYYY-MM' を直に渡すと new Date が UTC 解釈で
+  // 前月に落ちうるので、月の中日を足して渡す（D-053 の趣旨。calcDueDate 自体は変更しない）
+  const due=dueMonthOf(ym+'-15',term);
+  if(!due)return null;
+  k.shiharai_t=due;
+  return due;
+}
 function updKyoFromBl(caseId,ki){
   const c=S.cases.find(x=>x.id===caseId);if(!c)return;
   const k=(c.kyousha_list||[])[ki];if(!k)return;
   const bl=k.billings||[];
   k.seikyuu=String(bl.reduce((a,b)=>a+fn(b.amount),0));
   k.seikyuu_t=bl.length?bl[bl.length-1].month:'';
+  autoShiharaiT(k);                    // 支払月が空なら支払サイトから自動記入（Phase 11）
   sv();
 }
 function addKdBilling(ki){
@@ -2859,6 +2883,7 @@ function addKdBilling(ki){
   KD[ki].seikyuu=String(KD[ki].billings.reduce((a,b)=>a+fn(b.amount),0));
   KD[ki].seikyuu_t=KD[ki].billings.length?KD[ki].billings[KD[ki].billings.length-1].month:'';
   document.getElementById('kd_bl_amt_'+ki).value='';
+  syncShiharaiTUI(ki);                 // 支払月が空なら自動記入して欄に反映（Phase 11）
   renderKdBillings(ki);
 }
 // 原価0円で登録する（Phase 13）。1つの現場に発注書が複数枚あり、外注費が別の発注書に
@@ -2892,13 +2917,23 @@ function addKdBillingZero(ki){
   KD[ki].seikyuu=String(KD[ki].billings.reduce((a,b)=>a+fn(b.amount),0));
   KD[ki].seikyuu_t=KD[ki].billings[KD[ki].billings.length-1].month;
   document.getElementById('kd_bl_amt_'+ki).value='';
+  syncShiharaiTUI(ki);                 // 支払月が空なら自動記入して欄に反映（Phase 11）
   renderKdBillings(ki);renderKEArari(ki);
 }
 function delKdBilling(ki,bi){
   KD[ki].billings.splice(bi,1);
   KD[ki].seikyuu=String((KD[ki].billings||[]).reduce((a,b)=>a+fn(b.amount),0));
   KD[ki].seikyuu_t=(KD[ki].billings||[]).length?KD[ki].billings[KD[ki].billings.length-1].month:'';
+  syncShiharaiTUI(ki);                 // 支払月が空なら自動記入して欄に反映（Phase 11）
   renderKdBillings(ki);
+}
+// KD[ki] の支払月を自動記入し、入ったら画面の入力欄にも反映する。
+// renderKE() ごと作り直すと入力中の月・金額欄のフォーカスが飛ぶので、欄の値だけ差し替える
+function syncShiharaiTUI(ki){
+  const due=autoShiharaiT(KD[ki]);
+  if(!due)return;
+  const el=document.getElementById('kd_st_'+ki);
+  if(el){el.value=due;el.title=KE_TIP_SHIHARAI_AUTO;}
 }
 // 原価0円で登録した行のツールチップ（Phase 13）。「請求なし」（billings が空）とは別物
 const KE_TIP_ZERO='外注費が発生しない発注書として登録されています。費用は別の発注書に計上されています。';
@@ -4680,7 +4715,7 @@ function renderKE(){
               <button class="btn bx btn-sm" onclick="addKdBillingZero(${i})" style="white-space:nowrap" title="${KE_TIP_ZERO_BTN}">0円で登録</button>
             </div>
           </div>
-          <div class="fg"><label title="${KE_TIP_SHIHARAI_T}">支払月</label><input type="month" value="${k.shiharai_t||''}" oninput="KD[${i}].shiharai_t=this.value"></div>
+          <div class="fg"><label title="${KE_TIP_SHIHARAI_T}">支払月<span style="font-size:9px;color:#888">（空なら支払サイトから自動）</span></label><input type="month" id="kd_st_${i}" value="${k.shiharai_t||''}" oninput="KD[${i}].shiharai_t=this.value"></div>
           <div class="fg"><label title="${KE_TIP_SHIHARAI}">支払済（万円）</label><input type="number" value="${fn(k.shiharai)?parseFloat((fn(k.shiharai)/10000).toFixed(4)):''}" placeholder="" inputmode="decimal" step="0.1" oninput="KD[${i}].shiharai=String(Math.round(parseFloat(this.value||0)*10000))"></div>
         </div>
       </div>
