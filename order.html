@@ -4166,28 +4166,53 @@ function markPaidFull(id){
   sv();addLog('check',`${esc(c.place||'')}を入金済（消込）`);renderAll();
 }
 // ── 協力会社への支払（振込）リスト印刷 ──
-function printShiharaiList(){
-  const map={};
+// 協力会社 支払リスト（未払残）を月ごとにまとめる（Phase 11-2）。
+// ★金額の計算（Math.max(0,seikyuu-shiharai)・0以下は除外）は変更しない。
+//   0円の請求行（Phase 13）が支払リストに出ないのは、この判定のおかげで維持される。
+// ★協力会社ごとのブロックは廃止し、月ごとのブロックにする。同じ協社が複数の月に出るのは正しい。
+// HTML の組み立てを分けてあるのは、window.open を開かずに中身を検証できるようにするため
+function shiharaiListData(){
+  const byMonth={};let grand=0,rowCnt=0;
+  const kn=new Set();
   S.cases.forEach(c=>(c.kyousha_list||[]).forEach(k=>{
     const mp=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));if(mp<=0||!k.name)return;
-    const d=(map[k.name]=map[k.name]||{tot:0,rows:[]});d.tot+=mp;
-    d.rows.push({place:c.place||'',kouji:c.kouji||'',type:k.type||'',due:k.shiharai_t||'',amt:mp});
+    const mk=(k.shiharai_t||'').slice(0,7);
+    const key=/^\d{4}-\d{2}$/.test(mk)?mk:'';                       // 形式が読めないものは「未設定」へ寄せる
+    const d=(byMonth[key]=byMonth[key]||{tot:0,rows:[]});
+    d.tot+=mp;grand+=mp;rowCnt++;kn.add(k.name);
+    d.rows.push({name:k.name,place:c.place||'',kouji:c.kouji||'',type:k.type||'',amt:mp});
   }));
-  const names=Object.keys(map).sort((a,b)=>map[b].tot-map[a].tot);
-  const grand=names.reduce((a,n)=>a+map[n].tot,0);
+  // 支払月の昇順。空（未設定）は最後
+  const months=Object.keys(byMonth).filter(Boolean).sort();
+  if(byMonth['']) months.push('');
+  months.forEach(m=>byMonth[m].rows.sort((a,b)=>b.amt-a.amt));      // 月内は金額の大きい順
+  return {byMonth,months,grand,rowCnt,names:kn.size};
+}
+function shiharaiListHtml(){
+  const d=shiharaiListData();
   const jisha=S.masters.jisha_name||'';const today=new Date().toLocaleDateString('ja-JP');
-  const blocks=names.map(n=>{const d=map[n];const rows=d.rows.map(r=>`<tr><td>${esc(r.place)}</td><td>${esc(r.kouji)}</td><td>${esc(r.type)}</td><td class="c">${r.due||''}</td><td class="r">${fmt(r.amt)}</td></tr>`).join('');
-    return `<h2>${n}　<span style="font-size:12px">未払残 合計 ¥${fmt(d.tot)}</span></h2><table><thead><tr><th>現場</th><th>工事名</th><th>工種</th><th>支払月</th><th>未払残</th></tr></thead><tbody>${rows}</tbody></table>`;}).join('');
+  const label=m=>m?`${m.slice(0,4)}年${parseInt(m.slice(5,7),10)}月　支払予定`:'支払月が未設定';
+  const blocks=d.months.map(m=>{
+    const b=d.byMonth[m];
+    const rows=b.rows.map(r=>`<tr><td>${esc(r.name)}</td><td>${esc(r.place)}</td><td>${esc(r.kouji)}</td><td>${esc(r.type)}</td><td class="r">${fmt(r.amt)}</td></tr>`).join('');
+    return `<h2${m?'':' class="nm"'}>${label(m)}　<span style="font-size:12px">¥${fmt(b.tot)}（${b.rows.length}件）</span></h2>
+    <table><thead><tr><th>協力会社</th><th>現場</th><th>工事名</th><th>工種</th><th>未払残</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="4" class="r sub">月計</td><td class="r sub">${fmt(b.tot)}</td></tr></tfoot></table>`;
+  }).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>協力会社 支払リスト</title>
+  <style>@page{size:A4;margin:12mm}body{font-family:'Meiryo','メイリオ',sans-serif;padding:10mm;color:#000}h1{font-size:18px;text-align:center;margin:0 0 4px}h2{font-size:13px;margin:14px 0 2px;border-top:2px solid #1f4e79;border-bottom:2px solid #1f4e79;padding:3px 0}h2.nm{border-color:#b71c1c;color:#b71c1c}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #333;padding:3px 6px}th{background:#1f4e79;color:#fff}.c{text-align:center}.r{text-align:right}.sub{font-weight:700;background:#eef3f8}.grand{margin-top:14px;font-size:14px;font-weight:700;text-align:right;border-top:2px solid #000;padding-top:6px}@media print{.np{display:none}h2{page-break-after:avoid}}</style></head><body>
+  <h1>協力会社 支払リスト（未払残）</h1>
+  <div class="meta"><span>${jisha}</span><span>作成日：${today}　${d.names}社 / ${d.rowCnt}件</span></div>
+  ${blocks||'<div style="text-align:center;padding:20px">未払残はありません</div>'}
+  <div class="grand">支払合計　¥${fmt(d.grand)}</div>
+  <div class="np" style="margin-top:14px;text-align:center"><button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
+  </body></html>`;
+}
+function printShiharaiList(){
   const w=window.open('','_blank','width=900,height=800');
   if(!w){alert('ポップアップがブロックされました。許可してください。');return;}
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>協力会社 支払リスト</title>
-  <style>@page{size:A4;margin:12mm}body{font-family:'Meiryo','メイリオ',sans-serif;padding:10mm;color:#000}h1{font-size:18px;text-align:center;margin:0 0 4px}h2{font-size:13px;margin:14px 0 2px;border-bottom:2px solid #1f4e79;padding-bottom:2px}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #333;padding:3px 6px}th{background:#1f4e79;color:#fff}.c{text-align:center}.r{text-align:right}.grand{margin-top:14px;font-size:14px;font-weight:700;text-align:right;border-top:2px solid #000;padding-top:6px}@media print{.np{display:none}}</style></head><body>
-  <h1>協力会社 支払リスト（未払残）</h1>
-  <div class="meta"><span>${jisha}</span><span>作成日：${today}　${names.length}社</span></div>
-  ${blocks||'<div style="text-align:center;padding:20px">未払残はありません</div>'}
-  <div class="grand">支払合計　¥${fmt(grand)}</div>
-  <div class="np" style="margin-top:14px;text-align:center"><button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
-  </body></html>`);
+  w.document.write(shiharaiListHtml());
   w.document.close();
 }
 
