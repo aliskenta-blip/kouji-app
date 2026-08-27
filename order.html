@@ -6700,6 +6700,12 @@ function manualDirty(){
 //   正常パターンになる（原価が先に来るのは D-012 で仕様と決めた挙動）。年の打ち間違い
 //   （2025-09 ＝ 2026-09 の誤入力）に絞るため6ヶ月とする。しきい値はここだけを直す
 const CHK_D4_MONTHS=6;
+// C4 のしきい値。支払月が現在月より「何ヶ月以上」前なら、支払済の登録もれを疑う。
+// ★1ヶ月にすると「今週振り込む予定」のものが並び、正常なケースが残る判定になる
+//   （D-069 と同じ理由）。2ヶ月とする。しきい値はここだけを直す
+const CHK_C4_MONTHS=2;
+// 現在月 'YYYY-MM'。C4 の基準。案件の記入月ではなく「いま」と比べる
+function chkCurMonth(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
 // 'YYYY-MM' どうしの月差（a − b）。new Date は使わない（D-053）。読めない値は null
 function chkMonthDiff(a,b){
   const re=/^(\d{4})-(\d{2})$/;
@@ -6804,6 +6810,18 @@ function chkItems(){
   add('C','C3','発注者の支払サイトが未登録',
     '支払サイトが無いと入金予定月が決まらず、キャッシュフロー予測から漏れます。「⚙️ 設定」タブの支払サイトに登録してください。',
     Object.keys(cliAgg).filter(n=>!ct[n]).map(n=>chkCoRow(n,`${cliAgg[n].cnt}件の案件　未収金 ¥${fmt(cliAgg[n].mi)}`,cliAgg[n].mi)));
+  // C4：支払月を過ぎているのに支払済が未登録。未払残が実態より大きく出る原因になる。
+  // 判定は支払リストと同じ Math.max(0,seikyuu-shiharai)（計算そのものは変えていない）。
+  // 支払月が空・読めない行は「いつ払う分か」が決まらず判定できないので対象外
+  const c4=[],curM=chkCurMonth();
+  S.cases.forEach(c=>(c.kyousha_list||[]).forEach(k=>{
+    const zan=Math.max(0,fn(k.seikyuu)-fn(k.shiharai));if(zan<=0)return;
+    const d=chkMonthDiff(k.shiharai_t,curM);
+    if(d==null||d>-CHK_C4_MONTHS)return;
+    c4.push(chkRow(c,`${esc((k.name||'').trim()||'（協力会社名なし）')}　支払月 <b>${esc((k.shiharai_t||'').slice(0,7))}</b>（${-d}ヶ月前）　<span style="color:#bf360c">未払残 ¥${fmt(zan)}</span>`,zan));
+  }));
+  add('C','C4','支払月を過ぎているのに支払済が未登録',
+    `支払月から<b>${CHK_C4_MONTHS}ヶ月以上</b>経過しています。振込が済んでいれば協力会社明細の「支払済」に金額を入れてください。未払残が実態より大きく出ています。（支払月が空の行は判定できないため出していません。1ヶ月にすると「今週振り込む予定」のものまで並ぶため${CHK_C4_MONTHS}ヶ月にしています）`,c4);
 
   // ── D. 数字の矛盾（入力ミスの疑い）──
   // ★正常なケースもあるが、正しく直せば消える。追加工事なら発注額を増額し、減額なら
