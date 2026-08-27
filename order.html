@@ -4170,7 +4170,7 @@ function markPaidFull(id){
 // ★金額の計算（Math.max(0,seikyuu-shiharai)・0以下は除外）は変更しない。
 //   0円の請求行（Phase 13）が支払リストに出ないのは、この判定のおかげで維持される。
 // ★突合の単位は「会社」。請求書は協力会社から来るので、会社ごとに見られないと照合できない。
-//   第1階層＝協力会社（未払残の合計が大きい順）／第2階層＝支払月（昇順・未設定は会社の最後）。
+//   第1階層＝協力会社（未払残の合計が大きい順）／第2階層＝支払月（降順・未設定は会社の最後）。
 // ★末尾の「月別 総括」は同じ byCo から積み上げる。別集計にすると会社側と食い違うため。
 // HTML の組み立てを分けてあるのは、window.open を開かずに中身を検証できるようにするため
 function shiharaiListData(){
@@ -4184,8 +4184,8 @@ function shiharaiListData(){
     co.tot+=mp;co.cnt++;d.tot+=mp;grand+=mp;rowCnt++;
     d.rows.push({place:c.place||'',kouji:c.kouji||'',type:k.type||'',amt:mp});   // 会社名は見出しにあるので列から外す
   }));
-  // 支払月の昇順。空（未設定）は最後
-  const sortM=o=>{const a=Object.keys(o).filter(Boolean).sort();if(o[''])a.push('');return a;};
+  // 支払月の降順（新しい月が上）。空（未設定）は最後（11-3a）
+  const sortM=o=>{const a=Object.keys(o).filter(Boolean).sort().reverse();if(o[''])a.push('');return a;};
   const names=Object.keys(byCo).sort((a,b)=>byCo[b].tot-byCo[a].tot||a.localeCompare(b,'ja'));  // 未払残の合計が大きい順
   names.forEach(n=>{const co=byCo[n];
     co.months=sortM(co.byMonth);
@@ -4212,20 +4212,26 @@ function shiharaiListHtml(){
       <table><thead><tr><th>現場</th><th>工事名</th><th>工種</th><th>未払残</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
     }).join('');
-    return `<div class="co"><h2>${esc(n)}　<span class="cot">未払残 合計 ¥${fmt(co.tot)}（${co.cnt}件）</span></h2>${ms}</div>`;
+    // 初期は閉じる（closed）。突合は1社ずつ開いて行う。開閉の状態は保存しない
+    return `<div class="co closed"><h2 onclick="tgCo(this)"><span class="ar"></span>${esc(n)}　<span class="cot">未払残 合計 ¥${fmt(co.tot)}（${co.cnt}件）</span></h2><div class="cb">${ms}</div></div>`;
   }).join('');
   const sumRows=d.months.map(m=>`<tr${m?'':' class="nm"'}><td>${label(m)}</td><td class="r">¥${fmt(d.monthly[m].tot)}</td><td class="r">${d.monthly[m].cnt}件</td></tr>`).join('');
   // 総括は月ごとの合計と件数だけ（会社の内訳は上のブロックで見られる）。総合計は従来どおり最後に1回だけ出す
   const summary=d.months.length?`<div class="sum"><h2>【月別 総括】</h2>
   <table><thead><tr><th>支払月</th><th>金額</th><th>件数</th></tr></thead><tbody>${sumRows}</tbody></table></div>`:'';
   return `<!doctype html><html><head><meta charset="utf-8"><title>協力会社 支払リスト</title>
-  <style>@page{size:A4;margin:12mm}body{font-family:'Meiryo','メイリオ',sans-serif;padding:10mm;color:#000}h1{font-size:18px;text-align:center;margin:0 0 4px}h2{font-size:14px;margin:16px 0 4px;border-top:3px double #1f4e79;border-bottom:3px double #1f4e79;padding:4px 0}h2 .cot{font-size:12px;font-weight:400}h3{font-size:12px;margin:8px 0 2px;padding:2px 0 2px 4px;border-left:5px solid #1f4e79;background:#eef3f8}h3.nm{border-left-color:#b71c1c;color:#b71c1c;background:#fdecea}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #333;padding:3px 6px}th{background:#1f4e79;color:#fff}.c{text-align:center}.r{text-align:right}.sub{font-weight:700;background:#eef3f8}.co{page-break-inside:auto}.sum{margin-top:18px;page-break-before:auto}.sum table{width:auto;min-width:320px}.sum tr.nm td{color:#b71c1c}.grand{margin-top:14px;font-size:14px;font-weight:700;text-align:right;border-top:2px solid #000;padding-top:6px}@media print{.np{display:none}h2,h3{page-break-after:avoid}}</style></head><body>
+  <style>@page{size:A4;margin:12mm}body{font-family:'Meiryo','メイリオ',sans-serif;padding:10mm;color:#000}h1{font-size:18px;text-align:center;margin:0 0 4px}h2{font-size:14px;margin:16px 0 4px;border-top:3px double #1f4e79;border-bottom:3px double #1f4e79;padding:4px 0}h2 .cot{font-size:12px;font-weight:400}h3{font-size:12px;margin:8px 0 2px;padding:2px 0 2px 4px;border-left:5px solid #1f4e79;background:#eef3f8}h3.nm{border-left-color:#b71c1c;color:#b71c1c;background:#fdecea}h2{cursor:pointer;user-select:none}.co.closed .cb{display:none}.ar{display:inline-block;width:1em}.co h2 .ar::after{content:'▼'}.co.closed h2 .ar::after{content:'▶'}.meta{display:flex;justify-content:space-between;font-size:11px;margin-bottom:6px}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #333;padding:3px 6px}th{background:#1f4e79;color:#fff}.c{text-align:center}.r{text-align:right}.sub{font-weight:700;background:#eef3f8}.co{page-break-inside:auto}.sum{margin-top:18px;page-break-before:auto}.sum table{width:auto;min-width:320px}.sum tr.nm td{color:#b71c1c}.grand{margin-top:14px;font-size:14px;font-weight:700;text-align:right;border-top:2px solid #000;padding-top:6px}@media print{.np{display:none}h2,h3{page-break-after:avoid}.ar{display:none}.co.closed .cb{display:block}}</style></head><body>
   <h1>協力会社 支払リスト（未払残）</h1>
   <div class="meta"><span>${jisha}</span><span>作成日：${today}　${d.names.length}社 / ${d.rowCnt}件</span></div>
   ${blocks||'<div style="text-align:center;padding:20px">未払残はありません</div>'}
   ${summary}
   <div class="grand">支払合計　¥${fmt(d.grand)}</div>
-  <div class="np" style="margin-top:14px;text-align:center"><button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button></div>
+  <div class="np" style="margin-top:14px;text-align:center"><button onclick="tgAll()" style="padding:8px 20px;font-size:14px">▼ 全社を開く / 閉じる</button>　<button onclick="window.print()" style="padding:8px 20px;font-size:14px">🖨️ 印刷 / PDF保存</button>
+  <div style="font-size:11px;color:#555;margin-top:6px">会社名をクリックすると開閉します。印刷（PDF保存）は開閉に関わらず全社が出ます。</div></div>
+  <script>
+  function tgCo(h){h.parentNode.classList.toggle('closed');}
+  function tgAll(){const a=[...document.querySelectorAll('.co')];const open=a.some(x=>x.classList.contains('closed'));a.forEach(x=>x.classList.toggle('closed',!open));}
+  <\/script>
   </body></html>`;
 }
 function printShiharaiList(){
