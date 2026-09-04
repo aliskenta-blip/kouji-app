@@ -3031,20 +3031,46 @@ function monthlyCases(mk,srch){
 //   消えた案件の粗利がKPIから抜け、検索で絞り込むと未収金・未請求残まで変わってしまう。
 //   KPI＝会社の状態、表の合計行＝いま画面に出ているものの縦計、と役割を分ける
 function monthlyTotals(cases,mk){
-  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tsCnt=0;
+  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tsCnt=0,tsRaw=0,tsRawCnt=0;
   cases.forEach(c=>{
     const r=calc(c);const bm=getBilledMonth(c,mk);const nyM=getNyukinMonth(c,mk);
     ts+=bm;tn+=nyM;tmi+=r.misu;tky+=r.ksr;tmp+=r.miharai;trem+=r.remaining;
     if(bm>0)tsCnt++;                                // 当月に請求のある案件数（KPIの件数表示用）
+    // ★当月売上（発生ベース）＝ b.month で数える（Phase 14）。
+    //   これまで「発生ベース × 月」を見る場所がどこにも無く、kouji-cost の月次PL
+    //   （order_billings＝b.month が売上の源泉）と突合する相手がアプリ側に無かった。
+    //   ・基準は b.month。claimMonth は使わない（請求漏れで繰り越しても動かさない）
+    //   ・振替（記録用）は除く。ダッシュボードの「請求金額 合計（発生ベース）」と
+    //     同じ扱い（D-016 / D-046）。12ヶ月足すと年度合計に一致する
+    //   ★新しい集計は書かず、発生ベースの既存関数 getBilledMonthRaw をそのまま通す
+    if(!isFurikae(c)){
+      const bmRaw=getBilledMonthRaw(c,mk);
+      tsRaw+=bmRaw; if(bmRaw>0)tsRawCnt++;
+    }
     tar+=arariMonthOf(c,mk);                        // 粗利＝当月の実額（D-012/D-038）。★発生月ベース（Phase 10）
     // ★KPI「請求もれ」は 10-3c3 で廃止（未収金と情報が重複する。催促の対象は未収金であって、
     //   請求漏れだったかどうかは経緯にすぎない）。more_flag は一覧の「請求漏」表示・
     //   漏解除・リマインド・マスターの絞り込みで使うので残してある
   });
-  return {ts,tn,tmi,tar,tky,tmp,trem,tsCnt};
+  return {ts,tn,tmi,tar,tky,tmp,trem,tsCnt,tsRaw,tsRawCnt};
 }
 // KPIのツールチップに共通で付ける注記
 const KPI_ALL_NOTE='&#10;全案件が対象です（検索で絞り込んでも変わりません）。';
+// 「当月売上（発生ベース）」のツールチップ。★月別入力と請求モードで同じものを使う
+//   （並べて出す以上、違いが読めないと混乱する。D-042）
+const KPI_URIAGE_TIP=
+  'その月に発生した売上です（請求書を出した月）。請求漏れで繰り越しても動きません。&#10;'+
+  '月次PL・工事経歴書・kouji-cost の売上はこの基準です。&#10;'+
+  '隣の「当月請求（請求管理ベース）」は請求業務用で、請求漏れにすると翌月へ動きます。&#10;'+
+  '両者は一致しないのが正しい状態です。&#10;'+
+  '振替（記録用）の案件は含みません（上乗せ先と二重計上になるため）。&#10;'+
+  '全案件が対象です。検索や請求漏れで一覧から消えた案件も含みます。&#10;'+
+  '12ヶ月分を足すと、ダッシュボードの「請求金額 合計（発生ベース）」に一致します。';
+// 「当月売上（発生ベース）」のKPIカード1枚。両画面で同じものを出す
+function kpiUriageHtml(T){
+  return `<div class="kpi p" title="${KPI_URIAGE_TIP}"><div class="kl">当月売上（発生ベース）</div>`+
+         `<div class="kv">\u00a5${fmt(T.tsRaw)}</div><div class="ks">${T.tsRawCnt}件</div></div>`;
+}
 // 振替（記録用）のバッジ。月別・請求画面で同じものを出す
 function furikaeBadge(c){
   return isFurikae(c)?'<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:4px;background:#fff3e0;border:1px solid #e65100;color:#e65100;font-size:9px;font-weight:700;vertical-align:middle" title="記録用の案件です。粗利には含まれますが、完成工事高・工事経歴書には計上されません">振替</span>':'';
@@ -3057,7 +3083,8 @@ function renderMonthly(){
   const _T=monthlyTotals(S.cases,mk);   // ★KPIは全案件（検索・請求漏れで一覧から消えても変わらない）
   const _V=monthlyTotals(cases,mk);     // 発注者別 当月請求合計の合計行用＝表示中の案件
   const ts=_T.ts,tn=_T.tn,tmi=_T.tmi,tar=_T.tar,tky=_T.tky,tmp=_T.tmp,trem=_T.trem;
-  document.getElementById('mKpi').innerHTML=`
+  document.getElementById('mKpi').innerHTML=
+    kpiUriageHtml(_T)+`
     <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません${KPI_ALL_NOTE}"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(ts)}</div><div class="ks">${_T.tsCnt}件</div></div>
     <div class="kpi g" title="この月に入金された金額の合計${KPI_ALL_NOTE}"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
     <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillMisu()"><div class="kl">未収金 🔍</div><div class="kv">¥${fmt(tmi)}</div></div>
@@ -3101,9 +3128,11 @@ function renderSeikyuu(){
     <span style="font-size:22px;font-weight:800;color:${okAll?'#2e7d32':'#c62828'}">¥${fmt(Math.max(0,mizu))}</span>
     <span style="font-size:12px;color:${okAll?'#2e7d32':'#c62828'};font-weight:700">${okAll?'✅ 全額入金':`（${mizuCnt}件）`}</span>
   </div>`;
-  // KPIは4つ。協社請求計・未払残計・粗利は請求業務に不要なので出さない
+  // KPIは5つ。協社請求計・未払残計・粗利は請求業務に不要なので出さない
   // （「請求もれ」は 10-3c3 で廃止。未収金と重複するため）
-  document.getElementById('sKpi').innerHTML=`
+  // ★「当月売上（発生ベース）」は月別入力と顔ぶれを揃えるために出す（Phase 14）
+  document.getElementById('sKpi').innerHTML=
+    kpiUriageHtml(T)+`
     <div class="kpi" title="この月にお客さんへ請求した金額の合計（税込）。請求管理ベース＝請求漏れにすると翌月へ動きます。月次PL・工事経歴書の売上は動きません${KPI_ALL_NOTE}"><div class="kl">当月請求（請求管理ベース）</div><div class="kv">¥${fmt(T.ts)}</div><div class="ks">${T.tsCnt}件</div></div>
     <div class="kpi g" title="この月に入金された金額の合計${KPI_ALL_NOTE}"><div class="kl">入金済</div><div class="kv">¥${fmt(T.tn)}</div></div>
     <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillMisu()"><div class="kl">未収金 🔍</div><div class="kv">¥${fmt(T.tmi)}</div></div>
