@@ -852,8 +852,8 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 | 入金済 | この月に入金された金額 |
 | 未収金 | 請求したのにまだ入金されていない金額 |
 | 未請求残 | 発注額のうち、まだ請求していない残り |
-| 協社請求計 | 協力会社からの請求＝外注の原価 |
-| 未払残計 | 協力会社へまだ払っていない金額 |
+| 協社請求計（発生ベース） | その月に協力会社が請求してきた金額（請求書の月）＝外注の原価。12ヶ月分でダッシュボードの「協力会社 請求合計」に一致します。**当月売上（発生ベース）− この金額**は粗利のおおよその姿ですが、粗利KPIは原価未確定・自社施工のみを計上せず、中間マージン方式は別計算なので一致しません |
+| 未払残計（残高） | 協力会社へまだ払っていない**残高**（月ではなく全期間の累計） |
 | 粗利 | 当月請求 × 案件の粗利率。**現在は率で按分しています**（Phase 5 で実額ベースに変更予定） |
 
 ## 行に出るボタン・チェック
@@ -3031,10 +3031,10 @@ function monthlyCases(mk,srch){
 //   消えた案件の粗利がKPIから抜け、検索で絞り込むと未収金・未請求残まで変わってしまう。
 //   KPI＝会社の状態、表の合計行＝いま画面に出ているものの縦計、と役割を分ける
 function monthlyTotals(cases,mk){
-  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tsCnt=0,tsRaw=0,tsRawCnt=0;
+  let ts=0,tn=0,tmi=0,tar=0,tky=0,tmp=0,trem=0,tsCnt=0,tsRaw=0,tsRawCnt=0,tkyCnt=0;
   cases.forEach(c=>{
     const r=calc(c);const bm=getBilledMonth(c,mk);const nyM=getNyukinMonth(c,mk);
-    ts+=bm;tn+=nyM;tmi+=r.misu;tky+=r.ksr;tmp+=r.miharai;trem+=r.remaining;
+    ts+=bm;tn+=nyM;tmi+=r.misu;tmp+=r.miharai;trem+=r.remaining;
     if(bm>0)tsCnt++;                                // 当月に請求のある案件数（KPIの件数表示用）
     // ★当月売上（発生ベース）＝ b.month で数える（Phase 14）。
     //   これまで「発生ベース × 月」を見る場所がどこにも無く、kouji-cost の月次PL
@@ -3047,12 +3047,21 @@ function monthlyTotals(cases,mk){
       const bmRaw=getBilledMonthRaw(c,mk);
       tsRaw+=bmRaw; if(bmRaw>0)tsRawCnt++;
     }
+    // ★協社請求計（発生ベース）＝ b.month で数える（Phase 15）。
+    //   これまで calc(c).ksr ＝「その案件の協社請求の全期間累計」を足していたため、
+    //   月別のKPIに並んでいるのに月別ではなく、当月売上との引き算が画面上で成立していなかった
+    //   （実測：当月売上 ¥31,154,400 に対し ¥130,832,906）。
+    //   ・基準は b.month（協力会社が請求してきた月）。支払月ではない
+    //   ・振替（記録用）も除外しない。粗利（arariMonthOf）に振替を含めているので揃える
+    //   ★新しい集計は書かず、粗利が使っているのと同じ getKyoBilledMonth をそのまま通す
+    const km=getKyoBilledMonth(c,mk);
+    tky+=km; if(km>0)tkyCnt++;
     tar+=arariMonthOf(c,mk);                        // 粗利＝当月の実額（D-012/D-038）。★発生月ベース（Phase 10）
     // ★KPI「請求もれ」は 10-3c3 で廃止（未収金と情報が重複する。催促の対象は未収金であって、
     //   請求漏れだったかどうかは経緯にすぎない）。more_flag は一覧の「請求漏」表示・
     //   漏解除・リマインド・マスターの絞り込みで使うので残してある
   });
-  return {ts,tn,tmi,tar,tky,tmp,trem,tsCnt,tsRaw,tsRawCnt};
+  return {ts,tn,tmi,tar,tky,tmp,trem,tsCnt,tsRaw,tsRawCnt,tkyCnt};
 }
 // KPIのツールチップに共通で付ける注記
 const KPI_ALL_NOTE='&#10;全案件が対象です（検索で絞り込んでも変わりません）。';
@@ -3066,6 +3075,26 @@ const KPI_URIAGE_TIP=
   '振替（記録用）の案件は含みません（上乗せ先と二重計上になるため）。&#10;'+
   '全案件が対象です。検索や請求漏れで一覧から消えた案件も含みます。&#10;'+
   '12ヶ月分を足すと、ダッシュボードの「請求金額 合計（発生ベース）」に一致します。';
+// 「協社請求計（発生ベース）」のツールチップ（Phase 15）。
+// ★「当月売上 − この金額 ＝ 粗利」とは書けない。実データ（300件）で確かめると一致しない：
+//   売上はこのKPIと同じく全案件を数えるが、粗利KPIは D-012 の決まりで
+//   ①原価未確定（協社請求が1社でも未登録）②自社施工のみ（協社なし・自社施工✓）を計上せず、
+//   ③中間マージン方式は「自社受注額−原価」を按分するので引き算にならない。
+//   例：2026-07 は 売上4,191万 − 協社1,095万 ＝ 3,095万 に対し 粗利KPI は 234万
+//   （差2,861万の内 2,222万が原価未確定・447万が中間マージン）。
+//   そこで「引き算ではこうなる」と断定せず、ズレる理由を書く
+const KPI_KYOSHA_TIP=
+  'その月に協力会社が請求してきた金額です（請求書の月）。支払った月ではありません。&#10;'+
+  '全案件が対象です。検索や請求漏れで一覧から消えた案件も含みます。&#10;'+
+  '12ヶ月分を足すと、ダッシュボードの「協力会社 請求合計」に一致します。&#10;'+
+  '「当月売上（発生ベース）− この金額」は当月の粗利のおおよその姿です。&#10;'+
+  'ただし粗利KPIとは一致しません。粗利は原価未確定の案件・自社施工のみの案件を計上せず、'+
+  '中間マージン方式の案件は自社受注額との差で計算するためです。';
+// 「未払残計（残高）」のツールチップ（Phase 15）。★計算は累計のまま。月別KPIに並ぶので
+//   「当月の未払」と誤読されないよう、残高であることをラベルと説明の両方で言う
+const KPI_MIHARAI_TIP=
+  '協力会社への未払いの残高です。月ではなく全期間の累計です。&#10;'+
+  '会社ごとの内訳はダッシュボードの「協力会社 支払リスト」で確認できます。';
 // 「当月売上（発生ベース）」のKPIカード1枚。両画面で同じものを出す
 function kpiUriageHtml(T){
   return `<div class="kpi p" title="${KPI_URIAGE_TIP}"><div class="kl">当月売上（発生ベース）</div>`+
@@ -3089,8 +3118,8 @@ function renderMonthly(){
     <div class="kpi g" title="この月に入金された金額の合計${KPI_ALL_NOTE}"><div class="kl">入金済</div><div class="kv">¥${fmt(tn)}</div></div>
     <div class="kpi r" title="請求したのに未入金の合計（累計請求−累計入金）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillMisu()"><div class="kl">未収金 🔍</div><div class="kv">¥${fmt(tmi)}</div></div>
     <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillRem()"><div class="kl">未請求残 🔍</div><div class="kv">¥${fmt(trem)}</div></div>
-    <div class="kpi o" title="協力会社からの請求合計＝外注の原価${KPI_ALL_NOTE}"><div class="kl">協社請求計</div><div class="kv">¥${fmt(tky)}</div></div>
-    <div class="kpi r" title="協力会社へまだ支払っていない合計${KPI_ALL_NOTE}"><div class="kl">未払残計</div><div class="kv">¥${fmt(tmp)}</div></div>
+    <div class="kpi o" title="${KPI_KYOSHA_TIP}"><div class="kl">協社請求計（発生ベース）</div><div class="kv">¥${fmt(tky)}</div><div class="ks">${_T.tkyCnt}件</div></div>
+    <div class="kpi r" title="${KPI_MIHARAI_TIP}"><div class="kl">未払残計（残高）</div><div class="kv">¥${fmt(tmp)}</div></div>
     <div class="kpi g" title="この月に発生した粗利です。その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。入金や請求漏れは関係しません。原価が先に出た月はマイナスになります。&#10;全案件が対象です。請求漏れで一覧から消えた案件や、検索で絞り込んだ場合も、この月に発生した粗利の合計を表示します。&#10;※下の表の合計行（表示中の案件）とは一致しません&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillArari('${mk}')"><div class="kl">粗利（この月に発生した分）🔍</div><div class="kv">¥${fmt(tar)}</div></div>`;
 
   let clEl=document.getElementById('mClientWrap');
