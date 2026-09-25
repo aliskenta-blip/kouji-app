@@ -3013,11 +3013,29 @@ function caseInMonth(c,mk){
 // 選定条件はこの1箇所だけに置く（中身は renderMonthly にあった処理をそのまま移したもの）。
 // 表示対象の拡張：①前月以前の記入で残高あり（未請求残 or 未収金）＝繰越
 //                 ②当月に請求 or 入金がある現場（出来高請求）
+// 検索窓に当たる協力会社名（Phase 16）。同じ会社が2行あっても1回だけ返す。名前が空の行は無視
+function kyoSrchHits(c,srch){
+  if(!srch)return [];
+  const out=[];
+  (c.kyousha_list||[]).forEach(k=>{const n=k.name||'';if(n&&n.toLowerCase().includes(srch)&&!out.includes(n))out.push(n);});
+  return out;
+}
+// 月別入力・請求モードの検索条件。★当月の案件と繰越・出来高で再掲する案件で
+//   同じ関数を通す（Phase 16 までは再掲側だけ見積番号が抜けていた）
+function caseMatchesSrch(c,srch){
+  if(!srch)return true;
+  return [c.place,c.client,c.tantou,c.kouji,c.kubun,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch))
+    ||kyoSrchHits(c,srch).length>0;
+}
+// 協力会社名で当たったときに場所の横に出すバッジ。なぜこの現場が出たのかを見せる
+function kyoSrchBadge(c,srch){
+  return kyoSrchHits(c,srch).map(n=>`<span style="display:inline-block;margin-left:4px;padding:1px 5px;border-radius:4px;background:#ebf3fb;border:1px solid #1565c0;color:#1565c0;font-size:9px;font-weight:700;vertical-align:middle" title="検索語に一致した協力会社">協 ${esc(n)}</span>`).join('');
+}
 function monthlyCases(mk,srch){
   let cases=S.cases.filter(c=>caseInMonth(c,mk));
-  if(srch)cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch)));
+  if(srch)cases=cases.filter(c=>caseMatchesSrch(c,srch));
   const ids=new Set(cases.map(c=>c.id));
-  const matchSrch=c=>!srch||[c.place,c.client,c.tantou,c.kouji,c.kubun].some(v=>(v||'').toLowerCase().includes(srch));
+  const matchSrch=c=>caseMatchesSrch(c,srch);
   S.cases.forEach(c=>{
     if(ids.has(c.id)||!matchSrch(c))return;
     const dm=(c.date||'').slice(0,7);
@@ -3192,7 +3210,7 @@ function renderSeikyuu(){
     const morei=c.more_flag==='✓';
     return `<tr class="${i%2?'alt':''}"${morei?' style="background:#fff8e1"':''}>
       <td class="ctr">${i+1}</td>
-      <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}</td>
+      <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}${kyoSrchBadge(c,srch)}</td>
       <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${furikaeBadge(c)}</td>
@@ -3482,6 +3500,7 @@ function monthlyRemindHtml(mk){
 // 月別入力の表本体（列・挙動は現行のまま）
 function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
   const yr=getYr(),mo=getMo();
+  const srch=(vg('srch_m')||'').toLowerCase();   // 協社名バッジ用（絞り込みは monthlyCases で済んでいる）
   // ソート適用
   cases=sortCases(cases,'monthly');
 
@@ -3597,7 +3616,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
       <td class="ctr" style="cursor:pointer;font-size:11px" id="exp-${c.id}" onclick="togSub('${c.id}')">${r.cnt>0?'▶':''}</td>
       <td class="ctr">${i+1}</td><td class="ctr" ${ec} onclick="editCell('${c.id}','date',this,'month')">${carryMark}${(c.date||'').slice(5)}</td>
       <td style="white-space:nowrap;font-size:10px;padding:2px">${koukiCell}</td>
-      <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}</td>
+      <td ${ec} onclick="editCell('${c.id}','place',this)">${esc(c.place||'')}${kyoSrchBadge(c,srch)}</td>
       <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${furikaeBadge(c)}${pdfs.join('')}</td>
