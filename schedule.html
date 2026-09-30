@@ -125,6 +125,16 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 .bill-card > div[style*="display:flex;gap:6px"]{display:none!important}
 @page{size:A3 landscape;margin:5mm}
 }
+/* === ズーム（Excel風 右下コントロール） === */
+.sch-wrap{touch-action:pan-x pan-y}
+.zoom-ctrl{position:fixed;right:calc(12px + env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:300;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.96);border:1px solid #cfd8dc;border-radius:20px;padding:4px 8px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.zoom-ctrl button{width:30px;height:30px;border:none;border-radius:50%;background:#eceff1;color:#37474f;font-size:20px;font-weight:700;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit}
+.zoom-ctrl button:hover{background:#cfd8dc}
+.zoom-ctrl button:active{transform:scale(.92)}
+.zoom-ctrl input[type=range]{width:110px;accent-color:#1f4e79;cursor:pointer}
+.zoom-ctrl .zoom-pct{min-width:46px;text-align:right;font-size:12px;font-weight:700;color:#37474f;cursor:pointer}
+@media (max-width:520px){.zoom-ctrl input[type=range]{display:none}.zoom-ctrl button{width:36px;height:36px}}
+@media print{.zoom-ctrl{display:none!important}}
 </style>
 </head>
 <body>
@@ -159,6 +169,12 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 </div>
 </div>
 <div class="sch-wrap" id="schWrap"><table class="sch-table" id="schTable"></table></div>
+<div class="zoom-ctrl no-print" id="zoomCtrl">
+<button type="button" onclick="zoomStep(-1)" title="縮小">−</button>
+<input type="range" id="zoomRange" min="30" max="200" step="5" value="100" oninput="setZoom(this.value/100)">
+<button type="button" onclick="zoomStep(1)" title="拡大">＋</button>
+<span class="zoom-pct" id="zoomPct" onclick="setZoom(1)" title="クリックで100%に戻す">100%</span>
+</div>
 </div>
 <div id="p-bill" class="panel">
 <div style="padding:16px 16px 8px;font-size:15px;font-weight:700;color:var(--nav)">💰 請求可能現場</div>
@@ -436,7 +452,7 @@ document.addEventListener('mousemove',e=>{
 if(resizeState){
 e.preventDefault();
 const min=minCW[resizeState.col]||30;
-const nw=Math.max(min,resizeState.sw+(e.clientX-resizeState.sx));
+const nw=Math.max(min,Math.round(resizeState.sw+(e.clientX-resizeState.sx)/((typeof schZoom==='number'&&schZoom>0)?schZoom:1)));
 if(!D.colWidths)D.colWidths={};
 D.colWidths[resizeState.col]=nw;
 applyCW();
@@ -798,7 +814,8 @@ function syncHeaders(){
 const wrap=document.getElementById('schWrap');if(!wrap)return;
 const sl=wrap.scrollLeft;
 const els=wrap.querySelectorAll('.sch-table thead .left-hdr, .sch-table thead .top-left');
-els.forEach(el=>{el.style.transform=`translate3d(${sl}px,0,0)`;});
+const z=(typeof schZoom==='number'&&schZoom>0)?schZoom:1;
+els.forEach(el=>{el.style.transform=`translate3d(${sl/z}px,0,0)`;});
 }
 /* 初期化時に1回バインド */
 (function bindHeaderSync(){
@@ -812,6 +829,90 @@ pending=true;
 requestAnimationFrame(()=>{syncHeaders();pending=false;});
 },{passive:true});
 syncHeaders();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tryBind);
+else tryBind();
+})();
+/* === ズーム（ピンチ／Ctrl+ホイール／右下の＋−） === */
+var ZOOM_MIN=0.3,ZOOM_MAX=2.0;
+var schZoom=1;
+try{const v=parseFloat(localStorage.getItem('sch_zoom'));if(v>=ZOOM_MIN&&v<=ZOOM_MAX)schZoom=v;}catch(e){}
+function applyZoom(){
+const t=document.getElementById('schTable');if(t)t.style.zoom=schZoom;
+const r=document.getElementById('zoomRange');if(r)r.value=Math.round(schZoom*100);
+const p=document.getElementById('zoomPct');if(p)p.textContent=Math.round(schZoom*100)+'%';
+syncHeaders();
+}
+/* fx,fy: 拡大縮小の中心（schWrap内の座標）。省略時は表示中央 */
+function setZoom(z,fx,fy){
+const wrap=document.getElementById('schWrap');
+z=Math.min(ZOOM_MAX,Math.max(ZOOM_MIN,Math.round(z*100)/100));
+if(!wrap){schZoom=z;applyZoom();return;}
+if(fx==null){fx=wrap.clientWidth/2;fy=wrap.clientHeight/2;}
+const old=schZoom;
+const cx=(wrap.scrollLeft+fx)/old,cy=(wrap.scrollTop+fy)/old;
+schZoom=z;applyZoom();
+wrap.scrollLeft=cx*z-fx;wrap.scrollTop=cy*z-fy;
+syncHeaders();
+try{localStorage.setItem('sch_zoom',String(z));}catch(e){}
+}
+function zoomStep(dir){
+/* Excelと同じく10%刻み */
+const cur=Math.round(schZoom*100);
+let n=dir>0?Math.floor(cur/10)*10+10:Math.ceil(cur/10)*10-10;
+setZoom(n/100);
+}
+(function bindZoom(){
+function tryBind(){
+const wrap=document.getElementById('schWrap');
+if(!wrap){setTimeout(tryBind,100);return;}
+/* PC: Ctrl+ホイール／トラックパッドのピンチ */
+wrap.addEventListener('wheel',e=>{
+if(!e.ctrlKey)return;
+e.preventDefault();
+const rc=wrap.getBoundingClientRect();
+const fx=e.clientX-rc.left,fy=e.clientY-rc.top;
+let f;
+if(Math.abs(e.deltaY)>=40)f=e.deltaY<0?1.1:1/1.1;/* マウスホイール */
+else f=Math.exp(-e.deltaY*0.01);/* トラックパッド */
+setZoom(schZoom*f,fx,fy);
+},{passive:false});
+/* スマホ・タブレット: 2本指ピンチ */
+let pinch=null;
+const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+wrap.addEventListener('touchstart',e=>{
+if(e.touches.length===2){
+const rc=wrap.getBoundingClientRect();
+pinch={d:dist(e.touches),z:schZoom,
+fx:(e.touches[0].clientX+e.touches[1].clientX)/2-rc.left,
+fy:(e.touches[0].clientY+e.touches[1].clientY)/2-rc.top};
+}
+},{passive:true});
+wrap.addEventListener('touchmove',e=>{
+if(!pinch||e.touches.length!==2)return;
+e.preventDefault();
+const rc=wrap.getBoundingClientRect();
+const fx=(e.touches[0].clientX+e.touches[1].clientX)/2-rc.left;
+const fy=(e.touches[0].clientY+e.touches[1].clientY)/2-rc.top;
+/* 指の中点の移動分はパン */
+wrap.scrollLeft-=fx-pinch.fx;wrap.scrollTop-=fy-pinch.fy;
+pinch.fx=fx;pinch.fy=fy;
+setZoom(pinch.z*dist(e.touches)/pinch.d,fx,fy);
+},{passive:false});
+wrap.addEventListener('touchend',e=>{if(e.touches.length<2)pinch=null;});
+wrap.addEventListener('touchcancel',()=>{pinch=null;});
+/* Ctrl+0 で100%、Ctrl+＋/− で10%刻み（工程表タブ表示中のみ） */
+document.addEventListener('keydown',e=>{
+if(!(e.ctrlKey||e.metaKey))return;
+if(!document.getElementById('p-sch').classList.contains('on'))return;
+if(e.key==='0'){e.preventDefault();setZoom(1);}
+else if(e.key==='+'||e.key===';'||e.key==='='){e.preventDefault();zoomStep(1);}
+else if(e.key==='-'){e.preventDefault();zoomStep(-1);}
+});
+/* 印刷時はズームを外す（印刷レイアウトは従来どおり） */
+window.addEventListener('beforeprint',()=>{const t=document.getElementById('schTable');if(t)t.style.zoom='';});
+window.addEventListener('afterprint',applyZoom);
+applyZoom();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tryBind);
 else tryBind();
