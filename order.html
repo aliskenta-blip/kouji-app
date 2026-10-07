@@ -2501,6 +2501,28 @@ function projArariRate(c){
   if(base<=0)return 0;
   return arariKeiyakuOf(c)/base;
 }
+// ============================================================
+// ★率のセルの表示（2026-10-07 けんた）。一覧の率の列（月別入力・マスター）と、粗利の内訳モーダルの率の列で共通
+//   projArariRate は「率が出せない」ときも 0 を返すので、そのまま出すと「0.0%」が2つの意味になっていた
+//   （葛飾区 水元四1期＝発注と外注費が同額で本当に0% ／ 柏市 松ヶ崎01170①＝発注金額が未入力で計算できない）。
+//   ・率が出せない案件は「—」:
+//       分母（発注金額。未入力なら累計請求額）が0以下＝発注金額も請求も入っていない
+//       または協力会社の請求も見積も未入力（arariRateTarget が false）
+//   ・本当に0.0%（表示が 0.0% になる）の案件は「0.0%」のまま赤で出す（利益が出ていない現場を目立たせる）
+//   ★projArariRate・合計・KPI（率の加重平均）には触らない。表示だけを分ける
+// ============================================================
+function arariRateCell(c){
+  if(!showArariOf(c))return {txt:'—',ok:false,why:''};
+  if(!arariRateTarget(c))return {txt:'—',ok:false,why:'協力会社の請求も見積も未入力のため、率を出せません'};
+  if(arariBaseOf(c)<=0)return {txt:'—',ok:false,why:'発注金額が未入力（請求も無し）のため、率を出せません'};
+  const rt=projArariRate(c), kk=arariKakutei(c);
+  const zero=Math.round(rt*1000)===0;          // 表示が 0.0% になる＝利益が出ていない
+  return {txt:fmtP(rt*100)+(kk?'':' 予'),ok:true,rt,kk,zero,red:rt<0||zero};
+}
+// セルの title（一覧・モーダル共通）
+function arariRateTip(rc){
+  return ARARI_RATE_MSG+(rc.ok&&!rc.kk?'&#10;'+ARARI_YOTEI_MSG:'')+(rc.why?'&#10;'+rc.why:'')+(rc.ok&&rc.zero?'&#10;粗利率 0.0%（利益が出ていません）':'');
+}
 // 当月の協力会社請求額（★発生月ベース。協社 billings に claim_month は無い）
 function getKyoBilledMonth(c,ym){
   return (c.kyousha_list||[]).reduce((a,k)=>{
@@ -3312,13 +3334,12 @@ function openKpiDrillArari(mk,mode){
     const v=(o.bm==null||d.isFY||o.hasJuchu)?o.a:(o.bm-o.km);
     // ★率（Phase 17）: 一覧の率の列と同じ式・同じ「予」をそのまま出す（新しい計算は書かない）。
     //   率は契約ベースなので、月モードでも年度モードでも同じ値。色は金額とは独立（率の符号で決める）
-    const shR=showArariOf(c), rt=shR?projArariRate(c):0, kk=shR&&arariKakutei(c);
-    const rateTxt=shR?fmtP(rt*100)+(kk?'':' 予'):'—';
+    const rc=arariRateCell(c);
     return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #eee;cursor:pointer;font-size:12px" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
       <span style="flex:1;min-width:120px">${nm(c)}${esc(c.client?'（'+c.client+'）':'')}</span>
       <span style="white-space:nowrap;color:#555">${f}</span>
       <span style="white-space:nowrap;font-weight:700;width:96px;text-align:right;color:${v<0?'#c62828':'#2e7d32'}">${v>=0?'+':''}¥${fmt(v)}</span>
-      <span class="kd-rate" style="white-space:nowrap;width:62px;text-align:right;font-size:11px;font-weight:700;color:${shR?(rt<0?'#c62828':'#2e7d32'):'#bbb'}" title="${ARARI_RATE_MSG}${shR&&!kk?'&#10;'+ARARI_YOTEI_MSG:''}">${rateTxt}</span>
+      <span class="kd-rate" style="white-space:nowrap;width:62px;text-align:right;font-size:11px;font-weight:700;color:${rc.ok?(rc.red?'#c62828':'#2e7d32'):'#bbb'}" title="${arariRateTip(rc)}">${rc.txt}</span>
     </div>`;
   };
   const block=(rows)=>rows.length?rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>';
@@ -3658,7 +3679,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
       <td class="num big ${(showArari&&genkaOk&&!arariZero)?(arariMonth>=0?'cp':'cl'):''}"${arariZero?' style="color:#bbb;font-weight:400"':''} title="${showArari&&!genkaOk?GENKA_MIKAKUTEI_TIP:'当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります'+(arariZero?'&#10;この月は請求も協力会社の請求もありませんでした':'')}">${(showArari&&genkaOk)?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
-      <td class="ctr ${showArari?(projArariRate(c)>=0?'cp':'cl'):''}" title="${ARARI_RATE_MSG}${showArari&&!kakutei?'&#10;'+ARARI_YOTEI_MSG:''}">${showArari?fmtP(projArariRate(c)*100)+(kakutei?'':' 予'):'—'}</td>
+      ${(()=>{const rc=arariRateCell(c);return `<td class="ctr ${rc.ok?(rc.red?'cl':'cp'):''}" title="${arariRateTip(rc)}">${rc.txt}</td>`;})()}
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${seikyuuMonthOf(c,mk)==='✓'?`<span class="ck pk on" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;この月は未請求です。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
       <td class="ctr">${bm>0?`<span class="ck pk${(nyMonth>=bm)?' on':''}" style="cursor:pointer" title="この月の請求分の入金。クリックで入金済⇔未入金（他の月には影響しません）" onclick="togNyukinMonth('${c.id}')">${(nyMonth>=bm)?'✓':'未'}</span>`:`<span class="ck pk" style="opacity:.3;cursor:default" title="この月は請求がありません">入</span>`}</td>
@@ -3831,7 +3852,7 @@ function renderMaster(){
       <td class="num">¥${fmt(r.ksh)}</td>
       <td class="${r.miharai>0?'cw':'ca'}">¥${fmt(r.miharai)}</td>
       <td class="${(shA&&gk)?(r.arari>=0?'cp':'cl'):''}" style="font-weight:700" title="${shA?(gk?'案件の粗利（累計）':GENKA_MIKAKUTEI_TIP):'協力会社なし、または合同で自社受注額が未入力のため粗利を出しません'}">${(shA&&gk)?'¥'+fmt(r.arari):'—'}</td>
-      <td class="ctr" title="${ARARI_RATE_MSG}${shA&&!kkA?'&#10;'+ARARI_YOTEI_MSG:''}">${shA?fmtP(projArariRate(c)*100)+(kkA?'':' 予'):'—'}</td>
+      ${(()=>{const rc=arariRateCell(c);return `<td class="ctr"${rc.ok&&rc.zero?' style="color:var(--red);font-weight:700"':''} title="${arariRateTip(rc)}">${rc.txt}</td>`;})()}
       <td class="ctr">${fn(c.m3)||''}</td>
       <td class="ctr">${ck(c.seikyuu_c)}</td><td class="ctr">${ck(c.nyukin_c)}</td>
       <td class="ctr">${ck(c.shashin)}</td><td class="ctr">${ck(c.zando)}</td>
