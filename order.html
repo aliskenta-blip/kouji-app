@@ -441,6 +441,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
     <button class="btn bg btn-sm" onclick="doCSV('all')">📥 全件CSV</button>
     <button class="btn bp btn-sm no-print" onclick="window.print()">🖨️ 印刷</button>
   </div>
+  <div id="maAdjBal" class="no-print"></div>
   <div id="maBatchBar" class="no-print" style="display:none;background:#e3f2fd;border-radius:8px;padding:10px 14px;margin-bottom:10px;flex-wrap:wrap;gap:8px;align-items:center">
     <span style="font-weight:700;color:#1565c0" id="maBatchCount">0件選択</span>
     <select id="maBatchField" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:12px" onchange="batchFieldChg('maBatch')">
@@ -3737,7 +3738,34 @@ function printMonthly(){
 window.addEventListener('afterprint',()=>{document.body.classList.remove('printing-monthly');});
 
 // ── マスター ──
+// 一覧（マスター）の上に、担当者ごとの残高をまとめて出す。行を押すとその担当者の案件だけに絞る
+let maAdjOpen=true;
+function renderAdjBalCard(){
+  const el=document.getElementById('maAdjBal');if(!el)return;
+  const gs=Object.values(adjBalances(null)).sort((a,b)=>a.bal-b.bal||a.key.localeCompare(b.key,'ja'));
+  if(!gs.length){el.innerHTML='';return;}
+  const tot=gs.reduce((t,g)=>{t.rinji+=g.rinji;t.hensai+=g.hensai;t.azukari+=g.azukari;t.bal+=g.bal;return t;},{rinji:0,hensai:0,azukari:0,bal:0});
+  const neg=gs.filter(g=>g.bal<0).length;
+  el.innerHTML=`<div style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;padding:8px 12px;margin-bottom:10px">
+    <div style="cursor:pointer;font-weight:700;color:var(--nav);display:flex;gap:10px;align-items:center;flex-wrap:wrap" onclick="maAdjOpen=!maAdjOpen;renderAdjBalCard()">
+      ${maAdjOpen?'▼':'▶'} ⚖ 予算の調整の残高（担当者ごと）
+      <span style="font-weight:400;font-size:12px;color:#555">${gs.length}人・合計 <b>${adjYen(tot.bal)}</b>${neg?`　<b style="color:#c62828">回収が必要 ${neg}人</b>`:''}</span></div>
+    ${maAdjOpen?`<div style="font-size:11px;color:#888;margin:4px 0 6px">0が一番良い状態。臨時予算（値引き）で−、返済予算（回収）・預り金（プール）で＋。行を押すとその担当者の案件だけに絞ります。工事コストの残高と同じ式です。</div>
+    <div style="overflow-x:auto"><table class="tbl" id="maAdjTbl" style="font-size:12px"><thead><tr><th>担当者（元請）</th><th>臨時予算</th><th>返済予算</th><th>預り金</th><th>残高</th><th>状態</th></tr></thead><tbody>
+      ${gs.map(g=>`<tr style="cursor:pointer" onclick="maAdjFilter('${esc(g.client).replace(/'/g,'&#39;')}','${esc(g.tantou).replace(/'/g,'&#39;')}')" title="この担当者の案件だけに絞る">
+        <td>${esc(g.tantou||'（担当者なし）')} <span style="color:#888">${esc(g.client||'')}</span></td>
+        <td class="num">${g.rinji?'−¥'+fmt(g.rinji):'—'}</td><td class="num">${g.hensai?'+¥'+fmt(g.hensai):'—'}</td><td class="num">${g.azukari?'+¥'+fmt(g.azukari):'—'}</td>
+        <td class="num"><b>${adjYen(g.bal)}</b></td><td>${adjStateHtml(g.bal)}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td><b>合計</b></td><td class="num">${tot.rinji?'−¥'+fmt(tot.rinji):'—'}</td><td class="num">${tot.hensai?'+¥'+fmt(tot.hensai):'—'}</td><td class="num">${tot.azukari?'+¥'+fmt(tot.azukari):'—'}</td>
+      <td class="num"><b>${adjYen(tot.bal)}</b></td><td>${adjStateHtml(tot.bal)}</td></tr></tfoot></table></div>`:''}
+  </div>`;
+}
+function maAdjFilter(cl,ta){
+  const d=s=>{const t=document.createElement('textarea');t.innerHTML=s;return t.value;};
+  ensureOption('af_cl',d(cl));vs('af_cl',d(cl));ensureOption('af_ta',d(ta));vs('af_ta',d(ta));renderMaster();
+}
 function renderMaster(){
+  renderAdjBalCard();
   const yr=getYr();
   const fmo=vg('af_mo'),fcl=vg('af_cl'),fta=vg('af_ta'),fst=vg('af_st'),ftx=(vg('af_tx')||'').toLowerCase();
   let cases=[...S.cases].sort((a,b)=>(a.seikyuu_t||'').localeCompare(b.seikyuu_t||''));
@@ -5072,27 +5100,67 @@ function adjCalc(kind,orderYen,adjYen){
   const delta=kind==='rinji'?a:-a;              // 工事台帳 − 発注額
   return {ledger:Math.round(Number(orderYen)||0)+delta, bal:-delta};
 }
+// ============================================================
+// ★予算の調整の残高（元請＋担当者ごと）2026-10-07 けんた
+//   残高を見るのは案件を登録するとき（「◯◯さんにいま330万預かっている」→その場で返すか決める）。
+//   ★式は工事コスト（kouji-cost の orderAdj／残高の画面）と同じ: −臨時予算 ＋ 返済予算 ＋ 預り金。
+//     束ね方も同じ（元請＋担当者。同じ名前の担当者でも元請が違えば別）。
+//   ★振替（記録用）の案件は数えない。工事コストへ同期しない案件なので、数えると両方の数字がずれる。
+//   ★残高0が一番良い。マイナスは回収が必要。
+// ============================================================
+function adjKey(client,tantou){return String(client||'').trim()+'｜'+String(tantou||'').trim();}
+function adjBalances(excludeId){
+  const by={};
+  (S.cases||[]).forEach(c=>{
+    if(isFurikae(c)||(excludeId&&c.id===excludeId))return;
+    const r=adjCalc(c.adj_kind,c.jisha_h,c.adj_amount);if(!r)return;
+    const k=adjKey(c.client,c.tantou);
+    const g=by[k]||(by[k]={key:k,client:String(c.client||'').trim(),tantou:String(c.tantou||'').trim(),rinji:0,hensai:0,azukari:0,bal:0,n:0});
+    g[c.adj_kind]+=Math.abs(Math.round(fn(c.adj_amount)));g.bal+=r.bal;g.n++;
+  });
+  return by;
+}
+function adjYen(v){return v===0?'0':(v<0?'−':'+')+'¥'+fmt(Math.abs(v));}
+function adjStateHtml(b){
+  if(b===0)return '<span style="background:#e8f5e9;color:#2e7d32;border-radius:8px;padding:1px 8px;font-weight:700;white-space:nowrap">✅ 0（釣り合い）</span>';
+  if(b<0)return `<span style="background:#ffebee;color:#c62828;border-radius:8px;padding:1px 8px;font-weight:700;white-space:nowrap">回収が必要 ¥${fmt(-b)}</span>`;
+  return `<span style="background:#e3f2fd;color:#1565c0;border-radius:8px;padding:1px 8px;font-weight:700;white-space:nowrap">預り ¥${fmt(b)}</span>`;
+}
+// 案件フォームの「この担当者の残高」（いま／この案件を保存すると）
+function adjBalHint(r){
+  const cl=vg('f_cl'),ta=vg('f_ta');
+  if(!cl&&!ta)return '';
+  const g=adjBalances(editId)[adjKey(cl,ta)];
+  const now=g?g.bal:0, after=now+(r?r.bal:0);
+  const who=`${esc(ta||'（担当者なし）')}さん（${esc(cl||'元請なし')}）`;
+  return `<div id="f_adj_bal" style="margin-top:6px;padding:6px 10px;border-radius:8px;background:#f8fafc;border:1px solid #e0e0e0;line-height:1.8">
+    ⚖ ${who}の残高: いま <b>${adjYen(now)}</b> ${adjStateHtml(now)}${g?`<span style="color:#888;font-size:11px">（${g.n}件）</span>`:''}
+    ${r?`<br>この案件を保存すると <b>${adjYen(after)}</b> ${adjStateHtml(after)}`:''}</div>`;
+}
 function adjHint(){
   const el=document.getElementById('f_adj_hint');if(!el)return;
   const k=vg('f_adj_kind'), jh=Math.round(parseFloat(vg('f_jh')||0)*10000), a=Math.round(parseFloat(vg('f_adj_amt')||0)*10000);
   const r=adjCalc(k,jh,a);
-  if(!k){el.textContent='';return;}
-  if(!r){el.innerHTML='<span style="color:#c62828">差額を入れてください（万円・正の数）</span>';return;}
-  if(r.ledger<=0){el.innerHTML='<span style="color:#c62828">差額が発注金額以上です（工事台帳が0以下になります）</span>';return;}
+  if(!k){el.innerHTML=adjBalHint(null);return;}
+  if(!r){el.innerHTML='<span style="color:#c62828">差額を入れてください（万円・正の数）</span>'+adjBalHint(null);return;}
+  if(r.ledger<=0){el.innerHTML='<span style="color:#c62828">差額が発注金額以上です（工事台帳が0以下になります）</span>'+adjBalHint(null);return;}
   const man=v=>(Math.round(v/1000)/10).toLocaleString('ja-JP')+'万';
-  el.innerHTML=`発注 <b>${man(jh)}</b> → <b>工事台帳 ${man(r.ledger)}</b>　残高 <b style="color:${r.bal<0?'#c62828':'#2e7d32'}">${r.bal<0?'−':'+'}${man(Math.abs(r.bal))}</b>（${ADJ_LABEL[k]}）`;
+  el.innerHTML=`発注 <b>${man(jh)}</b> → <b>工事台帳 ${man(r.ledger)}</b>　この案件で残高 <b style="color:${r.bal<0?'#c62828':'#2e7d32'}">${r.bal<0?'−':'+'}${man(Math.abs(r.bal))}</b>（${ADJ_LABEL[k]}）`+adjBalHint(r);
 }
+// ★発注者・支店・担当を変えたら、その担当者の残高を出し直す（select ごとの onchange は触らない）
+document.addEventListener('change',e=>{const id=e.target&&e.target.id;if(id==='f_cl'||id==='f_br'||id==='f_ta')setTimeout(adjHint,0);});
 function openAdd(){
   if(!canEdit()){alert('入力権限がありません');return;}
   editId=null;KD=[];pdfH=null;pdfS=null;formBillings=[];pdfKouki='';
   document.getElementById('mdlT').textContent='案件追加';
   ['f_dt','f_pl','f_kj','f_mno','f_jh','f_ny','f_m3','f_bk','f_haichi','f_genba','f_adj_kind','f_adj_amt','f_adj_memo'].forEach(id=>vs(id,''));
-  chkMno();adjHint();
+  chkMno();
   document.getElementById('f_jisha_sekou').checked=false;
   const jw=document.getElementById('f_jisha_sekou_wrap');jw.style.background='#f8fff8';jw.style.borderColor='#e0e0e0';
   document.getElementById('f_furikae').checked=false;
   const fw=document.getElementById('f_furikae_wrap');fw.style.background='#fffdf5';fw.style.borderColor='#e0e0e0';
   vs('f_cl','');vs('f_br','');vs('f_ta','');vs('f_kb','');vs('f_moto','元請');vs('f_jv','');vs('f_gishi','');vs('f_kouji_type','');
+  adjHint();   // ★発注者・担当を空にしてから（前に開いた案件の担当者の残高を出さない）
   vs('f_dt',new Date().toISOString().slice(0,7));
   document.getElementById('f_bl_month').value=getMK(getYr(),getMo());
   document.getElementById('f_bl_amount').value='';
@@ -5292,6 +5360,7 @@ function editCase(id){
     vs('f_moto',c.moto_shita||'');vs('f_jv',c.jv||'');vs('f_gishi',c.gishi_type||'');
     ensureOption('f_kouji_type',c.kouji_type||'');vs('f_kouji_type',c.kouji_type||'');
     onGyoshuChange();
+    adjHint();   // ★担当者が入ってから残高を出す
   },50);
   onGyoshuChange();
   document.getElementById('addMov').classList.add('open');
