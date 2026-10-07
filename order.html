@@ -3310,10 +3310,15 @@ function openKpiDrillArari(mk,mode){
         ? `<span style="color:#666">自社受注額 − 外注費</span>`                       // 中間マージンは式が違う
         : `請求 <b>¥${fmt(o.bm)}</b> − 協社 <b>¥${fmt(o.km)}</b>`);
     const v=(o.bm==null||d.isFY||o.hasJuchu)?o.a:(o.bm-o.km);
+    // ★率（Phase 17）: 一覧の率の列と同じ式・同じ「予」をそのまま出す（新しい計算は書かない）。
+    //   率は契約ベースなので、月モードでも年度モードでも同じ値。色は金額とは独立（率の符号で決める）
+    const shR=showArariOf(c), rt=shR?projArariRate(c):0, kk=shR&&arariKakutei(c);
+    const rateTxt=shR?fmtP(rt*100)+(kk?'':' 予'):'—';
     return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #eee;cursor:pointer;font-size:12px" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
       <span style="flex:1;min-width:120px">${nm(c)}${esc(c.client?'（'+c.client+'）':'')}</span>
       <span style="white-space:nowrap;color:#555">${f}</span>
       <span style="white-space:nowrap;font-weight:700;width:96px;text-align:right;color:${v<0?'#c62828':'#2e7d32'}">${v>=0?'+':''}¥${fmt(v)}</span>
+      <span class="kd-rate" style="white-space:nowrap;width:62px;text-align:right;font-size:11px;font-weight:700;color:${shR?(rt<0?'#c62828':'#2e7d32'):'#bbb'}" title="${ARARI_RATE_MSG}${shR&&!kk?'&#10;'+ARARI_YOTEI_MSG:''}">${rateTxt}</span>
     </div>`;
   };
   const block=(rows)=>rows.length?rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>';
@@ -3327,7 +3332,8 @@ function openKpiDrillArari(mk,mode){
       <span onclick="kpiDrillClose()" style="cursor:pointer;font-size:24px;line-height:1;padding:0 6px" title="閉じる">×</span>
     </div>
     <div style="padding:14px">
-      <div style="font-size:11px;color:#666;margin-bottom:8px">その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。全案件が対象です。${d.isFY?'この画面は年度の12ヶ月を合計しています。':''}</div>
+      <div style="font-size:11px;color:#666;margin-bottom:8px">その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。全案件が対象です。${d.isFY?'この画面は年度の12ヶ月を合計しています。':''}
+        <br>右端は粗利率（契約ベース・一覧の率と同じ）。<b>粗利がマイナスでも率がプラスなら、請求のタイミングのズレです（通算すれば戻ります）。粗利も率もマイナスなら、契約そのものが赤字の可能性があります。</b></div>
       <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px">算入　${d.inc.length}件　¥${fmt(d.incSum)}<span style="font-weight:400;color:#888">　※${d.isFY?'年度全体':mk+' の分'}</span></div>
       ${block(d.inc)}
       <div style="display:flex;justify-content:space-between;font-weight:800;font-size:13px;padding:8px 0;border-top:2px solid #333;margin-top:4px">
