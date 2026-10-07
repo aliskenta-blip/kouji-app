@@ -1472,8 +1472,8 @@ C社 自社受注（空）  / 原価400万  → 無視される（原価400万�
     <div class="fg"><label>工事区分</label><select id="f_kb"></select></div>
     <div class="fg" style="grid-column:span 2"><label>工事名・枝番</label><input type="text" id="f_kj" lang="ja" style="ime-mode:active" autocomplete="off"></div>
     <div class="fg" style="grid-column:span 2"><label>見積番号（kouji-cost）</label>
-      <input type="text" id="f_mno" placeholder="2026-0003" autocomplete="off" maxlength="9" oninput="chkMno()">
-      <div id="f_mno_msg" style="font-size:11px;color:#888;margin-top:3px">kouji-cost で採番された見積番号（YYYY-NNNN）を転記。見積を経ない案件は空欄のままでOK</div>
+      <input type="text" id="f_mno" placeholder="2026-0020-2" autocomplete="off" maxlength="14" oninput="chkMno()">
+      <div id="f_mno_msg" style="font-size:11px;color:#888;margin-top:3px">kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）を転記。見積を経ない案件は空欄のままでOK</div>
     </div>
   </div>
   <div class="st">📄 工事経歴書用</div>
@@ -2244,7 +2244,7 @@ const COL_TIPS={
   tantou:'社内の担当者',
   kouji:'工事の名前・枝番',
   kubun:'工事の種類分け（造成・給排水・舗装など）',
-  mitsumori_no:'kouji-cost で採番された見積番号（YYYY-NNNN）。全システム共通のキー',
+  mitsumori_no:'kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）。全システム共通のキー',
   jisha_h:'お客さんから受注した契約金額（発注金額）',
   jisha_s:'お客さんへ請求した金額。クリックで月ごとの出来高を入力',
   misu:'請求したのにまだ入金されていない金額（累計請求−累計入金）',
@@ -5097,16 +5097,19 @@ function onGyoshuChange(){
   el.innerHTML=html;
 }
 // ── 見積番号（kouji-cost で採番された全システム共通キー） ──
-// 形式チェック（YYYY-NNNN）のみ。kouji-cost 側との存在照合はしない（DBが別のため）
-const MNO_RE=/^\d{4}-\d{4}$/;
-const MNO_HINT='kouji-cost で採番された見積番号（YYYY-NNNN）を転記。見積を経ない案件は空欄のままでOK';
+// 形式チェック（YYYY-NNNN または YYYY-NNNN-版）のみ。kouji-cost 側との存在照合はしない（DBが別のため）
+// ★版（-1／-2…）は Phase 18（2026-10-07）から。桁数は固定しない。版なしも従来どおり通す。
+//   値は書かれたままの文字列で保存し、変換しない（kouji-cost との突合キー・§13-A）。
+//   kouji-cost は版を無視して YYYY-NNNN で見積を突き合わせ、版があれば「発注された版」として読む
+const MNO_RE=/^\d{4}-\d{4}(-\d+)?$/;
+const MNO_HINT='kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）を転記。見積を経ない案件は空欄のままでOK';
 const mnoOk=v=>!v||MNO_RE.test(v);      // 空欄は可（見積を経ない案件があるため）
 function chkMno(){
   const el=document.getElementById('f_mno');if(!el)return true;
   const v=(el.value||'').trim(),ok=mnoOk(v),msg=document.getElementById('f_mno_msg');
   el.style.borderColor=v?(ok?'#2e7d32':'#c62828'):'';
   if(msg){
-    msg.textContent=v?(ok?'✓ 形式OK':'⚠ 形式が違います（例: 2026-0003）'):MNO_HINT;
+    msg.textContent=v?(ok?'✓ 形式OK':'⚠ 形式が違います（例: 2026-0003 ／ 版つき 2026-0020-2）'):MNO_HINT;
     msg.style.color=v?(ok?'#2e7d32':'#c62828'):'#888';
   }
   return ok;
@@ -5407,7 +5410,7 @@ function saveCase(cont){
   // 見積番号は空欄可。入力されている場合だけ形式（YYYY-NNNN）を確認する
   const _mno=(vg('f_mno')||'').trim();
   if(!mnoOk(_mno)){
-    alert('見積番号の形式が違います。\nkouji-cost の採番と同じ「YYYY-NNNN」で入力してください（例: 2026-0003）。\n\n見積を経ない案件は空欄のままで保存できます。');
+    alert('見積番号の形式が違います。\nkouji-cost の採番と同じ「YYYY-NNNN」または版つきの「YYYY-NNNN-版」で入力してください（例: 2026-0003 ／ 2026-0020-2）。\n\n見積を経ない案件は空欄のままで保存できます。');
     chkMno();
     const _mn=document.getElementById('f_mno');if(_mn){try{_mn.focus();}catch(e){}}
     return;
