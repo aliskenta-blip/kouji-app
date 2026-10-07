@@ -60,10 +60,21 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 .sch-table td.day{width:28px;min-width:28px;height:30px;cursor:crosshair;padding:0;position:relative}
 .sch-table td.day.sat{background:#f5f8ff}.sch-table td.day.sun,.sch-table td.day.hol{background:#fff5f5}
 .sch-table td.day .bar{position:absolute;inset:2px 0;border-radius:2px}
+/* ★見積番号（2026-10-06）。現場名の左。1現場5つまで、1つ1行で縦に積む。
+   ★幅は一番長い番号ぴったり（renderで測る）。番号が1つも無いときは列ごと出さない */
+.sch-table th.left-hdr[data-col="est"]{font-size:10px;padding:0 2px}
+.sch-table td.task-est{position:sticky;left:0;z-index:5;background:#fff;padding:1px 3px;text-align:left;vertical-align:middle;
+  cursor:pointer;font-size:10px;line-height:1.15;color:#37474f;font-variant-numeric:tabular-nums;letter-spacing:0}
+.sch-table td.task-est:hover{background:#e3f2fd}
+.sch-table td.task-est .en{display:block}
+.sch-table td.task-est .en.ph{color:#cfd8dc;text-align:center;font-size:12px}
+.sch-table td.task-est:hover .en.ph{color:#1565c0}
+#estPop .estin{font-variant-numeric:tabular-nums;letter-spacing:.5px}
+#estPop .estin.bad{border-color:#c62828!important;background:#fff5f5}
 /* 範囲選択印刷モード */
 .sch-wrap.sel-mode,.sch-wrap.sel-mode td,.sch-wrap.sel-mode th{cursor:cell!important}
 .sch-table td.day.sel-hi::after{content:'';position:absolute;inset:0;background:rgba(230,81,0,.35);pointer-events:none;z-index:2}
-.sch-table td.task-name.sel-hi,.sch-table td.task-days.sel-hi,.sch-table td.task-amount.sel-hi,.sch-table td.task-kouki.sel-hi,.sch-table td.task-note.sel-hi{background:#ffe0cc!important}
+.sch-table td.task-est.sel-hi,.sch-table td.task-name.sel-hi,.sch-table td.task-days.sel-hi,.sch-table td.task-amount.sel-hi,.sch-table td.task-kouki.sel-hi,.sch-table td.task-note.sel-hi{background:#ffe0cc!important}
 .col-resizer{position:absolute;top:0;right:0;bottom:0;width:8px;cursor:col-resize;z-index:11;background:transparent;border-right:2px solid transparent}
 .col-resizer:hover{background:rgba(255,235,59,.4);border-right-color:#ffeb3b}
 .col-resizer.dragging{background:rgba(255,235,59,.7);border-right-color:#ffeb3b}
@@ -98,7 +109,11 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 .sch-table th,.sch-table td{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 .sch-table th{position:static!important}
-.sch-table td.task-name,.sch-table td.task-days,.sch-table td.task-amount,.sch-table td.task-kouki,.sch-table td.task-note{position:static!important}
+.sch-table td.task-est,.sch-table td.task-name,.sch-table td.task-days,.sch-table td.task-amount,.sch-table td.task-kouki,.sch-table td.task-note{position:static!important}
+/* ★見積番号は名前より1px小さく（下限6px）。幅は中身ぴったり（table の自動の幅に任せる） */
+.sch-table td.task-est{font-size:max(6px,calc(var(--p-fs,8px) - 1px))!important;line-height:1.1!important;padding:0 2px!important;
+  min-width:0!important;max-width:none!important;width:auto!important;white-space:nowrap!important}
+.sch-table th.left-hdr[data-col="est"]{font-size:max(6px,calc(var(--p-fs,8px) - 1px))!important;min-width:0!important}
 .sch-table td.day .bar{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 /* テーブル高さを印刷可能領域いっぱいに固定（行が多ければ自動で複数ページ） */
 .sch-table{font-size:var(--p-fs,8px)!important;height:285mm!important}
@@ -192,6 +207,18 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 <button class="btn-g" onclick="saveTask()">💾 保存</button>
 </div>
 <div id="tp_del" style="text-align:center;margin-top:8px"></div>
+</div>
+</div>
+<div class="popup-ov" id="estPop" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+<div class="popup" style="max-width:320px">
+<h3 id="estPopTitle">見積番号</h3>
+<div style="font-size:11px;color:#666;margin-bottom:8px;line-height:1.6">版まで書きます（例: <b>2026-0025-1</b>）。1現場に5つまで。<br>空欄は無視します。全角で打っても半角に直します。</div>
+<div id="estPopIns"></div>
+<div id="estPopErr" style="font-size:11px;color:#c62828;min-height:14px;margin-top:4px"></div>
+<div class="btns">
+<button class="btn-x" onclick="document.getElementById('estPop').style.display='none'">キャンセル</button>
+<button class="btn-g" onclick="saveEst()">💾 保存</button>
+</div>
 </div>
 </div>
 <div class="popup-ov" id="teamPop" style="display:none" onclick="if(event.target===this)this.style.display='none'">
@@ -332,6 +359,73 @@ function swTab(t){document.querySelectorAll('.tab').forEach((el,i)=>el.classList
 function renderLegend(){const el=document.getElementById('legendBar');el.innerHTML=D.teams.map(t=>`<div class="legend-item" onclick="editTeam('${t.id}')"><div class="dot" style="background:${t.color}"></div><span>${t.name}</span></div>`).join('')+`<div class="legend-add" onclick="addTeam()">＋ 班追加</div>`;const ps=document.getElementById('paintTeam');const cv=ps.value;ps.innerHTML='<option value="">— 塗り班 —</option>'+D.teams.map(t=>`<option value="${t.id}" style="color:${t.color}"${t.id===cv?' selected':''}>${t.name}</option>`).join('');}
 function getDays(y,m){return new Date(y,m+1,0).getDate();}
 function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+/* ============================================================
+   ★見積番号（2026-10-06）
+   工程表が「いま着工する現場」の正。発注アプリに未登録の現場でも、ここに見積番号が
+   書いてあれば、それを発注アプリの見積番号欄に転記するだけで仮登録できる。
+   ・1現場に5つまで（同じ場所で造成・給水など見積が複数あるため）。task.estNos（配列）
+   ・番号の形は 2026-0025-1（版まで）。全角で打っても半角に直す
+   ・★工程表は単独運用。kouji-cost とは同期しない。番号は手で書く
+   ・★列の幅は一番長い番号ぴったり。番号が1つも無いときは:
+       画面 … 細い「No.」の列（各行の「＋」を押して書く）。現場名の欄は行のボタンで埋まっていて
+               ボタンを足す余地が無いため、書く入口はこの列にした
+       印刷 … 列ごと出さない（beforeprint で描き直す）。印刷して配るので幅を食わない
+   ============================================================ */
+const EST_MAX=5;
+const EST_RE=/^\d{4}-\d{4}-\d{1,2}$/;
+let _estW=0, _schPrinting=false;
+function estList(t){return (t&&Array.isArray(t.estNos))?t.estNos.filter(x=>x&&String(x).trim()):[];}
+function estNorm(v){
+  return String(v||'').trim()
+    .replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
+    .replace(/[－−‐‑–—ー―]/g,'-').replace(/\s+/g,'');
+}
+// 一番長い番号の幅（px）。canvas で同じ字体で測る（ズームの影響を受けない）
+function estColW(strs,px,label){
+  const c=estColW._c||(estColW._c=document.createElement('canvas').getContext('2d'));
+  const ff=getComputedStyle(document.body).fontFamily;
+  c.font=px+'px '+ff;
+  let m=c.measureText(label||'見積No').width;
+  strs.forEach(s=>{m=Math.max(m,c.measureText(String(s)).width);});
+  return Math.ceil(m)+7;   // 左右の余白 3px×2 ＋ 罫線
+}
+let estTaskId=null;
+function openEst(id){
+  const t=D.tasks.find(t=>t.id===id);if(!t)return;
+  estTaskId=id;
+  document.getElementById('estPopTitle').textContent='見積番号 — '+(t.name||'');
+  const cur=estList(t);
+  let h='';
+  for(let i=0;i<EST_MAX;i++){
+    h+=`<div class="fg" style="margin-bottom:5px"><input type="text" class="estin" id="est_in${i}" inputmode="numeric" autocomplete="off"
+      value="${escAttr(cur[i]||'')}" placeholder="${i===0?'2026-0025-1':''}"
+      onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();${i<EST_MAX-1?`document.getElementById('est_in${i+1}').focus()`:'saveEst()'};}"></div>`;
+  }
+  document.getElementById('estPopIns').innerHTML=h;
+  document.getElementById('estPopErr').textContent='';
+  document.getElementById('estPop').style.display='flex';
+  setTimeout(()=>{const el=document.getElementById('est_in'+Math.min(cur.length,EST_MAX-1));if(el)el.focus();},80);
+}
+function saveEst(){
+  const t=D.tasks.find(t=>t.id===estTaskId);if(!t)return;
+  const out=[],bad=[];
+  for(let i=0;i<EST_MAX;i++){
+    const el=document.getElementById('est_in'+i);if(!el)continue;
+    const v=estNorm(el.value);
+    el.classList.remove('bad');
+    if(!v)continue;
+    if(!EST_RE.test(v)){bad.push(v);el.classList.add('bad');continue;}
+    el.value=v;
+    if(out.indexOf(v)<0)out.push(v);
+  }
+  if(bad.length){
+    document.getElementById('estPopErr').textContent='形が違います: '+bad.join('、')+'（例: 2026-0025-1 ／ 版まで）';
+    return;
+  }
+  if(out.length)t.estNos=out;else delete t.estNos;
+  sv();render();
+  document.getElementById('estPop').style.display='none';
+}
 function render(){
 const sm=document.getElementById('startMonth').value;if(!sm)return;
 const mc=parseInt(document.getElementById('monthCount').value);
@@ -357,24 +451,39 @@ mo.days.push({d,ds,dow,sat:dow===6,sun:dow===0,hol,chol,today:ds===today});
 cur.setDate(d+1);
 }
 const active=printOverride?D.tasks.filter(t=>!t.billed&&printOverride.ids.has(t.id)):D.tasks.filter(t=>!t.billed);
-const w=getCW();const sc=getSC();const totalLeft=w.name+w.days+w.amount+w.kouki+w.note;
-let h='<thead><tr><th colspan="5" class="top-left" style="min-width:'+totalLeft+'px"></th>';
+const w=getCW();const sc=getSC();
+/* ★見積番号の列。表示する現場に番号が1つでもあるときだけ出す（無ければ幅0＝今までと同じ表） */
+const estStrs=[];active.forEach(t=>estList(t).forEach(n=>estStrs.push(n)));
+const estOn=estStrs.length>0;
+// ★印刷のときは番号がある場合だけ列を出す。画面では書く入口なので常に出す（空なら細く）
+const printing=_schPrinting||!!printOverride;
+const estShow=estOn||!printing;
+const estLabel=estOn?'見積No':'No.';
+const ew=estShow?estColW(estStrs,10,estLabel):0;
+if(ew!==_estW){_estW=ew;applyCW();}
+const nLeft=estShow?6:5;
+const totalLeft=ew+w.name+w.days+w.amount+w.kouki+w.note;
+let h='<thead><tr><th colspan="'+nLeft+'" class="top-left" style="min-width:'+totalLeft+'px"></th>';
 months.forEach(mo=>{h+=`<th class="month-hdr" colspan="${mo.days.length}">${mo.label}</th>`;});h+='</tr>';
 h+=`<tr>
+${estShow?`<th class="left-hdr" data-col="est" style="min-width:${ew}px" title="見積番号（版まで）。各行を押すと書けます">${estLabel}</th>`:''}
 <th class="left-hdr" data-col="name" style="min-width:${w.name}px">現場名<div class="col-resizer" data-col="name"></div></th>
 <th class="left-hdr" data-col="days" style="min-width:${w.days}px">土量<div class="col-resizer" data-col="days"></div></th>
 <th class="left-hdr" data-col="amount" style="min-width:${w.amount}px">金額<div class="col-resizer" data-col="amount"></div></th>
 <th class="left-hdr" data-col="kouki" style="min-width:${w.kouki}px">工期<div class="col-resizer" data-col="kouki"></div></th>
 <th class="left-hdr" data-col="note" style="min-width:${w.note}px">備考<div class="col-resizer" data-col="note"></div></th>`;
 months.forEach(mo=>{mo.days.forEach(d=>{const cls=d.today?' today':d.sun||d.hol||d.chol?' sun':d.sat?' sat':'';h+=`<th class="day-num${cls}">${d.d}</th>`;});});h+='</tr>';
-h+='<tr><th colspan="5" class="top-left" style="font-size:8px"></th>';
+h+='<tr><th colspan="'+nLeft+'" class="top-left" style="font-size:8px"></th>';
 months.forEach(mo=>{mo.days.forEach(d=>{const cls=d.sun||d.hol||d.chol?' sun':d.sat?' sat':'';h+=`<th class="dow${cls}">${DOW[d.dow]}</th>`;});});h+='</tr></thead><tbody>';
 active.forEach(task=>{
 const paintedDays=Object.keys(D.bars[task.id]||{}).length;
 const nameClass=task.completed?'s-done':(task.dekidaka?'s-deki':'');
 const nameInlineColor=task.completed?`color:${sc.completed}`:(task.dekidaka?`color:${sc.dekidaka}`:'');
 const nameStyle=nameInlineColor?`${nameInlineColor};font-weight:700`:'';
-h+=`<tr><td class="task-name">`;
+h+=`<tr>`;
+if(estShow){const el=estList(task);h+=`<td class="task-est" onclick="openEst('${task.id}')" title="見積番号（押すと書けます・直せます。5つまで）">${
+  el.length?el.map(n=>`<span class="en">${escAttr(n)}</span>`).join(''):(printing?'':'<span class="en ph">＋</span>')}</td>`;}
+h+=`<td class="task-name">`;
 h+=`<span class="task-name-text ${nameClass}" style="${nameStyle}" onclick="inlineEdit('${task.id}','name',this)">${task.name||''}</span>`;
 h+=`<span class="action-btns no-print">`;
 h+=`<button class="btn-done${task.completed?' on':''}" onclick="event.stopPropagation();completeTask('${task.id}')" title="${task.completed?'完了を解除':'完了にする（赤）'}">完了</button>`;
@@ -388,7 +497,7 @@ h+=`<td class="task-note" onclick="inlineEdit('${task.id}','note',this)" style="
 months.forEach(mo=>{mo.days.forEach(d=>{const bars=D.bars[task.id]||{};const tid=bars[d.ds];const team=tid?D.teams.find(t=>t.id===tid):null;const cls=d.sun||d.hol||d.chol?' sun':d.sat?' sat':'';const isSun=d.sun?1:0;h+=`<td class="day${cls}" data-tid="${task.id}" data-ds="${d.ds}" data-sun="${isSun}">${team?'<div class="bar" style="background:'+team.color+'"></div>':''}</td>`;});});
 h+='</tr>';
 });
-if(!active.length){const td=months.reduce((a,m)=>a+m.days.length,0);h+=`<tr><td colspan="${5+td}" style="text-align:center;padding:20px;color:#aaa;cursor:pointer" onclick="addTask()">＋ 現場を追加</td></tr>`;}
+if(!active.length){const td=months.reduce((a,m)=>a+m.days.length,0);h+=`<tr><td colspan="${nLeft+td}" style="text-align:center;padding:20px;color:#aaa;cursor:pointer" onclick="addTask()">＋ 現場を追加</td></tr>`;}
 h+='</tbody>';document.getElementById('schTable').innerHTML=h;updateBadge();if(typeof syncHeaders==='function')syncHeaders();
 }
 // ダブルクリック: 塗り/消しトグル
@@ -649,7 +758,7 @@ selRect={r1,r2,d1,d2};
 clearSelHi();
 for(let i=r1;i<=r2;i++){
 rows[i].querySelectorAll('td.day').forEach(c=>{if(c.dataset.ds>=d1&&c.dataset.ds<=d2)c.classList.add('sel-hi');});
-rows[i].querySelectorAll('td.task-name,td.task-days,td.task-amount,td.task-kouki,td.task-note').forEach(c=>c.classList.add('sel-hi'));
+rows[i].querySelectorAll('td.task-est,td.task-name,td.task-days,td.task-amount,td.task-kouki,td.task-note').forEach(c=>c.classList.add('sel-hi'));
 }
 }
 function fmtDs(ds){const p=ds.split('-');return parseInt(p[1])+'/'+parseInt(p[2]);}
@@ -689,20 +798,27 @@ if(selMode&&e.target.closest('#schWrap')){e.stopPropagation();e.preventDefault()
 /* Ctrl+P・全体印刷・選択印刷すべて：A3横の縦横いっぱいになるよう行高・日セル幅・文字サイズを計算 */
 window.addEventListener('beforeprint',()=>{
 if(!document.getElementById('p-sch').classList.contains('on'))return;
+/* ★見積番号の列は、印刷する現場に番号が無ければ出さない。画面の「＋」も刷らない */
+_schPrinting=true;render();
 const rows=selRows();
 const nDays=rows.length?rows[0].querySelectorAll('td.day').length:30;
 fitPrintPage(rows.length||1,nDays||1);
 });
 window.addEventListener('afterprint',()=>{
-if(!printOverride)return;
+const was=_schPrinting;_schPrinting=false;
+if(!printOverride){if(was)render();return;}
 printOverride=null;
 render();
 });
 function fitPrintPage(nRows,nDays){
 const pageH=287,pageW=410;/* A3横297×420mm - 余白5mm×2 */
-const leftMM=89;/* 左固定列（現場名〜備考）約335px */
 const headMM=15;/* ヘッダー3段 */
 const rowMM=Math.max(4.2,(pageH-headMM)/nRows);
+/* ★見積番号の列（あれば）。印刷の字の大きさで一番長い番号を測って、日のセルに回す幅から引く */
+const fs0=Math.min(18,Math.max(7,Math.round(rowMM*3.78*0.45)));
+const estStrs=Array.from(document.querySelectorAll('#schTable td.task-est .en:not(.ph)')).map(e=>e.textContent);
+const estMM=estStrs.length?(estColW(estStrs,Math.max(6,fs0-1))-3)/3.78:0;
+const leftMM=89+estMM;/* 左固定列（現場名〜備考）約335px ＋ 見積番号 */
 /* 日セル幅：用紙幅を超えると印刷が全体縮小されて下に余白ができるため、必ず収まる幅に */
 const dayMM=Math.max(1.2,Math.min(4.23,(pageW-leftMM-2)/nDays));
 const rowPx=rowMM*3.78,dayPx=dayMM*3.78;
@@ -791,13 +907,17 @@ document.getElementById('colPop').style.display='none';
 /* ヘッダー（左固定）も同じleft位置にsticky配置することで横スクロール時のズレを解消 */
 function applyCW(){
 const w=getCW();const sc=getSC();
+/* ★見積番号の列があるときは、左に固定する列をその幅だけ右へずらす（無ければ 0） */
+const e=_estW||0;
 const s=document.getElementById('dynStyle')||document.createElement('style');s.id='dynStyle';s.textContent=`
 :root{--c-done:${sc.completed};--c-deki:${sc.dekidaka}}
-.sch-table td.task-name{min-width:${w.name}px!important;max-width:${w.name}px!important}
-.sch-table td.task-days{left:${w.name}px!important;min-width:${w.days}px!important}
-.sch-table td.task-amount{left:${w.name+w.days}px!important;min-width:${w.amount}px!important}
-.sch-table td.task-kouki{left:${w.name+w.days+w.amount}px!important;min-width:${w.kouki}px!important}
-.sch-table td.task-note{left:${w.name+w.days+w.amount+w.kouki}px!important;min-width:${w.note}px!important;max-width:${w.note}px!important}
+@media screen{.sch-table td.task-est{min-width:${e}px!important;max-width:${e}px!important;width:${e}px!important}
+.sch-table th.left-hdr[data-col="est"]{min-width:${e}px!important}}
+.sch-table td.task-name{left:${e}px!important;min-width:${w.name}px!important;max-width:${w.name}px!important}
+.sch-table td.task-days{left:${e+w.name}px!important;min-width:${w.days}px!important}
+.sch-table td.task-amount{left:${e+w.name+w.days}px!important;min-width:${w.amount}px!important}
+.sch-table td.task-kouki{left:${e+w.name+w.days+w.amount}px!important;min-width:${w.kouki}px!important}
+.sch-table td.task-note{left:${e+w.name+w.days+w.amount+w.kouki}px!important;min-width:${w.note}px!important;max-width:${w.note}px!important}
 .sch-table td.day{width:${w.day}px!important;min-width:${w.day}px!important}
 .sch-table th.day-num{min-width:${w.day}px!important}
 .sch-table th.left-hdr[data-col="name"]{min-width:${w.name}px!important}
@@ -805,7 +925,7 @@ const s=document.getElementById('dynStyle')||document.createElement('style');s.i
 .sch-table th.left-hdr[data-col="amount"]{min-width:${w.amount}px!important}
 .sch-table th.left-hdr[data-col="kouki"]{min-width:${w.kouki}px!important}
 .sch-table th.left-hdr[data-col="note"]{min-width:${w.note}px!important}
-.sch-table th.top-left{min-width:${w.name+w.days+w.amount+w.kouki+w.note}px!important}`;
+.sch-table th.top-left{min-width:${e+w.name+w.days+w.amount+w.kouki+w.note}px!important}`;
 if(!s.parentNode)document.head.appendChild(s);
 syncHeaders();
 }
