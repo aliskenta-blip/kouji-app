@@ -3664,7 +3664,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
       <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${furikaeBadge(c)}${pdfs.join('')}</td>
-      <td class="ctr" style="font-size:10px;white-space:nowrap;color:#555" title="kouji-cost の見積番号">${esc(c.mitsumori_no||'')}</td>
+      <td class="ctr" style="font-size:10px;white-space:nowrap;color:#555;cursor:pointer;min-width:96px" title="kouji-cost の見積番号。クリックで編集" onclick="editMnoCell('${c.id}',this)">${mnoCellTxt(c)}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(bm)}</td>
@@ -3840,7 +3840,7 @@ function renderMaster(){
       <td class="ctr">${cMo(c)}</td><td class="ctr">${c.date||''}</td>
       <td>${esc(c.place||'')}</td><td>${esc(c.client||'')}</td><td class="ctr">${esc(c.tantou||'')}</td>
       <td>${esc(c.kouji||'')}</td>
-      <td class="ctr" style="font-size:11px;white-space:nowrap" title="kouji-cost の見積番号">${esc(c.mitsumori_no||'')}</td>
+      <td class="ctr" style="font-size:11px;white-space:nowrap;cursor:pointer" title="kouji-cost の見積番号。クリックで編集" onclick="editMnoCell('${c.id}',this)">${mnoCellTxt(c)}</td>
       <td class="ctr">${esc(c.kubun||'')}</td>
       <td class="ctr"><span class="sekou ${c.jisha_sekou==='✓'?(r.cnt>0?'sk-joint':'sk-self'):(r.cnt>0?'sk-other':'')}" style="font-size:9px">${c.jisha_sekou==='✓'?(r.cnt>0?'合同':'自社'):(r.cnt>0?'単独':'—')}</span></td>
       <td class="num" style="font-weight:700">¥${fmt(fn(c.jisha_h))}</td>
@@ -5113,6 +5113,41 @@ function chkMno(){
     msg.style.color=v?(ok?'#2e7d32':'#c62828'):'#888';
   }
   return ok;
+}
+// ★見積番号のセル編集（Phase 19・月別入力／マスター一覧）。工期セル（editKoukiSel）と同じ作り。
+//   形式は mnoOk をそのまま使う（判定を書き直さない）。値は trim しただけの文字列で入れる（§13-A）。
+//   保存は c.mitsumori_no の1項目だけを書き換えるマージ（案件オブジェクトを作り直さない・§5 #9）
+//   空欄は「—」を出し、セル全体を押せるようにする（印刷には出さない）
+function mnoCellTxt(c){
+  return c.mitsumori_no?esc(c.mitsumori_no):'<span class="no-print" style="color:#bbb">—</span>';
+}
+function editMnoCell(id,el){
+  if(!canEdit())return;
+  const c=S.cases.find(x=>x.id===id);if(!c)return;
+  if(el.querySelector('input'))return;     // 入力中のセルをもう一度押しても作り直さない
+  el.innerHTML=`<div style="display:flex;gap:2px;align-items:center;justify-content:center"><input id="mn_${id}" type="text" maxlength="14" autocomplete="off" placeholder="2026-0020-2" value="${esc(c.mitsumori_no||'')}" style="width:92px;padding:1px 3px;font-size:11px;border:1px solid #1565c0;border-radius:3px"><button onclick="event.stopPropagation();saveMnoCell('${id}')" style="background:#1565c0;color:#fff;border:none;padding:2px 6px;border-radius:3px;font-size:9px;cursor:pointer">✓</button></div><div id="mn_msg_${id}" style="font-size:9px;color:#c62828;white-space:normal"></div>`;
+  const inp=document.getElementById('mn_'+id);
+  inp.oninput=()=>{const v=inp.value.trim();inp.style.borderColor=v?(mnoOk(v)?'#2e7d32':'#c62828'):'#1565c0';document.getElementById('mn_msg_'+id).textContent='';};
+  inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();saveMnoCell(id);}if(e.key==='Escape')renderAll();};
+  inp.focus();inp.select();
+}
+function saveMnoCell(id){
+  const c=S.cases.find(x=>x.id===id);if(!c)return;
+  const inp=document.getElementById('mn_'+id);if(!inp)return;
+  const v=(inp.value||'').trim();
+  if(!mnoOk(v)){
+    inp.style.borderColor='#c62828';
+    const m=document.getElementById('mn_msg_'+id);
+    if(m)m.textContent='⚠ 形式が違います（例: 2026-0003 ／ 2026-0020-2）';
+    inp.focus();return;                     // 形式違反は保存しない
+  }
+  if(v!==(c.mitsumori_no||'')){
+    const was=c.mitsumori_no||'';
+    c.mitsumori_no=v;
+    sv();
+    addLog('edit',`${esc(c.place||'')}の見積番号を「${esc(was)||'空欄'}」→「${esc(v)||'空欄'}」に変更`);
+  }
+  renderAll();
 }
 // ============================================================
 // ★予算の調整（2026-10-07 けんた）
