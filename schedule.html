@@ -67,6 +67,11 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
   cursor:pointer;font-size:10px;line-height:1.15;color:#37474f;font-variant-numeric:tabular-nums;letter-spacing:0}
 .sch-table td.task-est:hover{background:#e3f2fd}
 .sch-table td.task-est .en{display:block}
+/* ★番号のリンク。画面では青・下線で押せると分かるように。★印刷では下線も色も付けない（紙では意味が無い） */
+.sch-table td.task-est a.en{color:#1565c0;text-decoration:underline;text-decoration-color:#90caf9;text-underline-offset:2px;cursor:pointer}
+.sch-table td.task-est a.en:hover{color:#0d47a1;text-decoration-color:#0d47a1}
+.sch-table td.task-est .est-ed{position:absolute;top:1px;right:2px;font-size:10px;color:#90a4ae;cursor:pointer;line-height:1}
+.sch-table td.task-est .est-ed:hover{color:#1565c0}
 .sch-table td.task-est .en.ph{color:#cfd8dc;text-align:center;font-size:12px}
 .sch-table td.task-est:hover .en.ph{color:#1565c0}
 #estPop .estin{font-variant-numeric:tabular-nums;letter-spacing:.5px}
@@ -114,6 +119,8 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 .sch-table td.task-est{font-size:max(6px,calc(var(--p-fs,8px) - 1px))!important;line-height:1.1!important;padding:0 2px!important;
   min-width:0!important;max-width:none!important;width:auto!important;white-space:nowrap!important}
 .sch-table th.left-hdr[data-col="est"]{font-size:max(6px,calc(var(--p-fs,8px) - 1px))!important;min-width:0!important}
+.sch-table td.task-est a.en{color:inherit!important;text-decoration:none!important}
+.sch-table td.task-est .est-ed{display:none!important}
 .sch-table td.day .bar{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 /* テーブル高さを印刷可能領域いっぱいに固定（行が多ければ自動で複数ページ） */
 .sch-table{font-size:var(--p-fs,8px)!important;height:285mm!important}
@@ -372,6 +379,12 @@ function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&l
        印刷 … 列ごと出さない（beforeprint で描き直す）。印刷して配るので幅を食わない
    ============================================================ */
 const EST_MAX=5;
+/* ★番号を押すと、工事コスト（kouji-cost）でその見積を別のタブで開く（2026-10-07）。
+   kouji-cost の「#est/番号」は版まで書けばその版、版なしなら最新の版を開く。
+   ★アドレスは固定で持つ（設定にしない）。工事コストは GitHub Pages の1か所にしか置いていないので、
+     選ぶものが無い。変わったらこの1行を直す */
+const KC_URL='https://aliskenta-blip.github.io/kouji-cost/app.html';
+function estHref(n){return KC_URL+'#est/'+encodeURIComponent(n);}
 const EST_RE=/^\d{4}-\d{4}-\d{1,2}$/;
 let _estW=0, _schPrinting=false;
 function estList(t){return (t&&Array.isArray(t.estNos))?t.estNos.filter(x=>x&&String(x).trim()):[];}
@@ -459,7 +472,8 @@ const estOn=estStrs.length>0;
 const printing=_schPrinting||!!printOverride;
 const estShow=estOn||!printing;
 const estLabel=estOn?'見積No':'No.';
-const ew=estShow?estColW(estStrs,10,estLabel):0;
+/* ★画面では番号の右上に「✎」（直す入口）を置くので、そのぶん少し広げる。印刷では出さない */
+const ew=estShow?estColW(estStrs,10,estLabel)+(estOn&&!printing?10:0):0;
 if(ew!==_estW){_estW=ew;applyCW();}
 const nLeft=estShow?6:5;
 const totalLeft=ew+w.name+w.days+w.amount+w.kouki+w.note;
@@ -481,8 +495,12 @@ const nameClass=task.completed?'s-done':(task.dekidaka?'s-deki':'');
 const nameInlineColor=task.completed?`color:${sc.completed}`:(task.dekidaka?`color:${sc.dekidaka}`:'');
 const nameStyle=nameInlineColor?`${nameInlineColor};font-weight:700`:'';
 h+=`<tr>`;
-if(estShow){const el=estList(task);h+=`<td class="task-est" onclick="openEst('${task.id}')" title="見積番号（押すと書けます・直せます。5つまで）">${
-  el.length?el.map(n=>`<span class="en">${escAttr(n)}</span>`).join(''):(printing?'':'<span class="en ph">＋</span>')}</td>`;}
+if(estShow){const el=estList(task);h+=`<td class="task-est" onclick="openEst('${task.id}')" title="見積番号（番号を押すと工事コストでその見積を開きます。✎ で直せます。5つまで）">${
+  el.length
+    /* ★番号はリンク（別のタブ）。押してもセルの「直す」は開かない */
+    ?el.map(n=>`<a class="en" href="${escAttr(estHref(n))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="工事コストで ${escAttr(n)} を開く（別のタブ）">${escAttr(n)}</a>`).join('')
+      +(printing?'':`<span class="est-ed" title="見積番号を直す">✎</span>`)
+    :(printing?'':'<span class="en ph">＋</span>')}</td>`;}
 h+=`<td class="task-name">`;
 h+=`<span class="task-name-text ${nameClass}" style="${nameStyle}" onclick="inlineEdit('${task.id}','name',this)">${task.name||''}</span>`;
 h+=`<span class="action-btns no-print">`;
