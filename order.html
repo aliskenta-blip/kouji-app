@@ -1508,10 +1508,26 @@ C社 自社受注（空）  / 原価400万  → 無視される（原価400万�
   </div>
   <div class="st">💰 自社金額（万円入力）</div>
   <div class="grid g2">
-    <div class="fg"><label>発注金額（万円）</label><input type="number" id="f_jh" placeholder="" inputmode="decimal" step="0.1" oninput="onGyoshuChange()"></div>
+    <div class="fg"><label>発注金額（万円）</label><input type="number" id="f_jh" placeholder="" inputmode="decimal" step="0.1" oninput="onGyoshuChange();adjHint()"></div>
     <div class="fg"><label>入金済（万円）</label><input type="number" id="f_ny" placeholder="" inputmode="decimal" step="0.1"></div>
     <div class="fg"><label>㎥</label><input type="number" id="f_m3" placeholder="" step="0.01" inputmode="decimal"></div>
   </div>
+  <!-- ★予算の調整（臨時予算／返済予算／預り金）2026-10-07
+       発注額が実力と合わない現場の、本来の金額（工事台帳）との差を記録する。
+       ★発注額・出来高・入金は変えない（経理も変えない）。工事コストの現場収支と残高の画面が使う -->
+  <div class="st">⚖ 予算の調整（発注額が本来の金額と違うとき）</div>
+  <div class="grid g2">
+    <div class="fg"><label>区分</label>
+      <select id="f_adj_kind" onchange="adjHint()">
+        <option value="">なし</option>
+        <option value="rinji">臨時予算（値引き：本来より安く発注）</option>
+        <option value="hensai">返済予算（回収：本来より高く発注）</option>
+        <option value="azukari">預り金（プール：本来より高く発注）</option>
+      </select></div>
+    <div class="fg"><label>差額（万円）</label><input type="number" id="f_adj_amt" placeholder="例: 20" inputmode="decimal" step="0.1" min="0" oninput="adjHint()"></div>
+  </div>
+  <div class="fg"><label>メモ（理由）</label><input type="text" id="f_adj_memo" lang="ja" style="ime-mode:active" placeholder="例: ◯◯現場の値引き分を回収"></div>
+  <div id="f_adj_hint" style="font-size:12px;margin:-4px 0 10px;color:#555"></div>
   <div class="st">📋 出来高請求</div>
   <div id="f_billings_area" style="margin-bottom:12px">
     <div style="font-size:11px;color:#888;margin-bottom:6px">月ごとの請求額を登録。発注金額に対して分割請求できます。</div>
@@ -5040,12 +5056,38 @@ function chkMno(){
   }
   return ok;
 }
+// ============================================================
+// ★予算の調整（2026-10-07 けんた）
+//   区分  例                         工事台帳  残高
+//   臨時予算 本来60万が発注40万（値引き）  60万     −20万
+//   返済予算 本来40万を60万で発注（回収）  40万     +20万
+//   預り金   本来60万を80万で発注（プール）60万     +20万
+//   差額は正の数で入れる。工事台帳＝発注額＋（臨時なら＋差額／返済・預りなら−差額）。
+//   ★発注額（jisha_h）・出来高・入金は変えない。記録として残すだけ（工事コストへ同期）
+// ============================================================
+const ADJ_LABEL={rinji:'臨時予算',hensai:'返済予算',azukari:'預り金'};
+function adjCalc(kind,orderYen,adjYen){
+  const a=Math.abs(Math.round(Number(adjYen)||0));
+  if(!ADJ_LABEL[kind]||!a)return null;
+  const delta=kind==='rinji'?a:-a;              // 工事台帳 − 発注額
+  return {ledger:Math.round(Number(orderYen)||0)+delta, bal:-delta};
+}
+function adjHint(){
+  const el=document.getElementById('f_adj_hint');if(!el)return;
+  const k=vg('f_adj_kind'), jh=Math.round(parseFloat(vg('f_jh')||0)*10000), a=Math.round(parseFloat(vg('f_adj_amt')||0)*10000);
+  const r=adjCalc(k,jh,a);
+  if(!k){el.textContent='';return;}
+  if(!r){el.innerHTML='<span style="color:#c62828">差額を入れてください（万円・正の数）</span>';return;}
+  if(r.ledger<=0){el.innerHTML='<span style="color:#c62828">差額が発注金額以上です（工事台帳が0以下になります）</span>';return;}
+  const man=v=>(Math.round(v/1000)/10).toLocaleString('ja-JP')+'万';
+  el.innerHTML=`発注 <b>${man(jh)}</b> → <b>工事台帳 ${man(r.ledger)}</b>　残高 <b style="color:${r.bal<0?'#c62828':'#2e7d32'}">${r.bal<0?'−':'+'}${man(Math.abs(r.bal))}</b>（${ADJ_LABEL[k]}）`;
+}
 function openAdd(){
   if(!canEdit()){alert('入力権限がありません');return;}
   editId=null;KD=[];pdfH=null;pdfS=null;formBillings=[];pdfKouki='';
   document.getElementById('mdlT').textContent='案件追加';
-  ['f_dt','f_pl','f_kj','f_mno','f_jh','f_ny','f_m3','f_bk','f_haichi','f_genba'].forEach(id=>vs(id,''));
-  chkMno();
+  ['f_dt','f_pl','f_kj','f_mno','f_jh','f_ny','f_m3','f_bk','f_haichi','f_genba','f_adj_kind','f_adj_amt','f_adj_memo'].forEach(id=>vs(id,''));
+  chkMno();adjHint();
   document.getElementById('f_jisha_sekou').checked=false;
   const jw=document.getElementById('f_jisha_sekou_wrap');jw.style.background='#f8fff8';jw.style.borderColor='#e0e0e0';
   document.getElementById('f_furikae').checked=false;
@@ -5219,6 +5261,9 @@ function editCase(id){
   vs('f_mno',c.mitsumori_no||'');chkMno();   // 既存レコードは未設定＝空欄のままで可
   vs('f_jh',fn(c.jisha_h)?parseFloat((fn(c.jisha_h)/10000).toFixed(4)):'');
   vs('f_ny',fn(c.nyukin)?parseFloat((fn(c.nyukin)/10000).toFixed(4)):'');vs('f_m3',c.m3);vs('f_bk',c.biko);
+  vs('f_adj_kind',ADJ_LABEL[c.adj_kind]?c.adj_kind:'');
+  vs('f_adj_amt',fn(c.adj_amount)?parseFloat((fn(c.adj_amount)/10000).toFixed(4)):'');
+  vs('f_adj_memo',c.adj_memo||'');adjHint();
   // 旧データ互換：billingsが空でjisha_sがある場合
   if(!formBillings.length&&fn(c.jisha_s)){
     const mo=c.seikyuu_t||c.date||'';
@@ -5271,6 +5316,14 @@ function saveCase(cont){
     const _mn=document.getElementById('f_mno');if(_mn){try{_mn.focus();}catch(e){}}
     return;
   }
+  // ★予算の調整: 区分を選んだら差額は必須（正の数）。差額だけ入って区分が無いのも止める
+  const _adjK=vg('f_adj_kind'), _adjA=Math.round(Math.abs(parseFloat(vg('f_adj_amt')||0))*10000);
+  if(_adjK&&!_adjA){alert('予算の調整: 差額（万円）を入れてください。\n調整しないなら区分を「なし」にしてください。');try{document.getElementById('f_adj_amt').focus();}catch(e){}return;}
+  if(!_adjK&&_adjA){alert('予算の調整: 区分（臨時予算／返済予算／預り金）を選んでください。\n調整しないなら差額を空欄にしてください。');try{document.getElementById('f_adj_kind').focus();}catch(e){}return;}
+  // ★返済予算・預り金は「本来より高く発注」なので、差額は発注額より小さいはず（工事台帳がマイナスになる）
+  if((_adjK==='hensai'||_adjK==='azukari')&&_adjA>=Math.round(parseFloat(vg('f_jh')||0)*10000)){
+    alert('予算の調整: 差額が発注金額以上です（工事台帳が0以下になります）。\n'+ADJ_LABEL[_adjK]+'は「本来の金額より高く発注された分」なので、差額は発注金額より小さくなります。金額を確かめてください。');
+    try{document.getElementById('f_adj_amt').focus();}catch(e){}return;}
   // 管工事（無許可）は税込500万円以上 受注不可
   const _amt=Math.round(parseFloat(vg('f_jh')||0)*10000);
   if(_gy===GYOSHU_NOPERMIT&&_amt>=TH.keibi){
@@ -5285,6 +5338,8 @@ function saveCase(cont){
     id:editId||uid(),month:getMK(getYr(),getMo()),
     date:vg('f_dt')||new Date().toISOString().slice(0,7),place:vg('f_pl'),client:vg('f_cl'),branch:vg('f_br'),
     tantou:vg('f_ta'),kubun:vg('f_kb'),kouji:vg('f_kj'),mitsumori_no:_mno,
+    // ★予算の調整（記録用）。発注額 jisha_h には触らない
+    adj_kind:_adjK||'',adj_amount:_adjK?String(_adjA):'',adj_memo:_adjK?(vg('f_adj_memo')||'').trim():'',
     jisha_h:String(Math.round(parseFloat(vg('f_jh')||0)*10000)),
     billings:JSON.parse(JSON.stringify(formBillings)),
     jisha_s:String(formBillings.reduce((a,b)=>a+fn(b.amount),0)),
@@ -5298,6 +5353,9 @@ function saveCase(cont){
     pdf_hacchu:pdfH,pdf_seikyuu:pdfS,
     kyousha_list:KD.filter(k=>k.name||fn(k.seikyuu)),
   };
+  // ★予算の調整を使っていない案件には adj_* の項目を作らない（調整の無い337件に空の項目を足さない）。
+  //   一度入れた案件を「なし」に戻すときだけ、空で上書きして消す
+  if(!_adjK&&!(editId&&(S.cases.find(c=>c.id===editId)||{}).adj_kind)){delete base.adj_kind;delete base.adj_amount;delete base.adj_memo;}
   if(editId){
     const old=S.cases.find(c=>c.id===editId)||{};
     CK.forEach(f=>{base[f]=old[f]||'';});
