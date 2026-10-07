@@ -5822,7 +5822,8 @@ function doExcelBackup(){
       fn(c.jisha_h),fn(c.jisha_s),r.km,r.ksr,r.cnt,
       c.seikyuu_t,fn(c.nyukin),r.misu,r.ksh,r.miharai,
       shAg?r.arari:'',
-      shA?Math.round(projArariRate(c)*1000)/10+'%':'',fn(c.m3),
+      // ★率は画面（一覧・内訳モーダル）と同じ arariRateCell で決める。率が出せない案件は空欄（0 を入れない・D-033）
+      arariRateCell(c).ok?Math.round(projArariRate(c)*1000)/10+'%':'',fn(c.m3),
       c.kouki_s||'',c.kouki_e||'',
       c.shashin||'',c.zando||'',c.kakunin||'',c.mail||'',c.nyukin_c||'',c.kanryo||'',c.zan_s||'',c.mi_s||'',c.biko||'',
       ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','',''])
@@ -6114,7 +6115,8 @@ function doCSV(type){
     return [c.seikyuu_t,c.date,c.place,c.client,c.branch,c.tantou,c.kouji,c.kubun,
       fn(c.jisha_h),fn(c.jisha_s),r.km,r.ksr,r.cnt,r.jShikou,
       c.seikyuu_t,fn(c.nyukin),r.misu,r.ksh,r.miharai,
-      shAg?r.arari:'',shA?fmtP(projArariRate(c)*100):'',fn(c.m3),
+      // ★率は画面（一覧・内訳モーダル）と同じ arariRateCell で決める。率が出せない案件は空欄（0 を入れない・D-033）
+      shAg?r.arari:'',arariRateCell(c).ok?fmtP(projArariRate(c)*100):'',fn(c.m3),
       c.kouki_s||'',c.kouki_e||'',
       c.shashin,c.zando,c.kakunin,c.mail,c.nyukin_c,c.kanryo,c.zan_s,c.mi_s,c.biko,
       ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','','']),
