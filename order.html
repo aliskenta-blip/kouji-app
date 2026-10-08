@@ -3773,6 +3773,12 @@ function renderAdjBalCard(){
   if(!gs.length){el.innerHTML='';return;}
   const tot=gs.reduce((t,g)=>{t.rinji+=g.rinji;t.hensai+=g.hensai;t.azukari+=g.azukari;t.bal+=g.bal;return t;},{rinji:0,hensai:0,azukari:0,bal:0});
   const neg=gs.filter(g=>g.bal<0).length;
+  // ★元請ごとの小計（Phase 21）。まれに別の担当者の現場で回収するので、担当者ごとだけだと偏って見える。
+  //   元請で合っていれば偏りは気にしなくてよい。工事コストの残高の画面と同じ並び（回収が必要な元請が上）
+  const byCl={};
+  gs.forEach(g=>{const c=byCl[g.client]||(byCl[g.client]={client:g.client,rinji:0,hensai:0,azukari:0,bal:0,nP:0,n:0});
+    c.rinji+=g.rinji;c.hensai+=g.hensai;c.azukari+=g.azukari;c.bal+=g.bal;c.nP++;c.n+=g.n;});
+  const cls=Object.values(byCl).sort((a,b)=>a.bal-b.bal||a.client.localeCompare(b.client,'ja'));
   el.innerHTML=`<div style="background:#fff;border:1.5px solid #e0e0e0;border-radius:10px;padding:8px 12px;margin-bottom:10px">
     <div style="cursor:pointer;font-weight:700;color:var(--nav);display:flex;gap:10px;align-items:center;flex-wrap:wrap" onclick="maAdjOpen=!maAdjOpen;renderAdjBalCard()">
       ${maAdjOpen?'▼':'▶'} ⚖ 予算の調整の残高（担当者ごと）
@@ -3783,13 +3789,18 @@ function renderAdjBalCard(){
         <td>${esc(g.tantou||'（担当者なし）')} <span style="color:#888">${esc(g.client||'')}</span></td>
         <td class="num">${g.rinji?'−¥'+fmt(g.rinji):'—'}</td><td class="num">${g.hensai?'+¥'+fmt(g.hensai):'—'}</td><td class="num">${g.azukari?'+¥'+fmt(g.azukari):'—'}</td>
         <td class="num"><b>${adjYen(g.bal)}</b></td><td>${adjStateHtml(g.bal)}</td></tr>`).join('')}
+    </tbody><tbody class="ma-adj-sub">
+      ${cls.map((c,i)=>`<tr style="cursor:pointer;background:#f1f5f9${i===0?';border-top:2px solid #cbd5e1':''}" onclick="maAdjFilter('${esc(c.client).replace(/'/g,'&#39;')}','')" title="この元請の案件だけに絞る">
+        <td>小計 ${esc(c.client||'（元請なし）')} <span style="color:#888;font-size:11px">${c.nP}人・${c.n}件</span></td>
+        <td class="num">${c.rinji?'−¥'+fmt(c.rinji):'—'}</td><td class="num">${c.hensai?'+¥'+fmt(c.hensai):'—'}</td><td class="num">${c.azukari?'+¥'+fmt(c.azukari):'—'}</td>
+        <td class="num"><b>${adjYen(c.bal)}</b></td><td>${adjStateHtml(c.bal)}</td></tr>`).join('')}
     </tbody><tfoot><tr><td><b>合計</b></td><td class="num">${tot.rinji?'−¥'+fmt(tot.rinji):'—'}</td><td class="num">${tot.hensai?'+¥'+fmt(tot.hensai):'—'}</td><td class="num">${tot.azukari?'+¥'+fmt(tot.azukari):'—'}</td>
       <td class="num"><b>${adjYen(tot.bal)}</b></td><td>${adjStateHtml(tot.bal)}</td></tr></tfoot></table></div>`:''}
   </div>`;
 }
 function maAdjFilter(cl,ta){
   const d=s=>{const t=document.createElement('textarea');t.innerHTML=s;return t.value;};
-  ensureOption('af_cl',d(cl));vs('af_cl',d(cl));ensureOption('af_ta',d(ta));vs('af_ta',d(ta));renderMaster();
+  ensureOption('af_cl',d(cl));vs('af_cl',d(cl));ensureOption('af_ta',d(ta));vs('af_ta',d(ta));renderMaster();   // ta='' は元請の小計の行（担当者の絞り込みを外す）
 }
 function renderMaster(){
   renderAdjBalCard();
@@ -5170,14 +5181,17 @@ function adjCalc(kind,orderYen,adjYen){
 //   残高を見るのは案件を登録するとき（「◯◯さんにいま330万預かっている」→その場で返すか決める）。
 //   ★式は工事コスト（kouji-cost の orderAdj／残高の画面）と同じ: −臨時予算 ＋ 返済予算 ＋ 預り金。
 //     束ね方も同じ（元請＋担当者。同じ名前の担当者でも元請が違えば別）。
-//   ★振替（記録用）の案件は数えない。工事コストへ同期しない案件なので、数えると両方の数字がずれる。
+//   ★振替（記録用）の案件も数える（Phase 21 / 2026-10-08）。振替は原価の受け皿で、発注書が出ていない
+//     ＝実質は臨時予算（値引き）。次の現場で回収するので、回収すべき額を残高に出す。
+//     工事コストも同じ数え方（orders には入れず、予算の調整だけ order_adj_furikae に同期・Phase 2.39）。
+//     ★変えるのは残高だけ。完成工事高・工事経歴書・受注高からは外したまま（D-046）、粗利は含めたまま。
 //   ★残高0が一番良い。マイナスは回収が必要。
 // ============================================================
 function adjKey(client,tantou){return String(client||'').trim()+'｜'+String(tantou||'').trim();}
 function adjBalances(excludeId){
   const by={};
   (S.cases||[]).forEach(c=>{
-    if(isFurikae(c)||(excludeId&&c.id===excludeId))return;
+    if(excludeId&&c.id===excludeId)return;
     const r=adjCalc(c.adj_kind,c.jisha_h,c.adj_amount);if(!r)return;
     const k=adjKey(c.client,c.tantou);
     const g=by[k]||(by[k]={key:k,client:String(c.client||'').trim(),tantou:String(c.tantou||'').trim(),rinji:0,hensai:0,azukari:0,bal:0,n:0});
