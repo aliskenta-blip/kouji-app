@@ -7227,6 +7227,19 @@ function chkItems(){
 }
 const CHK_GRP={A:'A. 粗利が出ない・不正確',B:'B. 行政提出書類に影響（工事経歴書）',
   C:'C. 集計から漏れる',D:'D. 数字の矛盾（入力ミスの疑い）'};
+// ★E. 参考（Phase 20）。不備ではない確認用の一覧。chkItems には入れない
+//   ＝延べ件数・実案件数・タブのバッジに数えない（要確認は「0件で整備完了」の運用・D-068）
+function chkRefItems(){
+  const items=[];
+  // E1 振替。判定は isFurikae をそのまま使う。並びは記入月の新しい順
+  const fr=S.cases.filter(c=>isFurikae(c))
+    .map(c=>chkRow(c,`発注 ¥${fmt(fn(c.jisha_h))}　記入月 ${esc((c.date||'').slice(0,7))||'—'}`,0))
+    .sort((x,y)=>(y.c.date||'').localeCompare(x.c.date||''));
+  items.push({grp:'E',key:'E1',label:'振替の案件',
+    why:'発注書が出ない工事を、別の現場に上乗せして発注してもらった記録用の案件です。完成工事高・工事経歴書・受注高からは外れています（上乗せ先と二重計上になるため）。粗利には含まれます。不備ではありません。',
+    rows:fr});
+  return items;
+}
 function renderCheck(){
  try{
   const root=document.getElementById('checkRoot');if(!root)return;
@@ -7238,13 +7251,6 @@ function renderCheck(){
   if(badge)badge.innerHTML=nobu>0
     ? `<span style="background:var(--yell2,#ffb300);color:#3e2723;border-radius:9px;padding:1px 7px;font-size:11px;font-weight:800">${nobu}</span>`
     : '✅';
-  if(!shown.length){
-    root.innerHTML=`<div style="text-align:center;padding:48px 16px">
-      <div style="font-size:40px">✅</div>
-      <div style="font-size:16px;font-weight:800;color:#2e7d32;margin-top:8px">要確認の項目はありません</div>
-      <div style="font-size:12px;color:#888;margin-top:6px">この欄が0件なら整備完了です。</div></div>`;
-    return;
-  }
   const rowHtml=r=>{
     const cl=r.client?`<span style="color:#888">（${esc(r.client)}）</span>`:'';
     const clickable=!!r.c;
@@ -7254,20 +7260,34 @@ function renderCheck(){
       <span style="white-space:nowrap;color:#555;text-align:right">${r.sub}</span>
     </div>`;
   };
+  // ref=true は E. 参考（不備ではない）。件数を赤にしない
+  const itemHtml=(it,ref)=>`<div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;overflow:hidden;background:#fff">
+      <div style="padding:9px 12px;background:#fafafa;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#333"
+        onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'':'none';this.querySelector('span:first-child').textContent=(b.style.display==='none'?'▶ ':'▼ ')+this.getAttribute('data-lbl')"
+        data-lbl="${esc(it.label)}"><span>▼ ${esc(it.label)}</span><span style="color:${ref?'#666':'#c62828'};white-space:nowrap">${it.rows.length}件</span></div>
+      <div style="padding:8px 12px 10px">
+        <div style="font-size:11px;color:${ref?'#455a64':'#7a5900'};background:${ref?'#eceff1':'#fff8e1'};border:1px solid ${ref?'#cfd8dc':'#ffe082'};border-radius:6px;padding:6px 9px;margin-bottom:6px;line-height:1.6">${it.why}</div>
+        ${it.rows.map(rowHtml).join('')}
+      </div>
+    </div>`;
+  // ★E. 参考。0件の項目は出さず、全部0件ならグループごと出さない
+  const refShown=chkRefItems().filter(it=>it.rows.length>0);
+  const refHtml=refShown.length?`<div style="font-size:12px;font-weight:800;color:#607d8b;margin:24px 0 2px;padding-bottom:3px;border-bottom:2px solid #90a4ae">E. 参考（不備ではない）</div>
+    <div style="font-size:11px;color:#607d8b;margin-bottom:6px">※ 不備ではありません。確認用の一覧です（上の延べ件数・実案件数には数えません）</div>
+    ${refShown.map(it=>itemHtml(it,true)).join('')}`:'';
   let html='';let curGrp='';
   shown.forEach(it=>{
     if(it.grp!==curGrp){curGrp=it.grp;
       html+=`<div style="font-size:12px;font-weight:800;color:var(--nav2);margin:16px 0 6px;padding-bottom:3px;border-bottom:2px solid var(--nav2)">${esc(CHK_GRP[it.grp]||it.grp)}</div>`;}
-    html+=`<div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;overflow:hidden;background:#fff">
-      <div style="padding:9px 12px;background:#fafafa;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#333"
-        onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'':'none';this.querySelector('span:first-child').textContent=(b.style.display==='none'?'▶ ':'▼ ')+this.getAttribute('data-lbl')"
-        data-lbl="${esc(it.label)}"><span>▼ ${esc(it.label)}</span><span style="color:#c62828;white-space:nowrap">${it.rows.length}件</span></div>
-      <div style="padding:8px 12px 10px">
-        <div style="font-size:11px;color:#7a5900;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:6px 9px;margin-bottom:6px;line-height:1.6">${it.why}</div>
-        ${it.rows.map(rowHtml).join('')}
-      </div>
-    </div>`;
+    html+=itemHtml(it,false);
   });
+  if(!shown.length){
+    root.innerHTML=`<div style="text-align:center;padding:48px 16px">
+      <div style="font-size:40px">✅</div>
+      <div style="font-size:16px;font-weight:800;color:#2e7d32;margin-top:8px">要確認の項目はありません</div>
+      <div style="font-size:12px;color:#888;margin-top:6px">この欄が0件なら整備完了です。</div></div>${refHtml}`;
+    return;
+  }
   const jitsu=ids.size;
   root.innerHTML=`<div style="margin-bottom:6px">
       <div style="font-size:18px;font-weight:800;color:var(--nav)">⚠ 要確認　<span style="font-size:14px;color:#c62828">延べ ${nobu}件 / 実案件 ${jitsu}件</span></div>
@@ -7275,7 +7295,7 @@ function renderCheck(){
         同じ案件が複数の項目に出るのは正しい動作です（別々の不備なので）。${coCnt?`延べ件数には会社単位の行 ${coCnt}件を含みます。`:''}
         <b>「確認済み」の操作はありません。データを直して保存すれば、その項目から自動で消えます。</b>
         検索や表示月では件数が変わりません（全案件が対象）。</div>
-    </div>${html}`;
+    </div>${html}${refHtml}`;
  }catch(e){
   const root=document.getElementById('checkRoot');
   if(root)root.innerHTML=`<div style="padding:16px;color:#c62828;font-size:12px">表示でエラーが発生しました：${esc(String((e&&e.message)||e))}</div>`;
