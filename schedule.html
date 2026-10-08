@@ -60,26 +60,39 @@ body{font-family:-apple-system,'Hiragino Sans','Meiryo',sans-serif;background:va
 .sch-table td.day{width:28px;min-width:28px;height:30px;cursor:crosshair;padding:0;position:relative}
 .sch-table td.day.sat{background:#f5f8ff}.sch-table td.day.sun,.sch-table td.day.hol{background:#fff5f5}
 .sch-table td.day .bar{position:absolute;inset:2px 0;border-radius:2px}
-/* ★見積番号（2026-10-06）。現場名の左。1現場5つまで、1つ1行で縦に積む。
+/* ★見積番号（2026-10-06）。現場名の左。★1行1番号（2026-10-08・発注書1枚＝1行）。
    ★幅は一番長い番号ぴったり（renderで測る）。番号が1つも無いときは列ごと出さない */
 .sch-table th.left-hdr[data-col="est"]{font-size:10px;padding:0 2px}
-.sch-table td.task-est{position:sticky;left:0;z-index:5;background:#fff;padding:1px 3px;text-align:left;vertical-align:middle;
+.sch-table td.task-est{position:sticky;left:0;z-index:5;background:#fff;padding:1px 2px;text-align:left;vertical-align:middle;
   cursor:pointer;font-size:10px;line-height:1.15;color:#37474f;font-variant-numeric:tabular-nums;letter-spacing:0}
 .sch-table td.task-est:hover{background:#e3f2fd}
 .sch-table td.task-est .en{display:block}
 /* ★番号のリンク。画面では青・下線で押せると分かるように。★印刷では下線も色も付けない（紙では意味が無い） */
 .sch-table td.task-est a.en{color:#1565c0;text-decoration:underline;text-decoration-color:#90caf9;text-underline-offset:2px;cursor:pointer}
 .sch-table td.task-est a.en:hover{color:#0d47a1;text-decoration-color:#0d47a1}
-.sch-table td.task-est .est-ed{position:absolute;top:1px;right:2px;font-size:10px;color:#90a4ae;cursor:pointer;line-height:1}
-.sch-table td.task-est .est-ed:hover{color:#1565c0}
+/* ★✎ は乗せたときだけ番号の右端に重ねて出す（幅を取らない・2026-10-08） */
+.sch-table td.task-est .est-ed{display:none;position:absolute;top:0;right:0;bottom:0;padding:0 2px;align-items:center;font-size:10px;color:#1565c0;background:#e3f2fd;cursor:pointer;line-height:1}
+.sch-table td.task-est:hover .est-ed{display:flex}
+/* 以前の作り（1現場5つまで）で2つ目以降が入っている印。画面だけ */
+.sch-table td.task-est .est-more{position:absolute;top:0;right:1px;font-size:8px;line-height:1;color:#e65100;font-weight:700}
+.sch-table td.task-est:hover .est-more{display:none}
 .sch-table td.task-est .en.ph{color:#cfd8dc;text-align:center;font-size:12px}
 .sch-table td.task-est:hover .en.ph{color:#1565c0}
 #estPop .estin{font-variant-numeric:tabular-nums;letter-spacing:.5px}
 #estPop .estin.bad{border-color:#c62828!important;background:#fff5f5}
+#estPop .est-old{font-size:11px;color:#e65100;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:6px 8px;line-height:1.6;margin-top:4px}
+/* ★発注書のチェック（2026-10-08）。見積Noと現場名の間。✓来た／×来ていない／空欄＝まだ確認していない。
+   押すたびに 空欄→✓→×→空欄（請求書チェックリスト #ivcheck と同じ作法）。★画面だけ（印刷には出さない） */
+.sch-table th.left-hdr[data-col="po"]{font-size:9px;padding:0;letter-spacing:-.5px}
+.sch-table td.task-po{position:sticky;z-index:5;background:#fff;padding:0;text-align:center;vertical-align:middle;cursor:pointer;font-size:12px;font-weight:700;line-height:1}
+.sch-table td.task-po:hover{background:#e3f2fd}
+.sch-table td.task-po.po-ok{color:#2e7d32}
+.sch-table td.task-po.po-none{color:#c62828}
+.sch-table td.task-po .gh{color:#cfd8dc;font-weight:400}
 /* 範囲選択印刷モード */
 .sch-wrap.sel-mode,.sch-wrap.sel-mode td,.sch-wrap.sel-mode th{cursor:cell!important}
 .sch-table td.day.sel-hi::after{content:'';position:absolute;inset:0;background:rgba(230,81,0,.35);pointer-events:none;z-index:2}
-.sch-table td.task-est.sel-hi,.sch-table td.task-name.sel-hi,.sch-table td.task-days.sel-hi,.sch-table td.task-amount.sel-hi,.sch-table td.task-kouki.sel-hi,.sch-table td.task-note.sel-hi{background:#ffe0cc!important}
+.sch-table td.task-est.sel-hi,.sch-table td.task-po.sel-hi,.sch-table td.task-name.sel-hi,.sch-table td.task-days.sel-hi,.sch-table td.task-amount.sel-hi,.sch-table td.task-kouki.sel-hi,.sch-table td.task-note.sel-hi{background:#ffe0cc!important}
 .col-resizer{position:absolute;top:0;right:0;bottom:0;width:8px;cursor:col-resize;z-index:11;background:transparent;border-right:2px solid transparent}
 .col-resizer:hover{background:rgba(255,235,59,.4);border-right-color:#ffeb3b}
 .col-resizer.dragging{background:rgba(255,235,59,.7);border-right-color:#ffeb3b}
@@ -120,7 +133,7 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
   min-width:0!important;max-width:none!important;width:auto!important;white-space:nowrap!important}
 .sch-table th.left-hdr[data-col="est"]{font-size:max(6px,calc(var(--p-fs,8px) - 1px))!important;min-width:0!important}
 .sch-table td.task-est a.en{color:inherit!important;text-decoration:none!important}
-.sch-table td.task-est .est-ed{display:none!important}
+.sch-table td.task-est .est-ed,.sch-table td.task-est .est-more{display:none!important}
 .sch-table td.day .bar{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 /* テーブル高さを印刷可能領域いっぱいに固定（行が多ければ自動で複数ページ） */
 .sch-table{font-size:var(--p-fs,8px)!important;height:285mm!important}
@@ -219,7 +232,7 @@ body{background:#fff!important;-webkit-print-color-adjust:exact!important;print-
 <div class="popup-ov" id="estPop" style="display:none" onclick="if(event.target===this)this.style.display='none'">
 <div class="popup" style="max-width:320px">
 <h3 id="estPopTitle">見積番号</h3>
-<div style="font-size:11px;color:#666;margin-bottom:8px;line-height:1.6">版まで書きます（例: <b>2026-0025-1</b>）。1現場に5つまで。<br>空欄は無視します。全角で打っても半角に直します。</div>
+<div style="font-size:11px;color:#666;margin-bottom:8px;line-height:1.6">版まで書きます（例: <b>2026-0025-1</b>）。<b>1行に1つ</b>（発注書1枚＝1行）。<br>空欄で保存すると消えます。全角で打っても半角に直します。</div>
 <div id="estPopIns"></div>
 <div id="estPopErr" style="font-size:11px;color:#c62828;min-height:14px;margin-top:4px"></div>
 <div class="btns">
@@ -370,7 +383,10 @@ function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&l
    ★見積番号（2026-10-06）
    工程表が「いま着工する現場」の正。発注アプリに未登録の現場でも、ここに見積番号が
    書いてあれば、それを発注アプリの見積番号欄に転記するだけで仮登録できる。
-   ・1現場に5つまで（同じ場所で造成・給水など見積が複数あるため）。task.estNos（配列）
+   ・★1行1番号（2026-10-08）。発注書1枚＝発注アプリの案件1つ＝見積1本＝工程表の1行。
+     同じ場所でも造成と給水で発注書が別なら、行を分ける。
+     保存の形は task.estNos（配列）のまま（以前のデータと同じ形・中身は1つ）。
+     以前の作り（1現場5つまで）で2つ目以降が入っている行は、消さずに残し、画面に「+N」を出す
    ・番号の形は 2026-0025-1（版まで）。全角で打っても半角に直す
    ・★工程表は単独運用。kouji-cost とは同期しない。番号は手で書く
    ・★列の幅は一番長い番号ぴったり。番号が1つも無いときは:
@@ -378,7 +394,6 @@ function escAttr(s){return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&l
                ボタンを足す余地が無いため、書く入口はこの列にした
        印刷 … 列ごと出さない（beforeprint で描き直す）。印刷して配るので幅を食わない
    ============================================================ */
-const EST_MAX=5;
 /* ★番号を押すと、工事コスト（kouji-cost）でその見積を別のタブで開く（2026-10-07）。
    kouji-cost の「#est/番号」は版まで書けばその版、版なしなら最新の版を開く。
    ★アドレスは固定で持つ（設定にしない）。工事コストは GitHub Pages の1か所にしか置いていないので、
@@ -386,7 +401,8 @@ const EST_MAX=5;
 const KC_URL='https://aliskenta-blip.github.io/kouji-cost/app.html';
 function estHref(n){return KC_URL+'#est/'+encodeURIComponent(n);}
 const EST_RE=/^\d{4}-\d{4}-\d{1,2}$/;
-let _estW=0, _schPrinting=false;
+let _estW=0, _poW=0, _schPrinting=false;
+const PO_W=20;   // 発注書チェックの列の幅（画面だけ）
 function estList(t){return (t&&Array.isArray(t.estNos))?t.estNos.filter(x=>x&&String(x).trim()):[];}
 function estNorm(v){
   return String(v||'').trim()
@@ -400,7 +416,7 @@ function estColW(strs,px,label){
   c.font=px+'px '+ff;
   let m=c.measureText(label||'見積No').width;
   strs.forEach(s=>{m=Math.max(m,c.measureText(String(s)).width);});
-  return Math.ceil(m)+7;   // 左右の余白 3px×2 ＋ 罫線
+  return Math.ceil(m)+5;   // 左右の余白 2px×2 ＋ 罫線
 }
 let estTaskId=null;
 function openEst(id){
@@ -408,36 +424,39 @@ function openEst(id){
   estTaskId=id;
   document.getElementById('estPopTitle').textContent='見積番号 — '+(t.name||'');
   const cur=estList(t);
-  let h='';
-  for(let i=0;i<EST_MAX;i++){
-    h+=`<div class="fg" style="margin-bottom:5px"><input type="text" class="estin" id="est_in${i}" inputmode="numeric" autocomplete="off"
-      value="${escAttr(cur[i]||'')}" placeholder="${i===0?'2026-0025-1':''}"
-      onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();${i<EST_MAX-1?`document.getElementById('est_in${i+1}').focus()`:'saveEst()'};}"></div>`;
-  }
+  let h=`<div class="fg" style="margin-bottom:5px"><input type="text" class="estin" id="est_in0" inputmode="numeric" autocomplete="off"
+    value="${escAttr(cur[0]||'')}" placeholder="2026-0025-1"
+    onkeydown="if(event.key==='Enter'&&!event.isComposing){event.preventDefault();saveEst();}"></div>`;
+  // ★以前の作り（1現場5つまで）で2つ目以降がある行。消さずに知らせる
+  if(cur.length>1)h+=`<div class="est-old">この行には以前の作りで番号が${cur.length}つ入っています（1行1番号に変わりました）。<br>2つ目以降: <b>${cur.slice(1).map(escAttr).join('、')}</b><br>発注書ごとに行を分けて、その行に書き直してください。<br>ここで保存しても2つ目以降は消しません。</div>`;
   document.getElementById('estPopIns').innerHTML=h;
   document.getElementById('estPopErr').textContent='';
   document.getElementById('estPop').style.display='flex';
-  setTimeout(()=>{const el=document.getElementById('est_in'+Math.min(cur.length,EST_MAX-1));if(el)el.focus();},80);
+  setTimeout(()=>{const el=document.getElementById('est_in0');if(el)el.focus();},80);
 }
 function saveEst(){
   const t=D.tasks.find(t=>t.id===estTaskId);if(!t)return;
-  const out=[],bad=[];
-  for(let i=0;i<EST_MAX;i++){
-    const el=document.getElementById('est_in'+i);if(!el)continue;
-    const v=estNorm(el.value);
-    el.classList.remove('bad');
-    if(!v)continue;
-    if(!EST_RE.test(v)){bad.push(v);el.classList.add('bad');continue;}
-    el.value=v;
-    if(out.indexOf(v)<0)out.push(v);
-  }
-  if(bad.length){
-    document.getElementById('estPopErr').textContent='形が違います: '+bad.join('、')+'（例: 2026-0025-1 ／ 版まで）';
+  const el=document.getElementById('est_in0');if(!el)return;
+  const v=estNorm(el.value);
+  el.classList.remove('bad');
+  if(v&&!EST_RE.test(v)){
+    el.classList.add('bad');
+    document.getElementById('estPopErr').textContent='形が違います: '+v+'（例: 2026-0025-1 ／ 版まで）';
     return;
   }
+  if(v)el.value=v;
+  const rest=estList(t).slice(1).filter(x=>x!==v);   // 以前の作りで入った2つ目以降は消さない
+  const out=(v?[v]:[]).concat(rest);
   if(out.length)t.estNos=out;else delete t.estNos;
   sv();render();
   document.getElementById('estPop').style.display='none';
+}
+// ★発注書のチェック。空欄 → ✓（来た）→ ×（来ていない）→ 空欄。task.po = 'ok' / 'none'（空欄は項目ごと無し）
+function cyclePo(id){
+  const t=D.tasks.find(t=>t.id===id);if(!t)return;
+  const nx=!t.po?'ok':(t.po==='ok'?'none':'');
+  if(nx)t.po=nx;else delete t.po;
+  sv();render();
 }
 function render(){
 const sm=document.getElementById('startMonth').value;if(!sm)return;
@@ -466,21 +485,25 @@ cur.setDate(d+1);
 const active=printOverride?D.tasks.filter(t=>!t.billed&&printOverride.ids.has(t.id)):D.tasks.filter(t=>!t.billed);
 const w=getCW();const sc=getSC();
 /* ★見積番号の列。表示する現場に番号が1つでもあるときだけ出す（無ければ幅0＝今までと同じ表） */
-const estStrs=[];active.forEach(t=>estList(t).forEach(n=>estStrs.push(n)));
+const estStrs=active.map(t=>estList(t)[0]).filter(Boolean);   // ★1行1番号（2つ目以降は幅に入れない）
 const estOn=estStrs.length>0;
 // ★印刷のときは番号がある場合だけ列を出す。画面では書く入口なので常に出す（空なら細く）
 const printing=_schPrinting||!!printOverride;
 const estShow=estOn||!printing;
 const estLabel=estOn?'見積No':'No.';
-/* ★画面では番号の右上に「✎」（直す入口）を置くので、そのぶん少し広げる。印刷では出さない */
-const ew=estShow?estColW(estStrs,10,estLabel)+(estOn&&!printing?10:0):0;
-if(ew!==_estW){_estW=ew;applyCW();}
-const nLeft=estShow?6:5;
-const totalLeft=ew+w.name+w.days+w.amount+w.kouki+w.note;
+/* ★「✎」は乗せたときだけ番号に重ねて出すので、幅は番号ぴったり（2026-10-08） */
+const ew=estShow?estColW(estStrs,10,estLabel):0;
+/* ★発注書のチェックは画面だけ。印刷では列ごと出さない（従業員に配る紙には要らない） */
+const poShow=!printing;
+const pw=poShow?PO_W:0;
+if(ew!==_estW||pw!==_poW){_estW=ew;_poW=pw;applyCW();}
+const nLeft=5+(estShow?1:0)+(poShow?1:0);
+const totalLeft=ew+pw+w.name+w.days+w.amount+w.kouki+w.note;
 let h='<thead><tr><th colspan="'+nLeft+'" class="top-left" style="min-width:'+totalLeft+'px"></th>';
 months.forEach(mo=>{h+=`<th class="month-hdr" colspan="${mo.days.length}">${mo.label}</th>`;});h+='</tr>';
 h+=`<tr>
 ${estShow?`<th class="left-hdr" data-col="est" style="min-width:${ew}px" title="見積番号（版まで）。各行を押すと書けます">${estLabel}</th>`:''}
+${poShow?`<th class="left-hdr" data-col="po" style="min-width:${pw}px" title="発注書（✓来た／×来ていない／空欄＝まだ確認していない）。押すたびに 空欄→✓→× と回ります。印刷には出ません">発注</th>`:''}
 <th class="left-hdr" data-col="name" style="min-width:${w.name}px">現場名<div class="col-resizer" data-col="name"></div></th>
 <th class="left-hdr" data-col="days" style="min-width:${w.days}px">土量<div class="col-resizer" data-col="days"></div></th>
 <th class="left-hdr" data-col="amount" style="min-width:${w.amount}px">金額<div class="col-resizer" data-col="amount"></div></th>
@@ -495,12 +518,13 @@ const nameClass=task.completed?'s-done':(task.dekidaka?'s-deki':'');
 const nameInlineColor=task.completed?`color:${sc.completed}`:(task.dekidaka?`color:${sc.dekidaka}`:'');
 const nameStyle=nameInlineColor?`${nameInlineColor};font-weight:700`:'';
 h+=`<tr>`;
-if(estShow){const el=estList(task);h+=`<td class="task-est" onclick="openEst('${task.id}')" title="見積番号（番号を押すと工事コストでその見積を開きます。✎ で直せます。5つまで）">${
-  el.length
+if(estShow){const el=estList(task),n=el[0];h+=`<td class="task-est" onclick="openEst('${task.id}')" title="見積番号（番号を押すと工事コストでその見積を開きます。✎ で直せます。1行に1つ）">${
+  n
     /* ★番号はリンク（別のタブ）。押してもセルの「直す」は開かない */
-    ?el.map(n=>`<a class="en" href="${escAttr(estHref(n))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="工事コストで ${escAttr(n)} を開く（別のタブ）">${escAttr(n)}</a>`).join('')
-      +(printing?'':`<span class="est-ed" title="見積番号を直す">✎</span>`)
+    ?`<a class="en" href="${escAttr(estHref(n))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="工事コストで ${escAttr(n)} を開く（別のタブ）">${escAttr(n)}</a>`
+      +(printing?'':(el.length>1?`<span class="est-more" title="以前の作りで入った番号: ${escAttr(el.slice(1).join('、'))}（✎ で確認）">+${el.length-1}</span>`:'')+`<span class="est-ed" title="見積番号を直す">✎</span>`)
     :(printing?'':'<span class="en ph">＋</span>')}</td>`;}
+if(poShow){const po=task.po||'';h+=`<td class="task-po${po?' po-'+po:''}" onclick="cyclePo('${task.id}')" title="発注書: ${po==='ok'?'✓ 来た':po==='none'?'× 来ていない':'まだ確認していない'}（押すと ${po==='ok'?'×':po==='none'?'空欄':'✓'} に）">${po==='ok'?'✓':po==='none'?'×':'<span class="gh">・</span>'}</td>`;}
 h+=`<td class="task-name">`;
 h+=`<span class="task-name-text ${nameClass}" style="${nameStyle}" onclick="inlineEdit('${task.id}','name',this)">${task.name||''}</span>`;
 h+=`<span class="action-btns no-print">`;
@@ -776,7 +800,7 @@ selRect={r1,r2,d1,d2};
 clearSelHi();
 for(let i=r1;i<=r2;i++){
 rows[i].querySelectorAll('td.day').forEach(c=>{if(c.dataset.ds>=d1&&c.dataset.ds<=d2)c.classList.add('sel-hi');});
-rows[i].querySelectorAll('td.task-est,td.task-name,td.task-days,td.task-amount,td.task-kouki,td.task-note').forEach(c=>c.classList.add('sel-hi'));
+rows[i].querySelectorAll('td.task-est,td.task-po,td.task-name,td.task-days,td.task-amount,td.task-kouki,td.task-note').forEach(c=>c.classList.add('sel-hi'));
 }
 }
 function fmtDs(ds){const p=ds.split('-');return parseInt(p[1])+'/'+parseInt(p[2]);}
@@ -835,7 +859,7 @@ const rowMM=Math.max(4.2,(pageH-headMM)/nRows);
 /* ★見積番号の列（あれば）。印刷の字の大きさで一番長い番号を測って、日のセルに回す幅から引く */
 const fs0=Math.min(18,Math.max(7,Math.round(rowMM*3.78*0.45)));
 const estStrs=Array.from(document.querySelectorAll('#schTable td.task-est .en:not(.ph)')).map(e=>e.textContent);
-const estMM=estStrs.length?(estColW(estStrs,Math.max(6,fs0-1))-3)/3.78:0;
+const estMM=estStrs.length?(estColW(estStrs,Math.max(6,fs0-1))-1)/3.78:0;
 const leftMM=89+estMM;/* 左固定列（現場名〜備考）約335px ＋ 見積番号 */
 /* 日セル幅：用紙幅を超えると印刷が全体縮小されて下に余白ができるため、必ず収まる幅に */
 const dayMM=Math.max(1.2,Math.min(4.23,(pageW-leftMM-2)/nDays));
@@ -925,12 +949,14 @@ document.getElementById('colPop').style.display='none';
 /* ヘッダー（左固定）も同じleft位置にsticky配置することで横スクロール時のズレを解消 */
 function applyCW(){
 const w=getCW();const sc=getSC();
-/* ★見積番号の列があるときは、左に固定する列をその幅だけ右へずらす（無ければ 0） */
-const e=_estW||0;
+/* ★見積番号・発注書チェックの列があるときは、左に固定する列をその幅だけ右へずらす（無ければ 0） */
+const e0=_estW||0, p=_poW||0, e=e0+p;
 const s=document.getElementById('dynStyle')||document.createElement('style');s.id='dynStyle';s.textContent=`
 :root{--c-done:${sc.completed};--c-deki:${sc.dekidaka}}
-@media screen{.sch-table td.task-est{min-width:${e}px!important;max-width:${e}px!important;width:${e}px!important}
-.sch-table th.left-hdr[data-col="est"]{min-width:${e}px!important}}
+@media screen{.sch-table td.task-est{min-width:${e0}px!important;max-width:${e0}px!important;width:${e0}px!important}
+.sch-table th.left-hdr[data-col="est"]{min-width:${e0}px!important}
+.sch-table td.task-po{left:${e0}px!important;min-width:${p}px!important;max-width:${p}px!important;width:${p}px!important}
+.sch-table th.left-hdr[data-col="po"]{min-width:${p}px!important;max-width:${p}px!important;width:${p}px!important}}
 .sch-table td.task-name{left:${e}px!important;min-width:${w.name}px!important;max-width:${w.name}px!important}
 .sch-table td.task-days{left:${e+w.name}px!important;min-width:${w.days}px!important}
 .sch-table td.task-amount{left:${e+w.name+w.days}px!important;min-width:${w.amount}px!important}
