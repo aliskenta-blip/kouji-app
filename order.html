@@ -3284,8 +3284,9 @@ function renderSeikyuu(){
 // その案件がどちらなのか・相手の月はいつかを返す。
 //   kind 's'  … 請求だけ・まだ下がる（自社は請求したが、協社のこの月の請求は無く、協社の請求がこれから来る）。other＝協社の請求がある月
 //   kind 'sb' … 請求だけ・このまま（協社の請求はこの月以前に出そろい、見積にも届いている。Phase 24）
-//   kind 'k'  … 協社だけ・期ずれ（自社はほかの月に請求している）。other＝自社の請求がある月
-//   kind 'kc' … 協社だけ・うちの請求はこれから（自社の請求は1件も無いが、発注額がある。Phase 25）
+//   kind 'k'  … 自社の請求が先行（負債）。自社の請求はこの月より前の月だけ。other＝自社の請求がある月
+//   kind 'kc' … 原価が先行（資産）。自社の請求がこの月より後の月にある（Phase 28）、または自社の請求は1件も無いが発注額がある（Phase 25）
+//   ★茶（資産）と橙（負債）は対。名前は「入金」ではなく「請求」の前後で決める（入金は添える一言に出すだけ・Phase 28）
 //   kind 'k0' … 協社だけ・請求漏れの疑い（自社の請求が1件も無く、発注額も無い）
 // 月の取り方は getBilledMonthRaw / getKyoBilledMonth と同じ（発生月 b.month・旧データの扱いも同じ）
 function billedMonthsOf(c){
@@ -3326,7 +3327,8 @@ function arariShiftOf(c,mk){
     return {kind:(rest>0||unregN>0)?'s':'sb',other:kyoMonthsOf(c).filter(m=>m!==mk),later,gap,unreg,unregN,rest};
   }
   if(km>0&&bm===0){const o=billedMonthsOf(c).filter(m=>m!==mk);
-    if(o.length)return {kind:'k',other:o};
+    // ★うちの請求が前の月だけ＝橙（負債）。後の月にも1件でもあれば、まだ請求する工事が残っている＝茶（資産・Phase 28）
+    if(o.length)return o.some(m=>m>mk)?{kind:'kc',other:o,jh:fn(c.jisha_h),later:o.filter(m=>m>mk)}:{kind:'k',other:o};
     // ★協社の請求が先に来て、うちの請求は翌月以降、はふつうにある。発注額があれば請求漏れとは言わない（Phase 25）。
     //   赤（k0）は発注額も無い＝本当に請求の当てが無いものだけに残す。誤警告が多いと本物を見逃す
     const jh=fn(c.jisha_h);
@@ -3348,13 +3350,29 @@ function arariShiftText(sh,mk,c){
     return head+'・あと ¥'+fmt(sh.rest)+' 来る見込み'+why;
   }
   if(sh.kind==='sb')return ms?'協社の請求は'+ms+'で出そろっています':'協社の請求は ¥0 で確定（原価なし）';
-  if(sh.kind==='k')return 'うちは'+ms+'に請求しています';
-  if(sh.kind==='kc')return 'うちの請求はこれから（発注額 ¥'+fmt(sh.jh)+'）';
+  if(sh.kind==='k'){
+    // ★入金は判定に使わず、添えるだけ。請求は出したが入金がまだ、もある
+    const bl=(c&&c.billings)||[];let amt=0,ny=0;
+    if(bl.length)bl.forEach(b=>{if(sh.other.includes((b.month||'').slice(0,7))){amt+=fn(b.amount);ny+=fn(b.nyukin);}});
+    else if(c){amt=fn(c.jisha_s);ny=fn(c.nyukin);}
+    const nyTxt=amt<=0?'':(ny>=amt?'入金済':(ny>0?'一部入金・未入金 ¥'+fmt(amt-ny):'未入金 ¥'+fmt(amt)));
+    // 協社への支払い（この月に請求してきた協社の、請求 − 支払）。0 なら負債はもう返し終わっている
+    const kUn=(c&&c.kyousha_list||[]).reduce((a,k)=>{
+      const kbl=(k.billings&&k.billings.length)?k.billings:(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);
+      return a+(kbl.some(b=>(b.month||'').slice(0,7)===mk&&fn(b.amount)>0)?Math.max(0,fn(k.seikyuu)-fn(k.shiharai)):0);},0);
+    return 'うちは'+ms+'に請求済み'+(nyTxt?'（'+nyTxt+'）':'')+'・'+(kUn>0?'協社へ未払い ¥'+fmt(kUn):'協社へも支払済');
+  }
+  if(sh.kind==='kc'){
+    if(sh.later&&sh.later.length)return 'うちの請求は'+sh.later.map(m=>shiftMonLbl(m,mk)).join('・')+'（この月より後）';
+    return 'うちの請求はこれから（発注額 ¥'+fmt(sh.jh)+'）';
+  }
   return 'うちの請求が1件もありません（請求漏れ？）';
 }
 const ARARI_SHIFT_COLOR={s:'#1565c0',sb:'#00796b',k:'#e65100',kc:'#6d4c41',k0:'#c62828'};
 const ARARI_SHIFT_BG={s:'#e3f2fd',sb:'#e0f2f1',k:'#fff3e0',kc:'#efebe9',k0:'#ffebee'};
-const ARARI_SHIFT_LABEL={s:'請求だけ（まだ下がる）',sb:'請求だけ（このまま）',k:'協社だけ（期ずれ）',kc:'協社だけ（うちの請求はこれから）',k0:'協社だけ（請求漏れの疑い）'};
+// ★Phase 28: 名前を会計の言葉に。茶＝原価が先行（資産）と橙＝自社の請求が先行（負債）は対
+const ARARI_SHIFT_LABEL={s:'自社請求のみ（原価未確定）',sb:'原価確定',k:'自社の請求が先行（負債）',kc:'原価が先行（資産）',k0:'請求漏れの疑い'};
+const ARARI_SHIFT_DESC={s:'協社の請求がこれから来る',sb:'自社と協社の請求がそろっている',k:'請求済み・協社へ払う分が残る',kc:'協社が先・うちの請求が残る',k0:'うちの請求も発注額も無い'};
 // ── KPIの内訳モーダル（D-060）──
 // 「なぜこの数字になったのか」を調べる道具。★KPIと同じ対象（S.cases 全件）から作り、
 // 計算は既存の関数（arariMonthOf / genkaKakuteiOf / calc）をそのまま呼ぶ。
@@ -3479,12 +3497,11 @@ function openKpiDrillArari(mk,mode){
   // ★色の凡例（Phase 26）。「ずれの内訳」の上。たためる（毎回読むものではない）。たたんだかどうかはこの端末だけに覚える
   const kdLegend=()=>{
     let open=true;try{open=localStorage.getItem('kd_legend_closed')!=='1';}catch(e){}
-    const it=[['s','請求だけ（まだ下がる）','協社の請求がこれから来る'],['sb','請求だけ（このまま）','協社の請求は出そろっている'],
-      ['k','協社だけ（期ずれ）','うちの請求は別の月'],['kc','協社だけ（これから）','うちの請求はこれから'],['k0','請求漏れの疑い','うちの請求も発注額も無い']];
+    const it=['s','sb','kc','k','k0'].map(k=>[k,ARARI_SHIFT_LABEL[k],ARARI_SHIFT_DESC[k]]);
     return `<details${open?' open':''} ontoggle="try{localStorage.setItem('kd_legend_closed',this.open?'0':'1')}catch(e){}" style="margin:2px 0 6px;font-size:11px">
       <summary style="cursor:pointer;color:#666;padding:1px 0">色の見方</summary>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2px 12px;padding:3px 0 0 4px">
-        ${it.map(([k,l,t])=>`<span style="display:flex;align-items:center;gap:5px;line-height:1.5;flex-wrap:wrap"><i style="flex:none;width:11px;height:11px;border-radius:2px;background:${ARARI_SHIFT_BG[k]};border:2px solid ${ARARI_SHIFT_COLOR[k]}"></i><b style="color:${ARARI_SHIFT_COLOR[k]}">${l}</b><span style="color:#666;white-space:normal">${t}</span></span>`).join('')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:2px 12px;padding:3px 0 0 4px">
+        ${it.map(([k,l,t])=>`<span style="display:flex;align-items:center;gap:5px;line-height:1.5;min-width:0"><i style="flex:none;width:11px;height:11px;border-radius:2px;background:${ARARI_SHIFT_BG[k]};border:2px solid ${ARARI_SHIFT_COLOR[k]}"></i><b style="flex:none;color:${ARARI_SHIFT_COLOR[k]}">${l}</b><span style="color:#666;min-width:0">${t}</span></span>`).join('')}
       </div></details>`;
   };
   const block=(rows)=>rows.length?rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>';
