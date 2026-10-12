@@ -3277,6 +3277,54 @@ function renderSeikyuu(){
     <td colspan="6"></td>
   </tr>`;
 }
+// ── 粗利の期ずれ（Phase 22・2026-10-12）──────────────────────────────────
+// ★読むだけ。粗利の計算（arariMonthOf・D-012 の原価未確定のガード）は変えない。保存する項目も増やさない。
+// 月の粗利は「その月に自社が請求した額 − その月に協力会社が請求してきた額」（どちらも発生月）なので、
+// 2つの月がずれると、今月請求して協社が翌月 → 多く見える／協社が先 → マイナスに見える。
+// その案件がどちらなのか・相手の月はいつかを返す。
+//   kind 's'  … 請求だけ（自社は請求したが、協社のこの月の請求は無い）。other＝協社の請求がある月
+//   kind 'k'  … 協社だけ・期ずれ（自社はほかの月に請求している）。other＝自社の請求がある月
+//   kind 'k0' … 協社だけ・請求漏れの疑い（自社の請求が1件も無い）
+// 月の取り方は getBilledMonthRaw / getKyoBilledMonth と同じ（発生月 b.month・旧データの扱いも同じ）
+function billedMonthsOf(c){
+  const bl=c.billings||[];
+  if(!bl.length){const m=(c.seikyuu_t||c.date||'').slice(0,7);return (fn(c.jisha_s)>0&&m)?[m]:[];}
+  return [...new Set(bl.filter(b=>fn(b.amount)!==0).map(b=>(b.month||'').slice(0,7)).filter(Boolean))].sort();
+}
+function kyoMonthsOf(c){
+  const s=new Set();
+  (c.kyousha_list||[]).forEach(k=>{
+    const kbl=(k.billings&&k.billings.length)?k.billings
+      :(fn(k.seikyuu)>0?[{month:(k.seikyuu_t||'').slice(0,7),amount:k.seikyuu}]:[]);
+    kbl.forEach(b=>{const m=(b.month||'').slice(0,7);if(m&&fn(b.amount)!==0)s.add(m);});
+  });
+  return [...s].sort();
+}
+function arariShiftOf(c,mk){
+  if(!(c.kyousha_list||[]).length)return null;          // 協力会社なし＝ずれようがない
+  const bm=getBilledMonthRaw(c,mk), km=getKyoBilledMonth(c,mk);
+  if(bm>0&&km===0)return {kind:'s',other:kyoMonthsOf(c).filter(m=>m!==mk)};
+  if(km>0&&bm===0){const o=billedMonthsOf(c).filter(m=>m!==mk);return {kind:o.length?'k':'k0',other:o};}
+  return null;
+}
+// 「8月」「2025年12月」（年が違うときだけ年を付ける）
+function shiftMonLbl(m,mk){return (m.slice(0,4)!==String(mk||'').slice(0,4)?m.slice(0,4)+'年':'')+Number(m.slice(5,7))+'月';}
+// 期ずれの一言。月別入力の一覧と内訳モーダルで同じ文言を使う
+function arariShiftText(sh,mk,c){
+  if(!sh)return '';
+  const ms=sh.other.map(m=>shiftMonLbl(m,mk)).join('・');
+  if(sh.kind==='s'){
+    if(ms)return '協社の請求は'+ms;
+    // 協社の請求がまだ1件も無い（原価未確定）。見積があれば添える
+    const mit=(c&&c.kyousha_list||[]).reduce((a,k)=>a+(((k.billings&&k.billings.length)||fn(k.seikyuu)>0)?0:fn(k.mitsumori)),0);
+    return '協社の請求はまだ'+(mit>0?'（見積 ¥'+fmt(mit)+'）':'');
+  }
+  if(sh.kind==='k')return 'うちは'+ms+'に請求しています';
+  return 'うちの請求が1件もありません（請求漏れ？）';
+}
+const ARARI_SHIFT_COLOR={s:'#1565c0',k:'#e65100',k0:'#c62828'};
+const ARARI_SHIFT_BG={s:'#e3f2fd',k:'#fff3e0',k0:'#ffebee'};
+const ARARI_SHIFT_LABEL={s:'請求だけ',k:'協社だけ（期ずれ）',k0:'協社だけ（請求漏れの疑い）'};
 // ── KPIの内訳モーダル（D-060）──
 // 「なぜこの数字になったのか」を調べる道具。★KPIと同じ対象（S.cases 全件）から作り、
 // 計算は既存の関数（arariMonthOf / genkaKakuteiOf / calc）をそのまま呼ぶ。
@@ -3303,7 +3351,8 @@ function kpiDrillArari(mk,mode){
     }else{
       row={c,a:arariMonthOf(c,mk),hasJuchu:r.hasJuchu,
         bm:getBilledMonthRaw(c,mk),                  // 当月請求（発生月）
-        km:getKyoBilledMonth(c,mk)};                 // 当月の協社請求（発生月）
+        km:getKyoBilledMonth(c,mk),                  // 当月の協社請求（発生月）
+        sh:arariShiftOf(c,mk)};                      // ★期ずれ（Phase 22・表示だけ。a は変えない）
     }
     if(row.a!==0||row.bm!==0||row.km!==0){inc.push(row);incSum+=row.a;}
   });
@@ -3314,15 +3363,40 @@ function kpiDrillArari(mk,mode){
   inc.sort(bySize);
   const exNoBill=mkc.rows.map(toRow).sort(bySize);
   const exNoAmt=mkc.unkRows.map(toRow).sort(bySize);
+  // ★この月の分が「原価未確定」で計上を待っている案件（Phase 22・月モードだけ）。
+  //   協社の請求を登録した瞬間に、この月の粗利が後から動く（原町376②: 8月が +150万）。それを先に見せる。
+  //   ★合計（incSum）には入れない。金額は ignoreGenka で出した「登録したらこの月に乗る額」
+  const pend=[];let pendSum=0;
+  if(!isFY)S.cases.forEach(c=>{
+    if(!showArariOf(c)||genkaKakuteiOf(c))return;
+    const bm=getBilledMonthRaw(c,mk), km=getKyoBilledMonth(c,mk);
+    if(bm===0&&km===0)return;
+    const would=arariMonthOf(c,mk,true);
+    // 請求が未登録の協社と、その見積
+    const miss=(c.kyousha_list||[]).filter(k=>!((k.billings&&k.billings.length)||fn(k.seikyuu)>0))
+      .map(k=>({name:k.name||'（協社名なし）',mit:fn(k.mitsumori)}));
+    pend.push({c,bm,km,would,miss,hasJuchu:calc(c).hasJuchu});pendSum+=would;
+  });
+  pend.sort((x,y)=>Math.abs(y.would)-Math.abs(x.would));
+  // ★期ずれの内訳（件数と、その月の粗利への寄与）。合計は incSum のまま
+  const shiftSum={s:{n:0,a:0},k:{n:0,a:0},k0:{n:0,a:0},both:{n:0,a:0}};
+  if(!isFY)inc.forEach(o=>{const k=o.sh?o.sh.kind:'both';shiftSum[k].n++;shiftSum[k].a+=o.a;});
   return {inc,incSum,
     exNoBill,exNoBillSum:mkc.exc,
     exNoAmt,exNoAmtSum:mkc.unkExc,
+    pend,pendSum,shiftSum,
     fyStart,isFY};
 }
 function kpiDrillClose(){document.querySelectorAll('#kpiDrillWrap').forEach(x=>x.remove());}
+// 並べ替え（Phase 22）: 'abs'＝金額の大きい順（プラスもマイナスも絶対値・従来）／'desc'＝粗利の大きい順／'asc'＝小さい順
+let _kdSort='abs';
+function kpiDrillSort(mk,mode,v){_kdSort=v;openKpiDrillArari(mk,mode);}
 function openKpiDrillArari(mk,mode){
   kpiDrillClose();                                   // ★2枚重ならないよう先に消す（§5 #8 の罠）
   const d=kpiDrillArari(mk,mode);
+  // ★並べ替えは表示の順番だけ（合計 incSum は変わらない）
+  if(_kdSort==='desc')d.inc.sort((x,y)=>y.a-x.a);
+  else if(_kdSort==='asc')d.inc.sort((x,y)=>x.a-y.a);
   const nm=c=>esc(((c.place||'')+' '+(c.kouji||'')).trim()||'（名称未設定）');
   const line=o=>{
     const c=o.c;
@@ -3335,8 +3409,11 @@ function openKpiDrillArari(mk,mode){
     // ★率（Phase 17）: 一覧の率の列と同じ式・同じ「予」をそのまま出す（新しい計算は書かない）。
     //   率は契約ベースなので、月モードでも年度モードでも同じ値。色は金額とは独立（率の符号で決める）
     const rc=arariRateCell(c);
-    return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #eee;cursor:pointer;font-size:12px" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
-      <span style="flex:1;min-width:120px">${nm(c)}${esc(c.client?'（'+c.client+'）':'')}</span>
+    // ★期ずれ（Phase 22）: 請求だけ／協社だけ（期ずれ・請求漏れの疑い）に色を付け、相手の月を添える
+    const sh=(!d.isFY&&o.sh)?o.sh:null;
+    const shTxt=sh?arariShiftText(sh,mk,c):'';
+    return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px ${sh?'6px':'0'};border-bottom:1px solid #eee;cursor:pointer;font-size:12px${sh?';background:'+ARARI_SHIFT_BG[sh.kind]+';border-left:3px solid '+ARARI_SHIFT_COLOR[sh.kind]:''}" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
+      <span style="flex:1;min-width:120px">${nm(c)}${esc(c.client?'（'+c.client+'）':'')}${sh?`<br><span style="font-size:10.5px;font-weight:700;color:${ARARI_SHIFT_COLOR[sh.kind]}">${ARARI_SHIFT_LABEL[sh.kind]}：${esc(shTxt)}</span>`:''}</span>
       <span style="white-space:nowrap;color:#555">${f}</span>
       <span style="white-space:nowrap;font-weight:700;width:96px;text-align:right;color:${v<0?'#c62828':'#2e7d32'}">${v>=0?'+':''}¥${fmt(v)}</span>
       <span class="kd-rate" style="white-space:nowrap;width:62px;text-align:right;font-size:11px;font-weight:700;color:${rc.ok?(rc.red?'#c62828':'#2e7d32'):'#bbb'}" title="${arariRateTip(rc)}">${rc.txt}</span>
@@ -3355,11 +3432,32 @@ function openKpiDrillArari(mk,mode){
     <div style="padding:14px">
       <div style="font-size:11px;color:#666;margin-bottom:8px">その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。全案件が対象です。${d.isFY?'この画面は年度の12ヶ月を合計しています。':''}
         <br>右端は粗利率（契約ベース・一覧の率と同じ）。<b>粗利がマイナスでも率がプラスなら、請求のタイミングのズレです（通算すれば戻ります）。粗利も率もマイナスなら、契約そのものが赤字の可能性があります。</b></div>
-      <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px">算入　${d.inc.length}件　¥${fmt(d.incSum)}<span style="font-weight:400;color:#888">　※${d.isFY?'年度全体':mk+' の分'}</span></div>
+      <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
+        <span>算入　${d.inc.length}件　¥${fmt(d.incSum)}<span style="font-weight:400;color:#888">　※${d.isFY?'年度全体':mk+' の分'}</span></span>
+        <span style="font-weight:400;font-size:11px">並べ替え：${[['abs','金額の大きい順'],['desc','粗利の大きい順'],['asc','粗利の小さい順']].map(([v,l])=>
+          `<a style="cursor:pointer;margin-left:6px;${_kdSort===v?'font-weight:700;color:var(--nav2)':'color:#888;text-decoration:underline'}" onclick="kpiDrillSort('${mk}','${mode||''}','${v}')">${l}</a>`).join('')}</span>
+      </div>
+      ${(!d.isFY&&(d.shiftSum.s.n||d.shiftSum.k.n||d.shiftSum.k0.n))?`<div style="font-size:11px;line-height:1.8;margin:2px 0 6px">
+        <b>ずれの内訳</b>（この月の粗利のうち）：
+        ${['s','k','k0'].filter(k=>d.shiftSum[k].n).map(k=>`<span style="display:inline-block;margin-right:10px;padding:0 6px;border-radius:4px;background:${ARARI_SHIFT_BG[k]};color:${ARARI_SHIFT_COLOR[k]};font-weight:700">${ARARI_SHIFT_LABEL[k]} ${d.shiftSum[k].n}件 ${d.shiftSum[k].a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum[k].a)))}</span>`).join('')}
+        <span style="color:#666">両方ある ${d.shiftSum.both.n}件 ${d.shiftSum.both.a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum.both.a)))}</span>
+        <br><span style="color:#888">請求だけ＝今月請求して協社の請求は別の月（多く見える）。協社だけ＝協社の請求が先・後に来た（少なく見える）。期ずれは通算すれば戻ります。</span></div>`:''}
       ${block(d.inc)}
       <div style="display:flex;justify-content:space-between;font-weight:800;font-size:13px;padding:8px 0;border-top:2px solid #333;margin-top:4px">
         <span>合計</span><span>¥${fmt(d.incSum)}</span>
       </div>
+      ${(!d.isFY&&d.pend.length)?`<div style="margin-top:10px;border:1px solid #ef9a9a;border-radius:8px;overflow:hidden">
+        <div style="padding:8px 12px;background:#ffebee;color:#b71c1c;font-size:12px;font-weight:700">
+          ⚠ 原価未確定で、この月の分が計上を待っている案件　${d.pend.length}件　${d.pendSum>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.pendSum)))}</div>
+        <div style="padding:8px 12px">
+          <div style="font-size:11px;color:#b71c1c;margin-bottom:6px">協力会社の請求が未登録のため、いまは粗利が <b>0</b> です（合計には入っていません）。
+            <b>請求を登録した瞬間に、${mk} の粗利が後から右の額だけ動きます</b>（登録した月ではなく、この月が動きます）。現場名をクリックすると案件が開きます。</div>
+          ${d.pend.map(o=>{const c=o.c;return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #eee;cursor:pointer;font-size:12px" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
+            <span style="flex:1;min-width:120px">${nm(c)}${esc(c.client?'（'+c.client+'）':'')}<br><span style="font-size:10.5px;color:#7a5900">未登録: ${o.miss.map(k=>esc(k.name)+(k.mit>0?' 見積 ¥'+fmt(k.mit):' 見積なし')).join('／')||'—'}</span></span>
+            <span style="white-space:nowrap;color:#555">${o.hasJuchu?'<span style="color:#666">自社受注額 − 外注費</span>':`請求 <b>¥${fmt(o.bm)}</b> − 協社 <b>¥${fmt(o.km)}</b>`}</span>
+            <span style="white-space:nowrap;font-weight:700;width:96px;text-align:right;color:${o.would<0?'#c62828':'#2e7d32'}">${o.would>=0?'+':''}¥${fmt(Math.round(o.would))}</span>
+          </div>`;}).join('')}
+        </div></div>`:''}
       <div style="margin-top:14px;border:1px solid #ffe082;border-radius:8px;overflow:hidden">
         <div style="padding:8px 12px;background:#fff8e1;color:#7a5900;font-size:12px;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center"
              onclick="const b=this.nextElementSibling;b.style.display=b.style.display==='none'?'':'none';this.querySelector('span:last-child').textContent=b.style.display==='none'?'▶':'▼'">
@@ -3638,6 +3736,9 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
     //   別の意味なので、テキストは変えず書式だけで目立たなくする（D-061 / D-062）
     //   ★showArari の宣言より前に置かないこと（const は巻き上げされず ReferenceError になる）
     const arariZero=showArari&&genkaOk&&Math.round(arariMonth)===0;
+    // ★期ずれのアラート（Phase 22・表示だけ）。自社の請求月と協社の請求月が違えば粗利セルの下に添える
+    const shift=showArari?arariShiftOf(c,mk):null;
+    const shiftNote=shift?`<div style="font-size:9.5px;font-weight:700;line-height:1.3;margin-top:1px;color:${ARARI_SHIFT_COLOR[shift.kind]};white-space:normal" title="${ARARI_SHIFT_LABEL[shift.kind]}。粗利は自社の請求月と協力会社の請求月（どちらも発生月）で計上するので、月がずれると多く／少なく見えます。自動では何も変えません">${esc(arariShiftText(shift,mk,c))}</div>`:'';
     const kakutei=arariKakutei(c);                      // 確定前は率の後ろに「予」（D-038）
     const ec=`style="cursor:pointer" title="クリックで編集"`;
     // 前月以前から残高ありで繰越（再掲）された行も、請済/入済・写真などをそのまま操作可能にする
@@ -3678,7 +3779,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
       <td class="${r.miharai>0?'cw':'ca'}" style="cursor:pointer" onclick="togSub('${c.id}')">¥${fmt(r.miharai)}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer">${nyMonth?'¥'+fmt(nyMonth):''}</td>
       <td class="num" style="color:#888;font-size:10px">${nyPrev?'¥'+fmt(nyPrev):''}</td>
-      <td class="num big ${(showArari&&genkaOk&&!arariZero)?(arariMonth>=0?'cp':'cl'):''}"${arariZero?' style="color:#bbb;font-weight:400"':''} title="${showArari&&!genkaOk?GENKA_MIKAKUTEI_TIP:'当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります'+(arariZero?'&#10;この月は請求も協力会社の請求もありませんでした':'')}">${(showArari&&genkaOk)?'¥'+fmt(Math.round(arariMonth)):'—'}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
+      <td class="num big ${(showArari&&genkaOk&&!arariZero)?(arariMonth>=0?'cp':'cl'):''}"${arariZero?' style="color:#bbb;font-weight:400"':''} title="${showArari&&!genkaOk?GENKA_MIKAKUTEI_TIP:'当月粗利＝実額ベース。中間マージン案件は協力会社の請求月に計上します。原価が先に来た月はマイナスになります'+(arariZero?'&#10;この月は請求も協力会社の請求もありませんでした':'')}">${(showArari&&genkaOk)?'¥'+fmt(Math.round(arariMonth)):'—'}${shiftNote}${juchuGap?`<span style="color:#c62828;font-weight:700" title="自社受注額が ${juchuGap.total}社中 ${juchuGap.withJ}社しか入っていません。空の${juchuGap.emptyCnt}社は原価ごと粗利から外れています（原価 ¥${fmt(juchuGap.cost)} が抜けた数字）。展開すると詳細が出ます"> ⚠</span>`:''}</td>
       ${(()=>{const rc=arariRateCell(c);return `<td class="ctr ${rc.ok?(rc.red?'cl':'cp'):''}" title="${arariRateTip(rc)}">${rc.txt}</td>`;})()}
       <td class="ctr" ${ec} onclick="editCell('${c.id}','m3',this,'number')">${fn(c.m3)||''}</td>
       <td class="ctr">${seikyuuMonthOf(c,mk)==='✓'?`<span class="ck pk on" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;クリックで請求額を編集" onclick="editBillings('${c.id}',this)">✓</span>`:`<span class="ck pk" style="cursor:pointer" title="${SEIKYUU_MONTH_TIP}&#10;この月は未請求です。クリックで請求額を登録" onclick="editBillings('${c.id}',this)">請</span>`}</td>
