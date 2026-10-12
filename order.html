@@ -3488,36 +3488,53 @@ function openKpiDrillArari(mk,mode){
       </div></details>`;
   };
   const block=(rows)=>rows.length?rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>';
-  // ★翌月への影響（Phase 23）。開くと案件が見える（<details>）。金額は読むだけで、合計にもKPIにも足さない
-  const sg=v=>(v>=0?'+':'−')+'¥'+fmt(Math.abs(Math.round(v)));
-  const sgc=v=>`<b style="color:${v<0?'#c62828':'#2e7d32'}">${sg(v)}</b>`;
+  // ★来月への影響（Phase 23・文言は Phase 27）。開くと案件が見える（<details>）。金額は読むだけで、合計にもKPIにも足さない
   const nxBox=()=>{
     if(d.isFY)return '';
     const x=d.nx, nl=shiftMonLbl(x.nxm,mk);
     const tot=x.next.length+x.later.length+x.prev.length+x.none.length;
     if(!tot&&!x.xj)return '';
-    const shiftA=d.shiftSum.s.a+d.shiftSum.sb.a+d.shiftSum.k.a+d.shiftSum.kc.a+d.shiftSum.k0.a;
-    const rowsOf=(arr,dir)=>arr.map(({o,to})=>{const c=o.c,sh=o.sh;
-      const toTxt=to.length?to.map(t=>shiftMonLbl(t.m,mk)+' '+sgc(t.v)).join('・')
-        :(sh.kind==='s'?'協社の請求待ち'+(sh.rest>0?'（あと ¥'+fmt(sh.rest)+' 見込み）':''):(sh.kind==='kc'?'うちの請求待ち（発注額 ¥'+fmt(sh.jh)+'）':'うちの請求待ち（金額は未定）'));
-      return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:4px 6px;border-bottom:1px solid #eee;cursor:pointer;font-size:11.5px;border-left:3px solid ${ARARI_SHIFT_COLOR[sh.kind]}" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
-        <span style="flex:1;min-width:120px">${nm(c)}<span style="color:${ARARI_SHIFT_COLOR[sh.kind]};font-size:10.5px;font-weight:700">　${ARARI_SHIFT_LABEL[sh.kind]}</span></span>
-        <span style="white-space:nowrap">この月 ${sgc(o.a)}</span>
-        <span style="white-space:nowrap;min-width:150px;text-align:right">${dir} ${toTxt}</span></div>`;}).join('');
-    const grp=(key,title,dir,note,open)=>{const arr=x[key];if(!arr.length)return '';
-      const tv=key==='none'?'<span style="color:#888">金額は未定</span>':sgc(x.sum[key]);
-      return `<details style="margin-top:4px"${open?' open':''}><summary style="cursor:pointer;font-size:12px;padding:3px 0">
-        <b>${title}</b>　${arr.length}件　この月 ${sgc(x.self[key])} ${dir} ${tv}<span style="color:#888;font-size:10.5px">　${note}</span></summary>
-        <div style="margin:2px 0 6px 10px">${rowsOf(arr,dir)}</div></details>`;};
+    // ★Phase 27: 矢印・「逆向きで効く」をやめ、普通の言葉で書く。1件1行で「この月に何が起きて、相手はどの月か」が読めること
+    const yen=v=>'¥'+fmt(Math.abs(Math.round(v)));
+    const monAmt=to=>to.map(t=>shiftMonLbl(t.m,mk)+'分 '+yen(t.v)).join('・');
+    const rowsOf=(arr,past)=>arr.map(({o,to})=>{const c=o.c,sh=o.sh;
+      const toMs=to.map(t=>shiftMonLbl(t.m,mk)).join('・');
+      let txt;
+      if(sh.kind==='s'||sh.kind==='sb'){
+        txt=`この月はうちの請求 ${yen(o.bm)} だけ。`+(to.length
+          ?`協社の請求は ${monAmt(to)}（${toMs}の粗利を${past?'下げた':'下げる'}）`
+          :`協社の請求はまだ`+(sh.rest>0?`（あと ${yen(sh.rest)} 来る見込み）`:''));
+      }else{
+        txt=`この月は協社の請求 ${yen(o.km)} だけ。`+(to.length
+          ?`うちの請求は ${monAmt(to)}（${toMs}の粗利を${past?'上げた':'上げる'}）`
+          :(sh.kind==='kc'?`うちの請求はまだ（発注額 ${yen(sh.jh)}）`:'うちの請求も発注額もありません'));
+      }
+      return `<div style="padding:4px 6px;border-bottom:1px solid #eee;cursor:pointer;font-size:11.5px;line-height:1.5;border-left:3px solid ${ARARI_SHIFT_COLOR[sh.kind]}" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
+        <b>${nm(c)}</b>　<span style="color:${ARARI_SHIFT_COLOR[sh.kind]}">${txt}</span></div>`;}).join('');
+    // まとまりの見出し: 件数と、相手の月の粗利がいくら動くか（上げる／下げるを分けて言葉で）
+    const moveTxt=(arr,past)=>{let up=0,dn=0;arr.forEach(({to})=>to.forEach(t=>{if(t.v>0)up+=t.v;else dn+=t.v;}));
+      const p=[];if(up)p.push(`うちの請求で ${yen(up)} ${past?'上げた':'上げる'}`);if(dn)p.push(`協社の請求で ${yen(dn)} ${past?'下げた':'下げる'}`);return p.join('、');};
+    const grp=(key,title,note,past)=>{const arr=x[key];if(!arr.length)return '';
+      const mv=(key==='none'||past)?'':moveTxt(arr,past);   // 前の月の戻りは合計を出さない（過去の月の額を足しても意味が取れない）
+      return `<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;padding:3px 0">
+        <b>${title}</b>　${arr.length}件${mv?`<span style="color:#555">　${mv}</span>`:''}${note?`<span style="color:#888;font-size:10.5px">　${note}</span>`:''}</summary>
+        <div style="margin:2px 0 6px 10px">${rowsOf(arr,past)}</div></details>`;};
+    // 見出し: 来月の粗利がどう動くか。0件なら「ありません」
+    const nUp=x.next.reduce((a,{to})=>a+to.reduce((s,t)=>s+(t.v>0?t.v:0),0),0);
+    const nDn=x.next.reduce((a,{to})=>a+to.reduce((s,t)=>s+(t.v<0?t.v:0),0),0);
+    const head=x.next.length
+      ?`この月のずれのうち ${x.next.length}件が、来月（${nl}）の粗利を動かします。`
+        +[nUp?`うちの請求が${nl}に出る分で <b style="color:#2e7d32">${yen(nUp)} 上がり</b>`:'',nDn?`協社の請求が${nl}に来る分で <b style="color:#c62828">${yen(nDn)} 下がります</b>`:''].filter(Boolean).join('、').replace(/上がり<\/b>$/,'上がります</b>')+'。'
+      :`来月（${nl}）の粗利に響くものはありません。`;
+    const laterMs=shiftMonLbl((()=>{let y=+x.nxm.slice(0,4),m=+x.nxm.slice(5,7)+1;if(m>12){y++;m=1;}return y+'-'+String(m).padStart(2,'0');})(),mk);
     return `<div style="margin:4px 0 10px;border:1px solid #b0bec5;border-radius:8px;padding:8px 12px;background:#f7f9fa">
-      <div style="font-size:12px;font-weight:700;color:var(--nav2)">翌月（${nl}）への影響<span style="font-weight:400;color:#888;font-size:10.5px">　読むだけの表示です。粗利の計算・合計は変わりません</span></div>
-      <div style="font-size:12px;margin:4px 0">この月のずれ ${sgc(shiftA)} のうち、<b>${nl}に逆向きで効くのは ${x.next.length?sgc(x.sum.next):'¥0'}</b>（${x.next.length}件）。</div>
-      <div style="font-size:10.5px;color:#888">請求だけ＝この月は上がり、協社の請求が来る月に下がる。協社だけ＝この月は下がり、うちの請求が立つ月に上がる。▸を押すと案件が見えます。</div>
-      ${grp('next',`${nl}に逆向きで効く`,'→','',false)}
-      ${grp('later',`${shiftMonLbl(x.nxm,mk)}より後に効く`,'→','',false)}
-      ${grp('none','相手の請求がまだ（これから効く）','→','月も金額も、登録されるまで決まりません',false)}
-      ${grp('prev','前の月の戻り（もう効いている）','←','前の月のずれが、この月に戻ってきた分です。翌月には効きません',false)}
-      ${x.xj?`<div style="font-size:10.5px;color:#888;margin-top:4px">中間マージンの案件 ${x.xj}件は、粗利を協社の請求月にまとめて乗せるので、うちの請求月とのずれは出ません（ここには入れていません）。</div>`:''}
+      <div style="font-size:12px;font-weight:700;color:var(--nav2)">来月（${nl}）への影響<span style="font-weight:400;color:#888;font-size:10.5px">　読むだけの表示です。粗利の計算・合計は変わりません</span></div>
+      <div style="font-size:12px;margin:4px 0">${head}</div>
+      ${grp('next',`来月（${nl}）に響く`,'',false)}
+      ${grp('later',`${laterMs}以降に響く`,'',false)}
+      ${grp('none','相手の請求がまだ','月も金額も、登録されるまで決まりません',false)}
+      ${grp('prev','前の月のずれの戻り','相手の請求は前の月に出ています。来月には響きません',true)}
+      <div style="font-size:10.5px;color:#888;margin-top:4px">▸ を押すと案件が見えます。${x.xj?`中間マージンの案件（${x.xj}件）は月のずれが出ないので入れていません。`:''}</div>
     </div>`;
   };
   const exTotal=d.exNoBillSum+d.exNoAmtSum, exCnt=d.exNoBill.length+d.exNoAmt.length;
