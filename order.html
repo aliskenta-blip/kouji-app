@@ -3476,6 +3476,17 @@ function openKpiDrillArari(mk,mode){
       <span class="kd-rate" style="white-space:nowrap;width:62px;text-align:right;font-size:11px;font-weight:700;color:${rc.ok?(rc.red?'#c62828':'#2e7d32'):'#bbb'}" title="${arariRateTip(rc)}">${rc.txt}</span>
     </div>`;
   };
+  // ★色の凡例（Phase 26）。「ずれの内訳」の上。たためる（毎回読むものではない）。たたんだかどうかはこの端末だけに覚える
+  const kdLegend=()=>{
+    let open=true;try{open=localStorage.getItem('kd_legend_closed')!=='1';}catch(e){}
+    const it=[['s','請求だけ（まだ下がる）','協社の請求がこれから来る'],['sb','請求だけ（このまま）','協社の請求は出そろっている'],
+      ['k','協社だけ（期ずれ）','うちの請求は別の月'],['kc','協社だけ（これから）','うちの請求はこれから'],['k0','請求漏れの疑い','うちの請求も発注額も無い']];
+    return `<details${open?' open':''} ontoggle="try{localStorage.setItem('kd_legend_closed',this.open?'0':'1')}catch(e){}" style="margin:2px 0 6px;font-size:11px">
+      <summary style="cursor:pointer;color:#666;padding:1px 0">色の見方</summary>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2px 12px;padding:3px 0 0 4px">
+        ${it.map(([k,l,t])=>`<span style="display:flex;align-items:center;gap:5px;line-height:1.5;flex-wrap:wrap"><i style="flex:none;width:11px;height:11px;border-radius:2px;background:${ARARI_SHIFT_BG[k]};border:2px solid ${ARARI_SHIFT_COLOR[k]}"></i><b style="color:${ARARI_SHIFT_COLOR[k]}">${l}</b><span style="color:#666;white-space:normal">${t}</span></span>`).join('')}
+      </div></details>`;
+  };
   const block=(rows)=>rows.length?rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>';
   // ★翌月への影響（Phase 23）。開くと案件が見える（<details>）。金額は読むだけで、合計にもKPIにも足さない
   const sg=v=>(v>=0?'+':'−')+'¥'+fmt(Math.abs(Math.round(v)));
@@ -3526,11 +3537,12 @@ function openKpiDrillArari(mk,mode){
         <span style="font-weight:400;font-size:11px">並べ替え：${[['abs','金額の大きい順'],['desc','粗利の大きい順'],['asc','粗利の小さい順']].map(([v,l])=>
           `<a style="cursor:pointer;margin-left:6px;${_kdSort===v?'font-weight:700;color:var(--nav2)':'color:#888;text-decoration:underline'}" onclick="kpiDrillSort('${mk}','${mode||''}','${v}')">${l}</a>`).join('')}</span>
       </div>
+      ${d.isFY?'':kdLegend()}
       ${(!d.isFY&&(d.shiftSum.s.n||d.shiftSum.sb.n||d.shiftSum.k.n||d.shiftSum.kc.n||d.shiftSum.k0.n))?`<div style="font-size:11px;line-height:1.8;margin:2px 0 6px">
         <b>ずれの内訳</b>（この月の粗利のうち）：
         ${['s','sb','k','kc','k0'].filter(k=>d.shiftSum[k].n).map(k=>`<span style="display:inline-block;margin-right:10px;padding:0 6px;border-radius:4px;background:${ARARI_SHIFT_BG[k]};color:${ARARI_SHIFT_COLOR[k]};font-weight:700">${ARARI_SHIFT_LABEL[k]} ${d.shiftSum[k].n}件 ${d.shiftSum[k].a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum[k].a)))}${k==='s'&&d.shiftSum.s.rest>0?'（あと ¥'+fmt(Math.round(d.shiftSum.s.rest))+' 来る見込み）':''}</span>`).join('')}
         <span style="color:#666">両方ある ${d.shiftSum.both.n}件 ${d.shiftSum.both.a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum.both.a)))}</span>
-        <br><span style="color:#888">請求だけ＝今月請求して協社の請求は別の月（多く見える）。<b>まだ下がる</b>＝協社の請求がこれから来る（あと来る見込みの額を添えます）。<b>このまま</b>＝協社の請求は出そろっている。協社だけ＝協社の請求が先・後に来た（少なく見える）。<b>うちの請求はこれから</b>＝協社が先に請求し、うちは発注額があってまだ請求していない。赤（請求漏れの疑い）は、発注額も無いものだけです。期ずれは通算すれば戻ります。</span></div>`:''}
+        <br><span style="color:#888">色の意味は上の「色の見方」。期ずれは通算すれば戻ります。</span></div>`:''}
       ${nxBox()}
       ${block(d.inc)}
       <div style="display:flex;justify-content:space-between;font-weight:800;font-size:13px;padding:8px 0;border-top:2px solid #333;margin-top:4px">
