@@ -3305,10 +3305,11 @@ function kyoMonthsOf(c){
 }
 function arariShiftOf(c,mk){
   if(!(c.kyousha_list||[]).length)return null;          // 協力会社なし＝ずれようがない
+  // ★自社受注額が入っている案件（中間マージン方式・hasJuchu）は、粗利を協社の請求月にまとめて乗せるので、
+  //   うちの請求月とのずれは起きない。色を付けると本当のずれが埋もれるので無色（Phase 24 で請求だけ側、Phase 29 で協社側も）
+  if(calc(c).hasJuchu)return null;
   const bm=getBilledMonthRaw(c,mk), km=getKyoBilledMonth(c,mk);
   if(bm>0&&km===0){
-    // ★中間マージンは粗利を協社の請求月に乗せるので、うちの請求月の粗利は常に 0。ずれではない（件数のノイズ・Phase 24）
-    if(calc(c).hasJuchu)return null;
     // ★請求だけを2つに分ける（Phase 24）。協社の請求がこれから来るか（まだ下がる＝'s'）、出そろったか（このまま＝'sb'）
     //   later … この月より後の月に登録済みの協社請求
     //   gap   … 請求を登録済みの協社で、見積に届いていない残り（出来高の途中、または見積より安く終わった）
@@ -3427,10 +3428,11 @@ function kpiDrillArari(mk,mode){
   });
   pend.sort((x,y)=>Math.abs(y.would)-Math.abs(x.would));
   // ★期ずれの内訳（件数と、その月の粗利への寄与）。合計は incSum のまま
-  const shiftSum={s:{n:0,a:0,rest:0},sb:{n:0,a:0},k:{n:0,a:0},kc:{n:0,a:0},k0:{n:0,a:0},both:{n:0,a:0}};
-  // ★中間マージンの「請求だけ」（粗利 0）は件数に入れない（Phase 24・ノイズ）。a は 0 なので合計は変わらない
+  const shiftSum={s:{n:0,a:0,rest:0},sb:{n:0,a:0},k:{n:0,a:0},kc:{n:0,a:0},k0:{n:0,a:0},both:{n:0,a:0},xj:{n:0,a:0}};
+  // ★自社受注額が入っている案件は、ずれの色を付けず xj にまとめる（Phase 29）。ただし同じ月に請求が両方あれば「両方ある」。
+  //   うちの請求だけの月（粗利 0）は件数にも入れない（Phase 24・ノイズ）。s+sb+k+kc+k0+both+xj の合計＝incSum
   if(!isFY)inc.forEach(o=>{if(!o.sh&&o.hasJuchu&&o.bm>0&&o.km===0)return;
-    const k=o.sh?o.sh.kind:'both';shiftSum[k].n++;shiftSum[k].a+=o.a;if(k==='s')shiftSum.s.rest+=o.sh.rest;});
+    const k=o.sh?o.sh.kind:((o.hasJuchu&&!(o.bm>0&&o.km>0))?'xj':'both');shiftSum[k].n++;shiftSum[k].a+=o.a;if(k==='s')shiftSum.s.rest+=o.sh.rest;});
   // ★翌月への影響（Phase 23・表示だけ）。この月のずれの「相手側」が、どの月に逆向きで効くか。
   //   請求だけ（s）→ 協社の請求がある月に −協社請求。協社だけ（k）→ うちの請求がある月に +うちの請求。
   //   相手の月で振り分ける: next＝翌月／later＝再来月以降／prev＝前の月（すでに効いた＝この月のずれはその戻り）／
@@ -3440,9 +3442,9 @@ function kpiDrillArari(mk,mode){
   const nxm=(()=>{let y=+String(mk).slice(0,4),m=+String(mk).slice(5,7)+1;if(m>12){y++;m=1;}return y+'-'+String(m).padStart(2,'0');})();
   const nx={nxm,next:[],later:[],prev:[],none:[],xj:0,
     sum:{next:0,later:0,prev:0,none:0},self:{next:0,later:0,prev:0,none:0}};
+  nx.xj=shiftSum.xj.n;
   if(!isFY)inc.forEach(o=>{
     if(!o.sh)return;
-    if(o.hasJuchu){nx.xj++;return;}
     const c=o.c, ms=o.sh.other;
     const amtOf=m=>(o.sh.kind==='s'||o.sh.kind==='sb')?-getKyoBilledMonth(c,m):getBilledMonthRaw(c,m);
     if(!ms.length&&o.sh.kind==='sb')return;   // 協社の請求0円で確定＝逆向きに効くものが無い
@@ -3551,7 +3553,7 @@ function openKpiDrillArari(mk,mode){
       ${grp('later',`${laterMs}以降に響く`,'',false)}
       ${grp('none','相手の請求がまだ','月も金額も、登録されるまで決まりません',false)}
       ${grp('prev','前の月のずれの戻り','相手の請求は前の月に出ています。来月には響きません',true)}
-      <div style="font-size:10.5px;color:#888;margin-top:4px">▸ を押すと案件が見えます。${x.xj?`中間マージンの案件（${x.xj}件）は月のずれが出ないので入れていません。`:''}</div>
+      <div style="font-size:10.5px;color:#888;margin-top:4px">▸ を押すと案件が見えます。${x.xj?`自社受注額が入っている案件（${x.xj}件）は、粗利を協社の請求月に乗せるので月のずれが出ません。ここには入れていません。`:''}</div>
     </div>`;
   };
   const exTotal=d.exNoBillSum+d.exNoAmtSum, exCnt=d.exNoBill.length+d.exNoAmt.length;
@@ -3575,7 +3577,7 @@ function openKpiDrillArari(mk,mode){
       ${(!d.isFY&&(d.shiftSum.s.n||d.shiftSum.sb.n||d.shiftSum.k.n||d.shiftSum.kc.n||d.shiftSum.k0.n))?`<div style="font-size:11px;line-height:1.8;margin:2px 0 6px">
         <b>ずれの内訳</b>（この月の粗利のうち）：
         ${['s','sb','k','kc','k0'].filter(k=>d.shiftSum[k].n).map(k=>`<span style="display:inline-block;margin-right:10px;padding:0 6px;border-radius:4px;background:${ARARI_SHIFT_BG[k]};color:${ARARI_SHIFT_COLOR[k]};font-weight:700">${ARARI_SHIFT_LABEL[k]} ${d.shiftSum[k].n}件 ${d.shiftSum[k].a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum[k].a)))}${k==='s'&&d.shiftSum.s.rest>0?'（あと ¥'+fmt(Math.round(d.shiftSum.s.rest))+' 来る見込み）':''}</span>`).join('')}
-        <span style="color:#666">両方ある ${d.shiftSum.both.n}件 ${d.shiftSum.both.a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum.both.a)))}</span>
+        <span style="color:#666">両方ある ${d.shiftSum.both.n}件 ${d.shiftSum.both.a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum.both.a)))}</span>${d.shiftSum.xj.n?`<span style="color:#666;margin-left:10px" title="自社受注額が入っている案件は、粗利を協社の請求月に乗せるので月のずれが出ません（色なし）">自社受注額あり ${d.shiftSum.xj.n}件 ${d.shiftSum.xj.a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum.xj.a)))}</span>`:''}
         <br><span style="color:#888">色の意味は上の「色の見方」。期ずれは通算すれば戻ります。</span></div>`:''}
       ${nxBox()}
       ${block(d.inc)}
