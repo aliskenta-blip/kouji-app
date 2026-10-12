@@ -3177,7 +3177,9 @@ function renderMonthly(){
     <div class="kpi b" title="発注額のうち、まだ請求していない残りの合計（発注−累計請求）${KPI_ALL_NOTE}&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillRem()"><div class="kl">未請求残 🔍</div><div class="kv">¥${fmt(trem)}</div></div>
     <div class="kpi o" title="${KPI_KYOSHA_TIP}"><div class="kl">協社請求計（発生ベース）</div><div class="kv">¥${fmt(tky)}</div><div class="ks">${_T.tkyCnt}件</div></div>
     <div class="kpi r" title="${KPI_MIHARAI_TIP}"><div class="kl">未払残計（残高）</div><div class="kv">¥${fmt(tmp)}</div></div>
-    <div class="kpi g" title="この月に発生した粗利です。その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。入金や請求漏れは関係しません。原価が先に出た月はマイナスになります。&#10;全案件が対象です。請求漏れで一覧から消えた案件や、検索で絞り込んだ場合も、この月に発生した粗利の合計を表示します。&#10;※下の表の合計行（表示中の案件）とは一致しません&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillArari('${mk}')"><div class="kl">粗利（この月に発生した分）🔍</div><div class="kv">¥${fmt(tar)}</div></div>`;
+    <div class="kpi g" title="この月に発生した粗利です。その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。入金や請求漏れは関係しません。原価が先に出た月はマイナスになります。&#10;全案件が対象です。請求漏れで一覧から消えた案件や、検索で絞り込んだ場合も、この月に発生した粗利の合計を表示します。&#10;※下の表の合計行（表示中の案件）とは一致しません&#10;クリックすると現場ごとの内訳が出ます" style="cursor:pointer" onclick="openKpiDrillArari('${mk}')"><div class="kl">粗利（この月に発生した分）🔍</div><div class="kv">¥${fmt(tar)}</div></div>
+    ${(()=>{const f=arariForecastOf(mk);   // ★予測粗利（Phase 30）。確定の粗利（左）は変えない。別のKPIとして横に並べる
+      return `<div class="kpi" style="border-left-color:#8e24aa;cursor:pointer" title="予測粗利＝確定の粗利 ＋ 原価未確定で計上を待っている案件の見込み。&#10;未登録の協社の原価を、見積 × この月のうちの請求 ÷ 発注額 で見込みます（あくまで予測）。&#10;見積が入っていない協社がいる案件は見込めないので足していません。&#10;クリックすると内訳が出ます" onclick="openKpiDrillArari('${mk}')"><div class="kl">予測粗利（見込み込み）🔍</div><div class="kv" style="color:#6a1b9a">¥${fmt(Math.round(tar+f.add))}</div><div class="ks">確定との差 ${f.add>=0?'+':'−'}¥${fmt(Math.abs(Math.round(f.add)))}・見込み ${f.n}件 原価 ¥${fmt(Math.round(f.est))}${f.unkN?`・見込めない ${f.unkN}件`:''}</div></div>`;})()}`;
 
   let clEl=document.getElementById('mClientWrap');
   if(!clEl){clEl=document.createElement('div');clEl.id='mClientWrap';document.getElementById('mKpi').after(clEl);}
@@ -3374,6 +3376,43 @@ const ARARI_SHIFT_BG={s:'#e3f2fd',sb:'#e0f2f1',k:'#fff3e0',kc:'#efebe9',k0:'#ffe
 // ★Phase 28: 名前を会計の言葉に。茶＝原価が先行（資産）と橙＝自社の請求が先行（負債）は対
 const ARARI_SHIFT_LABEL={s:'自社請求のみ（原価未確定）',sb:'原価確定',k:'自社の請求が先行（負債）',kc:'原価が先行（資産）',k0:'請求漏れの疑い'};
 const ARARI_SHIFT_DESC={s:'協社の請求がこれから来る',sb:'自社と協社の請求がそろっている',k:'請求済み・協社へ払う分が残る',kc:'協社が先・うちの請求が残る',k0:'うちの請求も発注額も無い'};
+// ── 予測粗利（Phase 30・2026-10-12）──────────────────────────────────
+// ★読むだけ。確定の粗利（arariMonthOf・D-012）は変えない。保存する項目も増やさない。
+// 原価未確定（協社の請求が1社でも未登録）で計上を待っている案件について、
+// 未登録の協社の原価を見積から見込み、この月の粗利がいくらになりそうかを出す。
+//   見込み原価 ＝ 見積 × この月のうちの請求 ÷ 発注額（1回で請求し終わる案件は見積そのまま・出来高は同じ割合で按分）
+//   単独           … 予測 ＝ arariMonthOf(ignoreGenka)（＝うちの請求 − 登録済みの協社請求）− 見込み原価
+//   自社受注額あり … 予測 ＝ arariMonthOf(ignoreGenka) ＋（自社受注額 − 見積）× 同じ割合
+//                    （粗利は協社の請求月に乗るので、協社がこの月分で請求してくる前提の見込み）
+//   見積が無い協社がいる案件は見込めないので、予測に足さず unk に分ける
+function arariForecastCase(c,mk,bm){
+  const jh=fn(c.jisha_h), ratio=jh>0?Math.min(1,bm/jh):(bm>0?1:0);
+  const hj=calc(c).hasJuchu;
+  let est=0, fa=arariMonthOf(c,mk,true);
+  const unk=[];
+  (c.kyousha_list||[]).forEach(k=>{
+    if((k.billings&&k.billings.length)||fn(k.seikyuu)>0)return;   // 登録済みの協社は実額（arariMonthOf に入っている）
+    if(hj&&!(fn(k.juchu)>0))return;                                // 自社受注額方式で受注額の無い協社は粗利の計算に入らない
+    const mit=fn(k.mitsumori);
+    if(!(mit>0)){unk.push(k.name||'（協社名なし）');return;}
+    const e=mit*ratio; est+=e;
+    fa+=hj?(fn(k.juchu)-mit)*ratio:-e;
+  });
+  return {est,fa,unk};
+}
+// 月の予測粗利。確定（monthlyTotals の tar と同じ）＋ 計上待ちの予測。見込めない案件は足さない
+function arariForecastOf(mk){
+  let add=0,est=0,n=0;const unkCases=[];let unkRows=0;
+  S.cases.forEach(c=>{
+    if(!showArariOf(c)||genkaKakuteiOf(c))return;
+    const bm=getBilledMonthRaw(c,mk), km=getKyoBilledMonth(c,mk);
+    if(bm===0&&km===0)return;
+    const f=arariForecastCase(c,mk,bm);
+    if(f.unk.length){unkCases.push(c);unkRows+=f.unk.length;return;}
+    add+=f.fa;est+=f.est;n++;
+  });
+  return {add,est,n,unkN:unkCases.length,unkRows};
+}
 // ── KPIの内訳モーダル（D-060）──
 // 「なぜこの数字になったのか」を調べる道具。★KPIと同じ対象（S.cases 全件）から作り、
 // 計算は既存の関数（arariMonthOf / genkaKakuteiOf / calc）をそのまま呼ぶ。
@@ -3424,7 +3463,8 @@ function kpiDrillArari(mk,mode){
     // 請求が未登録の協社と、その見積
     const miss=(c.kyousha_list||[]).filter(k=>!((k.billings&&k.billings.length)||fn(k.seikyuu)>0))
       .map(k=>({name:k.name||'（協社名なし）',mit:fn(k.mitsumori)}));
-    pend.push({c,bm,km,would,miss,hasJuchu:calc(c).hasJuchu});pendSum+=would;
+    const f=arariForecastCase(c,mk,bm);   // ★予測（Phase 30）。would（登録したら乗る実額）とは別に持つ
+    pend.push({c,bm,km,would,miss,hasJuchu:calc(c).hasJuchu,est:f.est,fa:f.fa,unk:f.unk});pendSum+=would;
   });
   pend.sort((x,y)=>Math.abs(y.would)-Math.abs(x.would));
   // ★期ずれの内訳（件数と、その月の粗利への寄与）。合計は incSum のまま
@@ -3462,6 +3502,16 @@ function kpiDrillArari(mk,mode){
     exNoBill,exNoBillSum:mkc.exc,
     exNoAmt,exNoAmtSum:mkc.unkExc,
     pend,pendSum,shiftSum,nx,
+    // 予測（Phase 30）。fcAdd＝計上待ちの予測の合計（見込めない案件は除く）／fcBack＝原価確定の案件を同じ方式で見込んでいたら
+    fcAdd:pend.filter(o=>!o.unk.length).reduce((a,o)=>a+o.fa,0),fcEst:pend.filter(o=>!o.unk.length).reduce((a,o)=>a+o.est,0),
+    fcN:pend.filter(o=>!o.unk.length).length,fcUnk:pend.filter(o=>o.unk.length),
+    // 見込みの当たり具合: 原価が確定した案件（この月にうちの請求あり）で、見積から見込んだ原価と、実際の協社請求を同じ割合で比べる。
+    //   月のずれは混ぜない（原価の額だけを比べる）。見積の無い協社がいる案件は除く
+    fcBack:isFY?null:(()=>{let pr=0,ac=0,n=0;inc.forEach(o=>{const c=o.c,jh=fn(c.jisha_h);if(!(jh>0)||o.bm<=0)return;
+      const ks=(c.kyousha_list||[]).filter(k=>!o.hasJuchu||fn(k.juchu)>0);if(!ks.length||ks.some(k=>!(fn(k.mitsumori)>0)))return;
+      const ratio=Math.min(1,o.bm/jh);
+      ks.forEach(k=>{const kbl=(k.billings&&k.billings.length)?k.billings:(fn(k.seikyuu)>0?[{amount:k.seikyuu}]:[]);
+        pr+=fn(k.mitsumori)*ratio;ac+=kbl.reduce((x,b)=>x+fn(b.amount),0)*ratio;});n++;});return {pr,ac,n};})(),
     fyStart,isFY};
 }
 function kpiDrillClose(){document.querySelectorAll('#kpiDrillWrap').forEach(x=>x.remove());}
@@ -3568,6 +3618,11 @@ function openKpiDrillArari(mk,mode){
     <div style="padding:14px">
       <div style="font-size:11px;color:#666;margin-bottom:8px">その月に請求した額 − その月に協力会社が請求してきた額（どちらも発生月）。全案件が対象です。${d.isFY?'この画面は年度の12ヶ月を合計しています。':''}
         <br>右端は粗利率（契約ベース・一覧の率と同じ）。<b>粗利がマイナスでも率がプラスなら、請求のタイミングのズレです（通算すれば戻ります）。粗利も率もマイナスなら、契約そのものが赤字の可能性があります。</b></div>
+      ${d.isFY?'':`<div style="display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;font-size:12px;margin:0 0 8px;padding:6px 10px;border-radius:6px;background:#f3f6f9">
+        <span>確定の粗利 <b>¥${fmt(d.incSum)}</b></span>
+        <span>予測粗利 <b style="color:#6a1b9a">¥${fmt(Math.round(d.incSum+d.fcAdd))}</b> <span style="color:#666;font-size:11px">（計上待ち ${d.fcN}件・見込み原価 ¥${fmt(Math.round(d.fcEst))}${d.fcUnk.length?`／見込めない ${d.fcUnk.length}件`:''}）</span></span>
+        ${d.fcBack&&d.fcBack.n?`<span style="color:#666;font-size:11px" title="この月にうちの請求があって原価が確定した案件で、予測と同じ方式（見積 × 請求 ÷ 発注額）で見込んだ原価と、実際に来た協社の請求（同じ割合）を比べたもの。月のずれは混ぜず、原価の額だけを比べます。予測がどれくらい当たるかの目安です">見込みの当たり具合：原価が確定した ${d.fcBack.n}件で、見積からの見込み ¥${fmt(Math.round(d.fcBack.pr))} → 実際の協社請求 ¥${fmt(Math.round(d.fcBack.ac))}（${d.fcBack.ac-d.fcBack.pr>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.fcBack.ac-d.fcBack.pr)))}${d.fcBack.pr>0?`・${d.fcBack.ac-d.fcBack.pr>=0?'+':'−'}${Math.abs((d.fcBack.ac-d.fcBack.pr)/d.fcBack.pr*100).toFixed(1)}%`:''}）</span>`:''}
+      </div>`}
       <div style="font-weight:700;font-size:12px;color:var(--nav2);border-bottom:2px solid var(--nav2);padding-bottom:3px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px">
         <span>算入　${d.inc.length}件　¥${fmt(d.incSum)}<span style="font-weight:400;color:#888">　※${d.isFY?'年度全体':mk+' の分'}</span></span>
         <span style="font-weight:400;font-size:11px">並べ替え：${[['abs','金額の大きい順'],['desc','粗利の大きい順'],['asc','粗利の小さい順']].map(([v,l])=>
@@ -3586,14 +3641,16 @@ function openKpiDrillArari(mk,mode){
       </div>
       ${(!d.isFY&&d.pend.length)?`<div style="margin-top:10px;border:1px solid #ef9a9a;border-radius:8px;overflow:hidden">
         <div style="padding:8px 12px;background:#ffebee;color:#b71c1c;font-size:12px;font-weight:700">
-          ⚠ 原価未確定で、この月の分が計上を待っている案件　${d.pend.length}件　${d.pendSum>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.pendSum)))}</div>
+          ⚠ 原価未確定で、この月の分が計上を待っている案件　${d.pend.length}件　${d.pendSum>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.pendSum)))}
+          <span style="font-weight:400;color:#555">　予測 ${d.fcAdd>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.fcAdd)))}（見込み原価 ¥${fmt(Math.round(d.fcEst))} を引いた額）${d.fcUnk.length?`　見込めない ${d.fcUnk.length}件`:''}</span></div>
         <div style="padding:8px 12px">
           <div style="font-size:11px;color:#b71c1c;margin-bottom:6px">協力会社の請求が未登録のため、いまは粗利が <b>0</b> です（合計には入っていません）。
-            <b>請求を登録した瞬間に、${mk} の粗利が後から右の額だけ動きます</b>（登録した月ではなく、この月が動きます）。現場名をクリックすると案件が開きます。</div>
+            <b>請求を登録した瞬間に、${mk} の粗利が後から動きます</b>（登録した月ではなく、この月が動きます）。<b>右から2番目</b>はいまの登録だけで乗る額、<b>右端の予測</b>は未登録の協社を見積で見込んだ額です。自社受注額が入っている案件は、粗利が協社の請求月に乗るので、いまの登録だけでは ¥0 です（協社がこの月分で請求してくる前提で予測を出します）。現場名をクリックすると案件が開きます。</div>
           ${d.pend.map(o=>{const c=o.c;return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid #eee;cursor:pointer;font-size:12px" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
             <span style="flex:1;min-width:120px">${nm(c)}${esc(c.client?'（'+c.client+'）':'')}<br><span style="font-size:10.5px;color:#7a5900">未登録: ${o.miss.map(k=>esc(k.name)+(k.mit>0?' 見積 ¥'+fmt(k.mit):' 見積なし')).join('／')||'—'}</span></span>
             <span style="white-space:nowrap;color:#555">${o.hasJuchu?'<span style="color:#666">自社受注額 − 外注費</span>':`請求 <b>¥${fmt(o.bm)}</b> − 協社 <b>¥${fmt(o.km)}</b>`}</span>
             <span style="white-space:nowrap;font-weight:700;width:96px;text-align:right;color:${o.would<0?'#c62828':'#2e7d32'}">${o.would>=0?'+':''}¥${fmt(Math.round(o.would))}</span>
+            <span style="white-space:nowrap;width:112px;text-align:right;font-size:11px" title="未登録の協社の原価を、見積 × この月のうちの請求 ÷ 発注額 で見込んだ予測">${o.unk.length?`<span style="color:#999">見込めない<br>（見積なし）</span>`:`予測 <b style="color:${o.fa<0?'#c62828':'#2e7d32'}">${o.fa>=0?'+':'−'}¥${fmt(Math.abs(Math.round(o.fa)))}</b><br><span style="color:#888">見込み原価 ¥${fmt(Math.round(o.est))}</span>`}</span>
           </div>`;}).join('')}
         </div></div>`:''}
       <div style="margin-top:14px;border:1px solid #ffe082;border-radius:8px;overflow:hidden">
