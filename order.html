@@ -3381,10 +3381,34 @@ function kpiDrillArari(mk,mode){
   // ★期ずれの内訳（件数と、その月の粗利への寄与）。合計は incSum のまま
   const shiftSum={s:{n:0,a:0},k:{n:0,a:0},k0:{n:0,a:0},both:{n:0,a:0}};
   if(!isFY)inc.forEach(o=>{const k=o.sh?o.sh.kind:'both';shiftSum[k].n++;shiftSum[k].a+=o.a;});
+  // ★翌月への影響（Phase 23・表示だけ）。この月のずれの「相手側」が、どの月に逆向きで効くか。
+  //   請求だけ（s）→ 協社の請求がある月に −協社請求。協社だけ（k）→ うちの請求がある月に +うちの請求。
+  //   相手の月で振り分ける: next＝翌月／later＝再来月以降／prev＝前の月（すでに効いた＝この月のずれはその戻り）／
+  //   none＝相手がまだ無い（s は協社の請求待ち・k0 はうちの請求待ち）。
+  //   金額は getBilledMonthRaw / getKyoBilledMonth をそのまま読む（arariMonthOf の単独の式の片側）。
+  //   中間マージン（hasJuchu）はうちの請求月の寄与が 0 なので対象外（xj に件数だけ）。★incSum もKPIも変えない
+  const nxm=(()=>{let y=+String(mk).slice(0,4),m=+String(mk).slice(5,7)+1;if(m>12){y++;m=1;}return y+'-'+String(m).padStart(2,'0');})();
+  const nx={nxm,next:[],later:[],prev:[],none:[],xj:0,
+    sum:{next:0,later:0,prev:0,none:0},self:{next:0,later:0,prev:0,none:0}};
+  if(!isFY)inc.forEach(o=>{
+    if(!o.sh)return;
+    if(o.hasJuchu){nx.xj++;return;}
+    const c=o.c, ms=o.sh.other;
+    const amtOf=m=>o.sh.kind==='s'?-getKyoBilledMonth(c,m):getBilledMonthRaw(c,m);
+    if(!ms.length){nx.none.push({o,to:[]});nx.self.none+=o.a;return;}
+    const g={next:[],later:[],prev:[]};
+    ms.forEach(m=>g[m===nxm?'next':(m>mk?'later':'prev')].push({m,v:amtOf(m)}));
+    // この月の寄与（o.a）は、相手の月が一番多く入っているところに1回だけ数える（二重に数えない）
+    let home=null;
+    ['next','later','prev'].forEach(k=>{if(!g[k].length)return;
+      nx[k].push({o,to:g[k]});nx.sum[k]+=g[k].reduce((x,t)=>x+t.v,0);
+      if(home==null||Math.abs(g[k].reduce((x,t)=>x+t.v,0))>Math.abs(g[home].reduce((x,t)=>x+t.v,0)))home=k;});
+    nx.self[home]+=o.a;
+  });
   return {inc,incSum,
     exNoBill,exNoBillSum:mkc.exc,
     exNoAmt,exNoAmtSum:mkc.unkExc,
-    pend,pendSum,shiftSum,
+    pend,pendSum,shiftSum,nx,
     fyStart,isFY};
 }
 function kpiDrillClose(){document.querySelectorAll('#kpiDrillWrap').forEach(x=>x.remove());}
@@ -3420,6 +3444,38 @@ function openKpiDrillArari(mk,mode){
     </div>`;
   };
   const block=(rows)=>rows.length?rows.map(line).join(''):'<div style="font-size:12px;color:#bbb;padding:8px 0">該当なし</div>';
+  // ★翌月への影響（Phase 23）。開くと案件が見える（<details>）。金額は読むだけで、合計にもKPIにも足さない
+  const sg=v=>(v>=0?'+':'−')+'¥'+fmt(Math.abs(Math.round(v)));
+  const sgc=v=>`<b style="color:${v<0?'#c62828':'#2e7d32'}">${sg(v)}</b>`;
+  const nxBox=()=>{
+    if(d.isFY)return '';
+    const x=d.nx, nl=shiftMonLbl(x.nxm,mk);
+    const tot=x.next.length+x.later.length+x.prev.length+x.none.length;
+    if(!tot&&!x.xj)return '';
+    const shiftA=d.shiftSum.s.a+d.shiftSum.k.a+d.shiftSum.k0.a;
+    const rowsOf=(arr,dir)=>arr.map(({o,to})=>{const c=o.c,sh=o.sh;
+      const toTxt=to.length?to.map(t=>shiftMonLbl(t.m,mk)+' '+sgc(t.v)).join('・')
+        :(sh.kind==='s'?'協社の請求待ち'+(()=>{const t=arariShiftText(sh,mk,c).match(/見積 ¥[\d,]+/);return t?'（'+t[0]+'）':'';})():'うちの請求待ち（金額は未定）');
+      return `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:4px 6px;border-bottom:1px solid #eee;cursor:pointer;font-size:11.5px;border-left:3px solid ${ARARI_SHIFT_COLOR[sh.kind]}" onclick="kpiDrillClose();editCase('${c.id}')" title="クリックで案件を開く">
+        <span style="flex:1;min-width:120px">${nm(c)}<span style="color:${ARARI_SHIFT_COLOR[sh.kind]};font-size:10.5px;font-weight:700">　${ARARI_SHIFT_LABEL[sh.kind]}</span></span>
+        <span style="white-space:nowrap">この月 ${sgc(o.a)}</span>
+        <span style="white-space:nowrap;min-width:150px;text-align:right">${dir} ${toTxt}</span></div>`;}).join('');
+    const grp=(key,title,dir,note,open)=>{const arr=x[key];if(!arr.length)return '';
+      const tv=key==='none'?'<span style="color:#888">金額は未定</span>':sgc(x.sum[key]);
+      return `<details style="margin-top:4px"${open?' open':''}><summary style="cursor:pointer;font-size:12px;padding:3px 0">
+        <b>${title}</b>　${arr.length}件　この月 ${sgc(x.self[key])} ${dir} ${tv}<span style="color:#888;font-size:10.5px">　${note}</span></summary>
+        <div style="margin:2px 0 6px 10px">${rowsOf(arr,dir)}</div></details>`;};
+    return `<div style="margin:4px 0 10px;border:1px solid #b0bec5;border-radius:8px;padding:8px 12px;background:#f7f9fa">
+      <div style="font-size:12px;font-weight:700;color:var(--nav2)">翌月（${nl}）への影響<span style="font-weight:400;color:#888;font-size:10.5px">　読むだけの表示です。粗利の計算・合計は変わりません</span></div>
+      <div style="font-size:12px;margin:4px 0">この月のずれ ${sgc(shiftA)} のうち、<b>${nl}に逆向きで効くのは ${x.next.length?sgc(x.sum.next):'¥0'}</b>（${x.next.length}件）。</div>
+      <div style="font-size:10.5px;color:#888">請求だけ＝この月は上がり、協社の請求が来る月に下がる。協社だけ＝この月は下がり、うちの請求が立つ月に上がる。▸を押すと案件が見えます。</div>
+      ${grp('next',`${nl}に逆向きで効く`,'→','',false)}
+      ${grp('later',`${shiftMonLbl(x.nxm,mk)}より後に効く`,'→','',false)}
+      ${grp('none','相手の請求がまだ（これから効く）','→','月も金額も、登録されるまで決まりません',false)}
+      ${grp('prev','前の月の戻り（もう効いている）','←','前の月のずれが、この月に戻ってきた分です。翌月には効きません',false)}
+      ${x.xj?`<div style="font-size:10.5px;color:#888;margin-top:4px">中間マージンの案件 ${x.xj}件は、粗利を協社の請求月にまとめて乗せるので、うちの請求月とのずれは出ません（ここには入れていません）。</div>`:''}
+    </div>`;
+  };
   const exTotal=d.exNoBillSum+d.exNoAmtSum, exCnt=d.exNoBill.length+d.exNoAmt.length;
   const wrap=document.createElement('div');
   wrap.id='kpiDrillWrap';
@@ -3442,6 +3498,7 @@ function openKpiDrillArari(mk,mode){
         ${['s','k','k0'].filter(k=>d.shiftSum[k].n).map(k=>`<span style="display:inline-block;margin-right:10px;padding:0 6px;border-radius:4px;background:${ARARI_SHIFT_BG[k]};color:${ARARI_SHIFT_COLOR[k]};font-weight:700">${ARARI_SHIFT_LABEL[k]} ${d.shiftSum[k].n}件 ${d.shiftSum[k].a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum[k].a)))}</span>`).join('')}
         <span style="color:#666">両方ある ${d.shiftSum.both.n}件 ${d.shiftSum.both.a>=0?'+':'−'}¥${fmt(Math.abs(Math.round(d.shiftSum.both.a)))}</span>
         <br><span style="color:#888">請求だけ＝今月請求して協社の請求は別の月（多く見える）。協社だけ＝協社の請求が先・後に来た（少なく見える）。期ずれは通算すれば戻ります。</span></div>`:''}
+      ${nxBox()}
       ${block(d.inc)}
       <div style="display:flex;justify-content:space-between;font-weight:800;font-size:13px;padding:8px 0;border-top:2px solid #333;margin-top:4px">
         <span>合計</span><span>¥${fmt(d.incSum)}</span>
