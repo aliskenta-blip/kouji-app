@@ -3370,7 +3370,7 @@ function kpiDrillArari(mk,mode){
   if(!isFY)S.cases.forEach(c=>{
     if(!showArariOf(c)||genkaKakuteiOf(c))return;
     const bm=getBilledMonthRaw(c,mk), km=getKyoBilledMonth(c,mk);
-    if(bm===0&&km===0)return;
+    if(bm===0)return;   // ★うちの請求がその月に無いなら拾わない（工事が動いていない月に見込みは出さない）
     const would=arariMonthOf(c,mk,true);
     // 請求が未登録の協社と、その見積
     const miss=(c.kyousha_list||[]).filter(k=>!((k.billings&&k.billings.length)||fn(k.seikyuu)>0))
