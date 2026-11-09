@@ -434,7 +434,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
       <option value="">全ステータス</option>
       <option value="misu">未収金あり</option>
       <option value="miharai">未払残あり</option>
-      <option value="done">完了済</option>
+      <option value="done">完工済</option>
     </select>
     <input type="text" id="af_tx" placeholder="🔍 フリー検索" oninput="renderMaster()"
       style="flex:1;min-width:120px;padding:8px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:12px">
@@ -829,7 +829,8 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 - 工期終了（→ 5章）
 - 請済チェック
 - 入済チェック
-- 完了チェック
+
+**完工チェックは自動では付きません。** 工事が全部終わったら手で押します（→ 下の表の「完」）。
 
 ## 残りの請求（未請求残）
 
@@ -864,7 +865,7 @@ window.addEventListener('appinstalled',()=>{const b=document.getElementById('ins
 | **着** | 着工 | 表示中の月が工期開始に入る（→ 5章） |
 | **請済** | 請求済 | 請求書を出したらチェック。請求を登録すると自動で付きます |
 | **入済** | 入金済 | 表示中の月の請求が入金されたらチェック |
-| **完** | 完了 | 発注額まで請求し、全額入金されると**自動で付きます**。手では押せません |
+| **完** | 完工 | その現場の工事が**全部終わったら押します**。請求・入金とは関係ありません。発注額まで請求していないときは「残りの請求予定はありますか」と確認が出ます。もう一度押すと外れます |
 | **未請** | 未請求で繰越 | 案件を翌月へ送る（→ 6章） |
 | **請求漏** | 請求漏れ | 請求を翌月の請求リストへ送る（→ 6章）。**請済が✓で、まだ入済が✓でない案件にだけ出ます** |
 | **漏解除** | 請求漏れ解除 | 請求漏れを1段階戻す |
@@ -2185,7 +2186,8 @@ function syncBillings(caseId){
   if(c.seikyuu_c==='✓'){ if(!c.seikyuu_c_date)c.seikyuu_c_date=new Date().toISOString().slice(0,10); }
   else { c.seikyuu_c_date=''; }
   c.nyukin_c=(fn(c.jisha_s)>0&&fn(c.nyukin)>=fn(c.jisha_s))?'✓':'';
-  c.kanryo=isDone(c)?'✓':'';   // 累計が発注額に到達＋全額入金で完工
+  // ★完工（c.kanryo）は人が押す印なので、ここでは触らない（D-081）。
+  //   以前は「発注額まで請求＋全額入金」で毎回上書きしていた。残すと請求・入金を触るたびに完工が消える
   // 工期終了＝完工月を自動判定。手入力された工期終了は尊重する
   // （減額精算・追加工事で発注額と請求額が一致しない案件があるため）
   if(c.kouki_e_auto==='✓' || !c.kouki_e){
@@ -2259,7 +2261,7 @@ const COL_TIPS={
   m3:'残土数量（㎥）。請求の証憑に使用（工事経歴書の出力には使っていません）',
   seikyuu_c:'請求書を出したらチェック（請求済）',
   nyukin_c:'入金を確認したらチェック（入金済）',
-  kanryo:'発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します',
+  kanryo:'その現場の工事が全部終わったら押す（完工）。請求・入金とは関係ありません',
   branch:'支店・営業所',
   kyousha:'外注先（協力会社）の名前',
   nyStatus:'入金の状況（入金済／一部入金／未入金）'
@@ -2601,8 +2603,43 @@ function seikyuuMonthOf(c,ym){
 }
 // 請済セルのツールチップ（月別入力・請求画面用）。マスター一覧は案件全体のフラグなので別文言のまま
 const SEIKYUU_MONTH_TIP='この月に請求があると自動で✓になります（出来高請求から算出）';
-// 完工（全て完了）＝発注額まで請求済 かつ 未収金なし（全額入金済）
-function isDone(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0&&r.misu<=0;}
+// 請求・入金とも済み＝発注額まで請求済 かつ 未収金なし（全額入金済）。
+// ★これは「完工」ではない。2026-11-09 まではこの条件で完了（kanryo）を自動で付けていたが、
+//   完工は人が押す印に変えた（isKankou・D-081）。入金期限超過・請求漏れ・受注表は、
+//   警告が消えないよう今までどおりこちらで判定する（完工済みで未入金の案件があり得るため）
+function isPaidOff(c){const r=calc(c);return fn(c.jisha_h)>0&&r.js>0&&r.remaining<=0&&r.misu<=0;}
+// 完工＝その現場の工事が全部終わったら人が押す印（c.kanryo）。請求額・入金は条件にしない（D-081）。
+//   ★kouji-cost は c.kanryo を orders.status='completed' に変換し、現場収支の「確定できます」に使う
+//     （kouji-cost app.html の syncOrders）。欄の名前と '✓' の書き方を変えると kouji-cost が壊れる
+function isKankou(c){return !!c&&(c.kanryo==='✓'||c.kanryo===true);}
+const KANKOU_TIP='その現場の工事が全部終わったら押す（完工）。請求・入金とは関係ありません。&#10;発注額まで請求していないときは確認が出ます。もう一度押すと外れます';
+// 完工のチェック（月別の行・スマホのカード）。lbl＝未完工のときの文字、onLbl＝完工のときの文字
+function kankouCk(c,lbl,onLbl){
+  const on=isKankou(c);
+  const d=on&&c.kanryo_d?`&#10;完工にした日 ${c.kanryo_d}`:'';
+  return `<span class="ck gk${on?' on':''}" style="cursor:pointer" title="${KANKOU_TIP}${d}" onclick="tgCk('${c.id}','kanryo',this)">${on?onLbl:lbl}</span>`;
+}
+// 完工のチェック。付けるとき、請求が発注額に届いていなければ確認を出す（満額請求済みなら出さない）。
+// 外すときは確認なし（操作ログには残る）
+function togKankou(c){
+  const today=new Date().toISOString().slice(0,10);
+  if(!isKankou(c)){
+    const r=calc(c);
+    if(r.remaining>0){
+      const msg=`${c.place||''}　${c.kouji||''}\n\n`+
+        `発注額 ¥${fmt(fn(c.jisha_h))} のうち、請求済みは ¥${fmt(r.js)} です。\n`+
+        `残り ¥${fmt(r.remaining)} の請求予定はありますか。\n\n`+
+        `それでも完工にしますか`;
+      if(!confirm(msg))return;
+    }
+    c.kanryo='✓';c.kanryo_d=today;
+  } else {
+    c.kanryo='';c.kanryo_d='';
+  }
+  sv();
+  addLog('check',`${esc(c.place||'')}の「完工」を${c.kanryo==='✓'?'✓':'解除'}`);
+  renderMonthly();renderSeikyuu();
+}
 // 振替（記録用）案件か。発注書の出ない工事を、別の現場に上乗せして発注してもらった分。
 // 請求は実在するので月別入力・粗利には含めるが、完成工事高・工事経歴書に入れると
 // 上乗せ先と二重計上になるため、売上系の年度集計と経審系の帳票からは外す。
@@ -2680,7 +2717,7 @@ function mkCk(val,id,field,type,lbl){
 function tgCk(id,field,el){
   if(!canEdit()){return;}
   const c=S.cases.find(c=>c.id===id);if(!c)return;
-  if(field==='kanryo'){alert('「完了（完工）」は、発注額まで請求し未収金がゼロ（全額入金）になると自動でつきます。手動操作は不要です。');return;}
+  if(field==='kanryo'){togKankou(c);return;}   // 完工は確認つきの専用処理（D-081）
   const newVal=c[field]==='✓'?'':'✓';
   // バリデーション
   if(newVal==='✓'){
@@ -2698,18 +2735,14 @@ function tgCk(id,field,el){
         if(js>0&&!fn(c.nyukin)){c.nyukin=String(js);}
       }
     }
-    if(field==='kanryo'){
-      if(c.seikyuu_c!=='✓'||c.nyukin_c!=='✓'){alert('請求済・入金済の両方にチェックしてから完了にしてください');return;}
-    }
   }
   c[field]=newVal;
   // 請求済チェック日を記録
   if(field==='seikyuu_c'){
     c.seikyuu_c_date=c[field]==='✓'?new Date().toISOString().slice(0,10):'';
   }
-  c.kanryo=isDone(c)?'✓':'';
   sv();
-  const fieldNames={shashin:'写真',zando:'残土伝票',nyukin_c:'入金済',kanryo:'完了',seikyuu_c:'請求済'};
+  const fieldNames={shashin:'写真',zando:'残土伝票',nyukin_c:'入金済',seikyuu_c:'請求済'};
   addLog('check',`${esc(c.place||'')}の「${fieldNames[field]||field}」を${c[field]==='✓'?'✓':'解除'}`);
   renderMonthly();renderSeikyuu();   // 請求画面にも同じチェックがあるので両方描き直す
 }
@@ -3805,7 +3838,7 @@ function monthlyClientSummaryHtml(cases,mk,ts){
 // リマインド（未収金繰越・請求漏れ・未請求残・入金/支払期限超過）。月別・請求画面で同じものを出す
 function monthlyRemindHtml(mk){
   const prevMisu=S.cases.filter(c=>{const cm=cMo(c);return cm&&cm<mk&&cm!=='未定'&&calc(c).misu>0;});
-  const moreCases=S.cases.filter(c=>{if(isDone(c))return false;return c.more_flag==='✓'&&(c.date||'').slice(0,7)<mk;});
+  const moreCases=S.cases.filter(c=>{if(isPaidOff(c))return false;return c.more_flag==='✓'&&(c.date||'').slice(0,7)<mk;});
   const remainCases=S.cases.filter(c=>calc(c).remaining>0&&(c.date||'').slice(0,7)<mk);
   let remind='';
   if(prevMisu.length){
@@ -3863,7 +3896,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
     <th class="pg sortable" title="入金を確認したらチェック（入金済）" onclick="doSort('nyukin_c','monthly')">入済</th>
     <th class="pg" title="現場写真を撮ったらチェック">写</th><th class="pg" title="残土伝票を受け取ったらチェック">伝票</th>
     <th class="pg" title="その月に着工したらチェック→工期開始に自動入力（再クリックで解除）。手入力も可">着工</th>
-    <th class="gg sortable" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します" onclick="doSort('kanryo','monthly')">完了</th>
+    <th class="gg sortable" title="${KANKOU_TIP}" onclick="doSort('kanryo','monthly')">完工</th>
     <th>備考</th><th>操作</th>
   </tr>`;
 
@@ -3941,7 +3974,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
     const hasCurAct=bm>0||nyMonth>0;   // 当月に請求 or 入金がある＝当月の出来高
     const carried=!!(c.date||'')&&(c.date||'').slice(0,7)!==mk&&!hasCurAct;
     const carryMark=carried?`<span title="前月以前からの繰越（残高あり）" style="color:#e65100;font-weight:700;font-size:9px">↩</span>`:'';
-    const doneCk=isDone(c)?`<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓</span>`:`<span class="ck gk" style="opacity:.45;cursor:default" title="発注額まで請求し、未収金がゼロ（全額入金）になると自動で完了します">完</span>`;
+    const doneCk=kankouCk(c,'完','✓');   // 完工は人が押す（D-081）
     // 工期セル：<input type="month"> は '未定' を受け付けず値を捨てるため、
     // 空表示になったセルを触ると updField で '未定' が空文字に上書きされてしまう。
     // 未定を含む案件はテキスト表示にし、クリックで editKoukiSel を開く
@@ -4038,7 +4071,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
           ${mkCk2(c.mail,c.id,'mail','p','メール')}
           ${mkCk2(c.nyukin_c,c.id,'nyukin_c','p','入金')}
           ${(()=>{const k=(c.kouki_s||'').slice(0,7);const on=!!k&&k!=='未定'&&k<=mk;return on?`<span class="ck pk on" style="cursor:pointer" title="着工済み（工期開始 ${k}）。クリックで解除" onclick="togChakkou('${c.id}')">✓着工</span>`:`<span class="ck pk" style="cursor:pointer" title="この月に着工→工期開始に自動入力" onclick="togChakkou('${c.id}')">着工</span>`;})()}
-          ${isDone(c)?'<span class="ck gk on" title="発注額まで請求済＋全額入金で完了">✓完了</span>':'<span class="ck gk" style="opacity:.5;cursor:default" title="発注額まで請求し未収金ゼロで完了">完了</span>'}
+          ${kankouCk(c,'完工','✓完工')}
           ${mkCk2(c.zan_s,c.id,'zan_s','g','残請求')}
           ${mkCk2(c.mi_s,c.id,'mi_s','g','未請求')}
         </div>
@@ -4108,7 +4141,7 @@ function renderMaster(){
   if(fta) cases=cases.filter(c=>c.tantou===fta);
   if(fst==='misu') cases=cases.filter(c=>calc(c).misu>0);
   if(fst==='miharai') cases=cases.filter(c=>calc(c).miharai>0);
-  if(fst==='done') cases=cases.filter(c=>isDone(c));
+  if(fst==='done') cases=cases.filter(c=>isKankou(c));
   if(ftx) cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.biko,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(ftx)));
 
   // ソート適用
@@ -4123,7 +4156,7 @@ function renderMaster(){
     <th>施工</th>${sortTh('jisha_h','発注額',t)}${sortTh('jisha_s','請求額',t)}${sortTh('nyukin','入金済',t)}${sortTh('misu','未収金',t)}
     ${sortTh('km','協力見積',t)}${sortTh('ksr','協力請求',t)}${sortTh('ksh','支払済',t)}${sortTh('miharai','未払残',t)}
     ${sortTh('arari','粗利',t)}<th>率</th><th>㎥</th>
-    ${sortTh('seikyuu_c','請済',t)}${sortTh('nyukin_c','入済',t)}<th>写</th><th>伝票</th>${sortTh('kanryo','完了',t)}<th>備考</th><th>操作</th>
+    ${sortTh('seikyuu_c','請済',t)}${sortTh('nyukin_c','入済',t)}<th>写</th><th>伝票</th>${sortTh('kanryo','完工',t)}<th>備考</th><th>操作</th>
   </tr>`;
 
   const moSet=new Set(S.cases.map(c=>cMo(c)).filter(Boolean));
@@ -4163,7 +4196,7 @@ function renderMaster(){
       <td class="ctr">${fn(c.m3)||''}</td>
       <td class="ctr">${ck(c.seikyuu_c)}</td><td class="ctr">${ck(c.nyukin_c)}</td>
       <td class="ctr">${ck(c.shashin)}</td><td class="ctr">${ck(c.zando)}</td>
-      <td class="ctr">${ck(isDone(c)?'✓':'')}</td>
+      <td class="ctr">${ck(isKankou(c)?'✓':'')}</td>
       <td style="max-width:80px;overflow:hidden;text-overflow:ellipsis">${esc(c.biko||'')}</td>
       <td class="ctr" style="white-space:nowrap"><button class="btn bo btn-sm edit-only" onclick="editCase('${c.id}')">編</button> <button class="btn br btn-sm del-only" onclick="delCase('${c.id}')">削</button></td>
     </tr>`;
@@ -4206,7 +4239,7 @@ function renderPrint(){
 
   if(moreiFilterOn){
     // 請求漏れフィルター：手動フラグのみ
-    cases=cases.filter(c=>c.more_flag==='✓'&&!isDone(c));
+    cases=cases.filter(c=>c.more_flag==='✓'&&!isPaidOff(c));   // 完工ではなく入金で判定（D-081）
     title='🚨 請求漏れ一覧';
   } else if(mode==='month'){
     const mk=getMK(yr,mo);
@@ -4608,7 +4641,7 @@ function renderDash(){
 
   // ── 未収金・未払残 / 現場チェック（全期間） ──
   const alerts=S.cases.filter(c=>calc(c).misu>0||calc(c).miharai>0).sort((a,b)=>calc(b).misu-calc(a).misu);
-  const alertBody=alerts.length?alerts.map(c=>{const r=calc(c);return `<tr style="cursor:pointer" onclick="editCase('${c.id}')"><td class="ctr">${c.seikyuu_t||''}</td><td>${esc(c.place||'')}</td><td>${esc(c.client||'')}</td><td class="${r.misu>0?'cl':''}">¥${fmt(r.misu)}</td><td class="${r.miharai>0?'cw':''}">¥${fmt(r.miharai)}</td><td class="ctr">${isDone(c)?'<span class="badge bd-g">完了</span>':'<span class="badge bd-r">未完了</span>'}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">未収金・未払残なし ✓</td></tr>';
+  const alertBody=alerts.length?alerts.map(c=>{const r=calc(c);return `<tr style="cursor:pointer" onclick="editCase('${c.id}')"><td class="ctr">${c.seikyuu_t||''}</td><td>${esc(c.place||'')}</td><td>${esc(c.client||'')}</td><td class="${r.misu>0?'cl':''}">¥${fmt(r.misu)}</td><td class="${r.miharai>0?'cw':''}">¥${fmt(r.miharai)}</td><td class="ctr">${isKankou(c)?'<span class="badge bd-g">完工</span>':'<span class="badge bd-r">未完工</span>'}</td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">未収金・未払残なし ✓</td></tr>';
   const unchk=S.cases.filter(c=>c.shashin!=='✓'||c.zando!=='✓'||c.kakunin!=='✓'||c.mail!=='✓');
   const ck2=v=>v==='✓'?'<span class="badge bd-g">✓</span>':'<span class="badge bd-r">未</span>';
   const chkBody=unchk.length?unchk.slice(0,20).map(c=>`<tr><td class="ctr">${c.seikyuu_t||''}</td><td>${esc(c.place||'')}</td><td class="ctr">${ck2(c.shashin)}</td><td class="ctr">${ck2(c.zando)}</td><td class="ctr">${ck2(c.kakunin)}</td><td class="ctr">${ck2(c.mail)}</td></tr>`).join(''):'<tr><td colspan="6" class="empty">全件チェック済 ✓</td></tr>';
@@ -5076,7 +5109,7 @@ function getOverdueReminders(mk){
   if(!S.masters.kyousha_terms)S.masters.kyousha_terms={};
   const now=new Date();const alerts=[];
   S.cases.forEach(c=>{
-    if(isDone(c))return;
+    if(isPaidOff(c))return;   // 完工ではなく入金で判定（D-081）。完工済みで未入金でも警告を出す
     // 発注者の入金遅延チェック
     if(c.seikyuu_c==='✓'&&c.nyukin_c!=='✓'&&c.client){
       const term=S.masters.client_terms[c.client];
@@ -5776,7 +5809,7 @@ function saveCase(cont){
   // CK＝フォームに欄が無い項目。編集時は旧値を引き継ぎ、新規時は空にする。
   // 工期・入金日・請求漏れフラグは着工ボタン／自動判定／入金ボタン／請求漏ボタンが正なので、
   // フォーム保存で無条件に上書きしない（kouki_e_auto は編集時マージで自動的に残る）
-  const CK=['shashin','zando','nyukin_c','kanryo','seikyuu_c',
+  const CK=['shashin','zando','nyukin_c','kanryo','kanryo_d','seikyuu_c',
             'kouki_s','kouki_e','nyukin_d','more_flag'];
   const base={
     id:editId||uid(),month:getMK(getYr(),getMo()),
@@ -5867,7 +5900,7 @@ function togNyukinMonth(id){
     if(cm===mk&&fn(c.jisha_s)>0){
       const paid=fn(c.nyukin)>=fn(c.jisha_s);
       c.nyukin=paid?'0':String(fn(c.jisha_s));c.nyukin_d=paid?'':new Date().toISOString().slice(0,10);
-      c.nyukin_c=paid?'':'✓';c.kanryo=isDone(c)?'✓':'';sv();
+      c.nyukin_c=paid?'':'✓';sv();   // 完工（kanryo）は入金で動かさない（D-081）
       addLog('check',`${esc(c.place||'')} ${mk}分の入金を${paid?'未入金':'入金済'}に`);
     } else { alert('この月には請求（出来高）がありません。「請求額」欄から請求を登録してください。');return; }
   }
@@ -6157,7 +6190,7 @@ function doExcelBackup(){
     '自社発注(税込)','自社請求(税込)','協社見積計','協社請求計','協社件数',
     '自社請求月','入金済','未収金','協社支払済','未払残','粗利','粗利率','㎥',
     '工期開始','工期終了',
-    '写真','残土','確認','メール','入金','完了','残請求','未請求','備考',
+    '写真','残土','確認','メール','入金','完工','残請求','未請求','備考',
     '協社1名','協社1見積','協社1請求','協社1支払',
     '協社2名','協社2見積','協社2請求','協社2支払',
     '協社3名','協社3見積','協社3請求','協社3支払'];
@@ -6450,7 +6483,7 @@ function doCSV(type){
     '自社発注(税込)','自社請求(税込)','協社見積計','協社請求計','協社件数','自社施工額',
     '自社請求月','入金済','未収金','協社支払済','未払残','粗利','粗利率','㎥',
     '工期開始','工期終了',
-    '写真','残土','確認','メール','入金','完了','残請求','未請求','備考',
+    '写真','残土','確認','メール','入金','完工','残請求','未請求','備考',
     '協社1名','協社1見積','協社1請求','協社1支払',
     '協社2名','協社2見積','協社2請求','協社2支払',
     '協社3名','協社3見積','協社3請求','協社3支払',
@@ -6565,7 +6598,7 @@ function krYen(c,isTaxExcl){const v=fn(c.jisha_h);return isTaxExcl?Math.round(v/
 // 着工前＝未完了 かつ 工期開始がまだ先（または未定/未設定）
 function nowYM(){return `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;}
 function isChakkouMae(c){
-  if(isDone(c))return false;                 // 完工（累計＝発注額）は除外
+  if(isPaidOff(c))return false;              // 請求・入金とも済みは除外（D-081 以前と同じ条件。完工の印は見ない）
   if(fn(c.jisha_h)<=0)return false;          // 受注金額（請負額）が無いものは除外
   if(fn(c.jisha_s)>0)return false;           // 既に請求が立っている＝着手済とみなし除外
   const ks=(c.kouki_s||'');
