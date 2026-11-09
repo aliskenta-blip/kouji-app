@@ -1508,6 +1508,13 @@ C社 自社受注（空）  / 原価400万  → 無視される（原価400万�
     </label>
     <div style="font-size:11px;color:#888;margin-top:4px">発注書のない工事を記録用に登録した案件。粗利には入りますが、完成工事高・工事経歴書・業種別集計・受注表からは外れます。</div>
   </div>
+  <!-- ★完工日（D-081 追記・2026-11-09）。完工✓の案件だけ出す。月別の「完」を押した日が入るので、
+       前に終わっていた工事に後から押したときなど、実際の日と違うときにここで直す -->
+  <div class="fg" id="f_kanryo_d_wrap" style="display:none">
+    <label>✅ 完工日（工事が全部終わった日）</label>
+    <input type="date" id="f_kanryo_d">
+    <div style="font-size:11px;color:#888;margin-top:4px">月別の「完」を押した日が自動で入ります。実際に工事が終わった日と違うときだけ直してください。完工を外すときは、月別の「完」をもう一度押します。</div>
+  </div>
   <div class="st">💰 自社金額（万円入力）</div>
   <div class="grid g2">
     <div class="fg"><label>発注金額（万円）</label><input type="number" id="f_jh" placeholder="" inputmode="decimal" step="0.1" oninput="onGyoshuChange();adjHint()"></div>
@@ -5393,7 +5400,7 @@ document.addEventListener('keydown',function(e){
   e.preventDefault();
   e.stopImmediatePropagation();
   const order=['f_dt','f_pl','f_cl','f_br','f_ta','f_kb','f_kj',
-    'f_jisha_sekou','f_furikae',
+    'f_jisha_sekou','f_furikae','f_kanryo_d',
     'f_moto','f_jv','f_haichi','f_gishi','f_kouji_type','f_genba',
     'f_jh','f_js','f_st','f_ny','f_m3','f_bk'];
   const curId=el.id;
@@ -5567,6 +5574,7 @@ function openAdd(){
   const jw=document.getElementById('f_jisha_sekou_wrap');jw.style.background='#f8fff8';jw.style.borderColor='#e0e0e0';
   document.getElementById('f_furikae').checked=false;
   const fw=document.getElementById('f_furikae_wrap');fw.style.background='#fffdf5';fw.style.borderColor='#e0e0e0';
+  vs('f_kanryo_d','');document.getElementById('f_kanryo_d_wrap').style.display='none';   // 新規は完工していない
   vs('f_cl','');vs('f_br','');vs('f_ta','');vs('f_kb','');vs('f_moto','元請');vs('f_jv','');vs('f_gishi','');vs('f_kouji_type','');
   adjHint();   // ★発注者・担当を空にしてから（前に開いた案件の担当者の残高を出さない）
   vs('f_dt',new Date().toISOString().slice(0,7));
@@ -5752,6 +5760,9 @@ function editCase(id){
   const jw=document.getElementById('f_jisha_sekou_wrap');jw.style.background=jsChk?'#e8f5e9':'#f8fff8';jw.style.borderColor=jsChk?'#2e7d32':'#e0e0e0';
   const fkChk=isFurikae(c);document.getElementById('f_furikae').checked=fkChk;
   const fw=document.getElementById('f_furikae_wrap');fw.style.background=fkChk?'#fff3e0':'#fffdf5';fw.style.borderColor=fkChk?'#e65100':'#e0e0e0';
+  // 完工日は完工✓の案件だけ出す（完工そのものは月別の「完」で付け外しする）
+  vs('f_kanryo_d',isKankou(c)?(c.kanryo_d||''):'');
+  document.getElementById('f_kanryo_d_wrap').style.display=isKankou(c)?'':'none';
   document.getElementById('f_pdf_h').value='';
   document.getElementById('f_pdf_s').value='';
   renderPdfTags();renderKE();updateSels();
@@ -5809,6 +5820,12 @@ function saveCase(cont){
   // CK＝フォームに欄が無い項目。編集時は旧値を引き継ぎ、新規時は空にする。
   // 工期・入金日・請求漏れフラグは着工ボタン／自動判定／入金ボタン／請求漏ボタンが正なので、
   // フォーム保存で無条件に上書きしない（kouki_e_auto は編集時マージで自動的に残る）
+  // ★完工日（kanryo_d）はフォームに欄がある（完工✓の案件だけ）。下で old から引き継いだあとに入れ直す
+  const _kd=(vg('f_kanryo_d')||'').trim();
+  if(editId&&_kd){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(_kd)){alert('完工日の形が正しくありません');return;}
+    if(_kd>new Date().toISOString().slice(0,10)){alert('完工日が今日より後になっています。工事が全部終わった日を入れてください。');try{document.getElementById('f_kanryo_d').focus();}catch(e){}return;}
+  }
   const CK=['shashin','zando','nyukin_c','kanryo','kanryo_d','seikyuu_c',
             'kouki_s','kouki_e','nyukin_d','more_flag'];
   const base={
@@ -5836,6 +5853,11 @@ function saveCase(cont){
   if(editId){
     const old=S.cases.find(c=>c.id===editId)||{};
     CK.forEach(f=>{base[f]=old[f]||'';});
+    // 完工日：完工✓の案件だけフォームの値で直す。完工していない案件は空のまま
+    if(isKankou(old)){
+      base.kanryo_d=_kd;
+      if((old.kanryo_d||'')!==_kd)addLog('edit',`${esc(base.place||'')}の完工日を ${old.kanryo_d||'（空）'} → ${_kd||'（空）'} に変更`);
+    }
     // 編集はマージ。base にも CK にも無い項目（date_orig / more_hist / more_prev 等）を
     // 丸ごと差し替えで落とさない。今後追加する項目も自動的に保持される
     S.cases=S.cases.map(c=>c.id===editId?Object.assign({},c,base):c);
