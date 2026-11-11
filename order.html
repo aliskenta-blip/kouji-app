@@ -1483,8 +1483,8 @@ C社 自社受注（空）  / 原価400万  → 無視される（原価400万�
       <div id="f_kb2_msg" role="alert" style="display:none;font-size:11px;color:#c62828;margin-top:3px;line-height:1.5"></div></div>
     <div class="fg" style="grid-column:span 2"><label>工事名・枝番</label><input type="text" id="f_kj" lang="ja" style="ime-mode:active" autocomplete="off"></div>
     <div class="fg" style="grid-column:span 2"><label>見積番号（kouji-cost）</label>
-      <input type="text" id="f_mno" placeholder="2026-0020-2" autocomplete="off" maxlength="14" oninput="chkMno()">
-      <div id="f_mno_msg" style="font-size:11px;color:#888;margin-top:3px">kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）を転記。見積を経ない案件は空欄のままでOK</div>
+      <input type="text" id="f_mno" placeholder="2026-0020-2（2つ以上は「、」で区切る）" autocomplete="off" maxlength="120" oninput="chkMno()">
+      <div id="f_mno_msg" style="font-size:11px;color:#888;margin-top:3px">kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）を転記。発注書1枚に見積が2本以上まとまったときは「、」で区切って全部書く。見積を経ない案件は空欄のままでOK</div>
     </div>
   </div>
   <div class="st">📄 工事経歴書用</div>
@@ -2263,7 +2263,7 @@ const COL_TIPS={
   tantou:'社内の担当者',
   kouji:'工事の名前・枝番',
   kubun:'工事の種類分け（造成・給排水・舗装など）',
-  mitsumori_no:'kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）。全システム共通のキー',
+  mitsumori_no:'kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）。全システム共通のキー。発注書1枚に見積が2本以上なら「、」で区切って全部',
   jisha_h:'お客さんから受注した契約金額（発注金額）',
   jisha_s:'お客さんへ請求した金額。クリックで月ごとの出来高を入力',
   misu:'請求したのにまだ入金されていない金額（累計請求−累計入金）',
@@ -3113,7 +3113,7 @@ function kyoSrchHits(c,srch){
 //   同じ関数を通す（Phase 16 までは再掲側だけ見積番号が抜けていた）
 function caseMatchesSrch(c,srch){
   if(!srch)return true;
-  return [c.place,c.client,c.tantou,c.kouji,c.kubun,c.kubun2,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch))
+  return [c.place,c.client,c.tantou,c.kouji,c.kubun,c.kubun2,c.mitsumori_no,c.mitsumori_no2].some(v=>(v||'').toLowerCase().includes(srch))
     ||kyoSrchHits(c,srch).length>0;
 }
 // 協力会社名で当たったときに場所の横に出すバッジ。なぜこの現場が出たのかを見せる
@@ -4072,7 +4072,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
       </div>
       <div class="card-body">
         ${c.kouji?`<div style="font-size:12px;color:#666;margin-bottom:8px">${kubunLabel(c)?'【'+esc(kubunLabel(c))+'】':''} ${esc(c.kouji)}</div>`:''}
-        ${c.mitsumori_no?`<div style="font-size:11px;color:#555;margin-bottom:8px">📄 見積番号: <b>${esc(c.mitsumori_no)}</b></div>`:''}
+        ${mnoText(c)?`<div style="font-size:11px;color:#555;margin-bottom:8px">📄 見積番号: <b>${esc(mnoText(c))}</b></div>`:''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:10px">
           <div style="background:#f0f8f0;border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">自社請求（税込）</div><div style="font-weight:700">¥${fmt(r.js)}</div></div>
           <div style="background:${r.misu>0?'#fff0f0':'#f0f8f0'};border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">未収金</div><div style="font-weight:700;color:${r.misu>0?'#c62828':'#2e7d32'}">¥${fmt(r.misu)}</div></div>
@@ -4159,7 +4159,7 @@ function renderMaster(){
   if(fst==='misu') cases=cases.filter(c=>calc(c).misu>0);
   if(fst==='miharai') cases=cases.filter(c=>calc(c).miharai>0);
   if(fst==='done') cases=cases.filter(c=>isKankou(c));
-  if(ftx) cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.kubun2,c.biko,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(ftx)));
+  if(ftx) cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.kubun2,c.biko,c.mitsumori_no,c.mitsumori_no2].some(v=>(v||'').toLowerCase().includes(ftx)));
 
   // ソート適用
   cases=sortCases(cases,'master');
@@ -5590,14 +5590,101 @@ function onGyoshuChange(){
 //   値は書かれたままの文字列で保存し、変換しない（kouji-cost との突合キー・§13-A）。
 //   kouji-cost は版を無視して YYYY-NNNN で見積を突き合わせ、版があれば「発注された版」として読む
 const MNO_RE=/^\d{4}-\d{4}(-\d+)?$/;
-const MNO_HINT='kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）を転記。見積を経ない案件は空欄のままでOK';
-const mnoOk=v=>!v||MNO_RE.test(v);      // 空欄は可（見積を経ない案件があるため）
+const MNO_HINT='kouji-cost で採番された見積番号（YYYY-NNNN または YYYY-NNNN-版）を転記。発注書1枚に見積が2本以上まとまったときは「、」で区切って全部書く。見積を経ない案件は空欄のままでOK';
+// ★見積番号は1案件に複数（2026-11-11 けんた）。発注書1枚に見積が2本以上まとまったとき（造成100万＋設備5万 → 103万で1枚）。
+//   入力は「、」（カンマ・空白も可）区切りの1欄。保存は【1つめを mitsumori_no（今までどおり）・2つめ以降を mitsumori_no2（「、」区切り）】に分ける。
+//   ★1つの欄に2つ入れると、古い kouji-cost が「番号なし」と読んで見積を見積プールへ戻すため（kouji-cost Phase 2.56）。
+//   番号が1つの案件には mitsumori_no2 を作らない（今までと1文字も変えない）
+const MNO_SPLIT=/[、,，;；\s]+/;
+const mnoKey=x=>String(x||'').split('-').slice(0,2).join('-');     // 版を外した見積の番号（YYYY-NNNN）
+function mnoList(c){return [String((c&&c.mitsumori_no)||'').trim()].concat(String((c&&c.mitsumori_no2)||'').split(MNO_SPLIT)).map(x=>x.trim()).filter(Boolean);}
+function mnoText(c){return mnoList(c).join('、');}
+// 入力欄の文字を読む。bad＝形の違う番号、dup＝同じ見積を2回（版違いを含む）
+function mnoParse(v){
+  const list=[],bad=[],dup=[],seen={};
+  String(v||'').split(MNO_SPLIT).map(x=>x.trim()).filter(Boolean).forEach(x=>{
+    if(!MNO_RE.test(x)){bad.push(x);return;}
+    const k=mnoKey(x);
+    if(seen[k]){dup.push(x);return;}
+    seen[k]=1;list.push(x);
+  });
+  return {ok:!bad.length&&!dup.length,list,bad,dup};
+}
+const mnoOk=v=>mnoParse(v).ok;      // 空欄は可（見積を経ない案件があるため）
+function mnoErrText(r){
+  if(r.bad.length)return `⚠ 形式が違います: ${r.bad.join('、')}（例: 2026-0003 ／ 版つき 2026-0020-2）`;
+  if(r.dup.length)return `⚠ 同じ見積が2回書かれています: ${r.dup.join('、')}（版が違っても同じ見積です。発注された版を1つだけ書いてください）`;
+  return '';
+}
+// 案件に番号を書く（1つめ→mitsumori_no、2つめ以降→mitsumori_no2）。番号が1つ以下で mitsumori_no2 が無い案件には項目を作らない
+function mnoPatch(old,list){
+  const o={mitsumori_no:list[0]||''};
+  if(list.length>1)o.mitsumori_no2=list.slice(1).join('、');
+  else if(old&&Object.prototype.hasOwnProperty.call(old,'mitsumori_no2'))o.mitsumori_no2='';
+  return o;
+}
+// ★別の案件に書かれている番号を入れようとしたら確かめる（2026-11-11 けんた・親無し現場を増やさない入口）。
+//   発注書が1枚にまとまったのに案件が2件あると、kouji-cost で片方の現場が宙に浮く。
+//   ・その案件に【お金】（請求・入金・協力会社の請求/支払）があれば、まとめさせない（黙って消さない）
+//   ・その案件に、今回の欄に無い別の見積番号が書いてあれば、まとめさせない（その番号が消えるため）
+//   ・どちらでもなければ「その案件を消して、こちらにまとめますか？」。OK のときだけ消す（削除の権限が要る）
+//   ・もともとこの案件に書いてあった番号は確かめない（直していない番号で毎回聞かない）
+//   戻り値: null＝保存しない／[]＝確かめることなし／[案件id…]＝保存したあとに消す案件
+function mnoMoneyOf(c){
+  const bl=c.billings||[];
+  if(bl.some(b=>fn(b.amount)>0||fn(b.nyukin)>0)||fn(c.jisha_s)>0||fn(c.nyukin)>0)return true;
+  return (c.kyousha_list||[]).some(k=>fn(k.seikyuu)>0||fn(k.shiharai)>0||(k.billings||[]).some(b=>fn(b.amount)>0));
+}
+function mnoResolve(list,selfId){
+  const self=selfId?S.cases.find(c=>c.id===selfId):null;
+  const had=new Set(mnoList(self).map(mnoKey));
+  const want=new Set(list.map(mnoKey));
+  const others=new Map();
+  list.forEach(no=>{
+    const k=mnoKey(no);if(had.has(k))return;
+    S.cases.forEach(o=>{
+      if(o.id===selfId)return;
+      if(mnoList(o).some(x=>mnoKey(x)===k)){if(!others.has(o.id))others.set(o.id,{o,keys:[]});others.get(o.id).keys.push(k);}
+    });
+  });
+  const del=[];
+  for(const {o,keys} of others.values()){
+    const nm=`${o.place||''} ${o.kouji||''}`.trim()+`（${o.client||'発注者なし'}・記入月 ${o.date||'—'}・発注額 ¥${fmt(fn(o.jisha_h))}）`;
+    const head=`見積番号 ${keys.join('、')} は、別の案件にも書かれています。\n　${nm}\n\n`;
+    if(mnoMoneyOf(o)){
+      alert(head+'その案件には請求・入金または協力会社の請求・支払が入っているので、ここではまとめられません（お金の入った案件は消しません）。\n\n'
+        +'同じ発注なら、先にその案件の請求をこちらへ移してから消してください。別の発注なら、番号の書き間違いです。番号を直してください。\n\n保存はしていません。');
+      return null;
+    }
+    const extra=mnoList(o).filter(x=>!want.has(mnoKey(x)));
+    if(extra.length){
+      alert(head+`その案件には、ほかの見積番号（${extra.join('、')}）も書かれているので、まとめられません。\n番号を直してから、もう一度保存してください。\n\n保存はしていません。`);
+      return null;
+    }
+    if(!canDelete()){
+      alert(head+'発注書が1枚にまとまったのなら、その案件を消してこちらにまとめます。案件を消せるのは管理者だけなので、管理者に頼んでください。\n\n保存はしていません。');
+      return null;
+    }
+    if(!confirm(head+'発注書が1枚にまとまったのなら、その案件を消して、こちらにまとめます（その案件には請求・協力会社のお金は入っていません）。\n'
+      +'※kouji-cost にその案件の現場がもうできていれば、その現場は残ります。日報が付いていたら kouji-cost で付け替えてください。\n\n'
+      +'OK＝その案件を消してまとめる／キャンセル＝保存しない'))return null;
+    del.push(o.id);
+  }
+  return del;
+}
+function mnoDelete(ids,toName){
+  (ids||[]).forEach(id=>{
+    const o=S.cases.find(c=>c.id===id);if(!o)return;
+    addLog('del',`${esc(o.place||'')}（${esc(o.client||'')}）を削除（見積番号 ${esc(mnoText(o))} を「${esc(toName||'')}」にまとめたため）`);
+  });
+  S.cases=S.cases.filter(c=>(ids||[]).indexOf(c.id)<0);
+}
 function chkMno(){
   const el=document.getElementById('f_mno');if(!el)return true;
-  const v=(el.value||'').trim(),ok=mnoOk(v),msg=document.getElementById('f_mno_msg');
+  const v=(el.value||'').trim(),r=mnoParse(v),ok=r.ok,msg=document.getElementById('f_mno_msg');
   el.style.borderColor=v?(ok?'#2e7d32':'#c62828'):'';
   if(msg){
-    msg.textContent=v?(ok?'✓ 形式OK':'⚠ 形式が違います（例: 2026-0003 ／ 版つき 2026-0020-2）'):MNO_HINT;
+    msg.textContent=v?(ok?(r.list.length>1?`✓ 形式OK（見積 ${r.list.length}本）`:'✓ 形式OK'):mnoErrText(r)):MNO_HINT;
     msg.style.color=v?(ok?'#2e7d32':'#c62828'):'#888';
   }
   return ok;
@@ -5607,13 +5694,14 @@ function chkMno(){
 //   保存は c.mitsumori_no の1項目だけを書き換えるマージ（案件オブジェクトを作り直さない・§5 #9）
 //   空欄は「—」を出し、セル全体を押せるようにする（印刷には出さない）
 function mnoCellTxt(c){
-  return c.mitsumori_no?esc(c.mitsumori_no):'<span class="no-print" style="color:#bbb">—</span>';
+  const t=mnoText(c);
+  return t?esc(t):'<span class="no-print" style="color:#bbb">—</span>';
 }
 function editMnoCell(id,el){
   if(!canEdit())return;
   const c=S.cases.find(x=>x.id===id);if(!c)return;
   if(el.querySelector('input'))return;     // 入力中のセルをもう一度押しても作り直さない
-  el.innerHTML=`<div style="display:flex;gap:2px;align-items:center;justify-content:center"><input id="mn_${id}" type="text" maxlength="14" autocomplete="off" placeholder="2026-0020-2" value="${esc(c.mitsumori_no||'')}" style="width:92px;padding:1px 3px;font-size:11px;border:1px solid #1565c0;border-radius:3px"><button onclick="event.stopPropagation();saveMnoCell('${id}')" style="background:#1565c0;color:#fff;border:none;padding:2px 6px;border-radius:3px;font-size:9px;cursor:pointer">✓</button></div><div id="mn_msg_${id}" style="font-size:9px;color:#c62828;white-space:normal"></div>`;
+  el.innerHTML=`<div style="display:flex;gap:2px;align-items:center;justify-content:center"><input id="mn_${id}" type="text" maxlength="120" autocomplete="off" placeholder="2026-0020-2" title="2つ以上は「、」で区切る" value="${esc(mnoText(c))}" style="width:120px;padding:1px 3px;font-size:11px;border:1px solid #1565c0;border-radius:3px"><button onclick="event.stopPropagation();saveMnoCell('${id}')" style="background:#1565c0;color:#fff;border:none;padding:2px 6px;border-radius:3px;font-size:9px;cursor:pointer">✓</button></div><div id="mn_msg_${id}" style="font-size:9px;color:#c62828;white-space:normal"></div>`;
   const inp=document.getElementById('mn_'+id);
   inp.oninput=()=>{const v=inp.value.trim();inp.style.borderColor=v?(mnoOk(v)?'#2e7d32':'#c62828'):'#1565c0';document.getElementById('mn_msg_'+id).textContent='';};
   inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();saveMnoCell(id);}if(e.key==='Escape')renderAll();};
@@ -5623,17 +5711,21 @@ function saveMnoCell(id){
   const c=S.cases.find(x=>x.id===id);if(!c)return;
   const inp=document.getElementById('mn_'+id);if(!inp)return;
   const v=(inp.value||'').trim();
-  if(!mnoOk(v)){
+  const r=mnoParse(v);
+  if(!r.ok){
     inp.style.borderColor='#c62828';
     const m=document.getElementById('mn_msg_'+id);
-    if(m)m.textContent='⚠ 形式が違います（例: 2026-0003 ／ 2026-0020-2）';
+    if(m)m.textContent=mnoErrText(r);
     inp.focus();return;                     // 形式違反は保存しない
   }
-  if(v!==(c.mitsumori_no||'')){
-    const was=c.mitsumori_no||'';
-    c.mitsumori_no=v;
+  const now=r.list.join('、'), was=mnoText(c);
+  if(now!==was){
+    const del=mnoResolve(r.list,id);         // ★別の案件に書かれた番号なら確かめる（親無し現場を増やさない）
+    if(del===null){inp.focus();return;}
+    Object.assign(c,mnoPatch(c,r.list));
+    if(del.length)mnoDelete(del,`${c.place||''} ${c.kouji||''}`.trim());
     sv();
-    addLog('edit',`${esc(c.place||'')}の見積番号を「${esc(was)||'空欄'}」→「${esc(v)||'空欄'}」に変更`);
+    addLog('edit',`${esc(c.place||'')}の見積番号を「${esc(was)||'空欄'}」→「${esc(now)||'空欄'}」に変更`);
   }
   renderAll();
 }
@@ -5883,7 +5975,7 @@ function editCase(id){
   document.getElementById('mdlT').textContent='案件編集';
   document.getElementById('btnSaveCont').style.display='none';
   vs('f_dt',(c.date||'').slice(0,7));vs('f_pl',c.place);vs('f_kj',c.kouji);
-  vs('f_mno',c.mitsumori_no||'');chkMno();   // 既存レコードは未設定＝空欄のままで可
+  vs('f_mno',mnoText(c));chkMno();   // 既存レコードは未設定＝空欄のままで可
   vs('f_jh',fn(c.jisha_h)?parseFloat((fn(c.jisha_h)/10000).toFixed(4)):'');
   vs('f_ny',fn(c.nyukin)?parseFloat((fn(c.nyukin)/10000).toFixed(4)):'');vs('f_m3',c.m3);vs('f_bk',c.biko);
   vs('f_adj_kind',ADJ_LABEL[c.adj_kind]?c.adj_kind:'');
@@ -5942,8 +6034,9 @@ function saveCase(cont){
   }
   // 見積番号は空欄可。入力されている場合だけ形式（YYYY-NNNN）を確認する
   const _mno=(vg('f_mno')||'').trim();
-  if(!mnoOk(_mno)){
-    alert('見積番号の形式が違います。\nkouji-cost の採番と同じ「YYYY-NNNN」または版つきの「YYYY-NNNN-版」で入力してください（例: 2026-0003 ／ 2026-0020-2）。\n\n見積を経ない案件は空欄のままで保存できます。');
+  const _mnoR=mnoParse(_mno);
+  if(!_mnoR.ok){
+    alert('見積番号の形式が違います。\n'+mnoErrText(_mnoR).replace(/^⚠ /,'')+'\n\nkouji-cost の採番と同じ「YYYY-NNNN」または版つきの「YYYY-NNNN-版」で入力してください（例: 2026-0003 ／ 2026-0020-2）。2つ以上は「、」で区切ります。\n\n見積を経ない案件は空欄のままで保存できます。');
     chkMno();
     const _mn=document.getElementById('f_mno');if(_mn){try{_mn.focus();}catch(e){}}
     return;
@@ -5975,7 +6068,7 @@ function saveCase(cont){
   const base={
     id:editId||uid(),month:getMK(getYr(),getMo()),
     date:vg('f_dt')||new Date().toISOString().slice(0,7),place:vg('f_pl'),client:vg('f_cl'),branch:vg('f_br'),
-    tantou:vg('f_ta'),kubun:vg('f_kb'),kubun2:String(vg('f_kb2')||'').trim(),kouji:vg('f_kj'),mitsumori_no:_mno,
+    tantou:vg('f_ta'),kubun:vg('f_kb'),kubun2:String(vg('f_kb2')||'').trim(),kouji:vg('f_kj'),mitsumori_no:_mnoR.list[0]||'',
     // ★予算の調整（記録用）。発注額 jisha_h には触らない
     adj_kind:_adjK||'',adj_amount:_adjK?String(_adjA):'',adj_memo:_adjK?(vg('f_adj_memo')||'').trim():'',
     jisha_h:String(Math.round(parseFloat(vg('f_jh')||0)*10000)),
@@ -5994,6 +6087,12 @@ function saveCase(cont){
   // ★予算の調整を使っていない案件には adj_* の項目を作らない（調整の無い337件に空の項目を足さない）。
   //   一度入れた案件を「なし」に戻すときだけ、空で上書きして消す
   if(!_adjK&&!(editId&&(S.cases.find(c=>c.id===editId)||{}).adj_kind)){delete base.adj_kind;delete base.adj_amount;delete base.adj_memo;}
+  // ★見積番号の2つめ以降（mitsumori_no2）。番号が1つ以下で、もともと項目の無い案件には作らない
+  {const _mp=mnoPatch(editId?S.cases.find(c=>c.id===editId):null,_mnoR.list);if('mitsumori_no2' in _mp)base.mitsumori_no2=_mp.mitsumori_no2;}
+  // ★別の案件に書かれた番号なら確かめる（親無し現場を増やさない・2026-11-11）。ほかの確認が全部通ったここで聞く
+  const _mnoDel=mnoResolve(_mnoR.list,editId);
+  if(_mnoDel===null){try{document.getElementById('f_mno').focus();}catch(e){}return;}
+  if(_mnoDel.length)mnoDelete(_mnoDel,`${base.place||''} ${base.kouji||''}`.trim());
   if(editId){
     const old=S.cases.find(c=>c.id===editId)||{};
     CK.forEach(f=>{base[f]=old[f]||'';});
@@ -6667,7 +6766,7 @@ function doCSV(type){
       c.kouki_s||'',c.kouki_e||'',
       c.shashin,c.zando,c.kakunin,c.mail,c.nyukin_c,c.kanryo,c.zan_s,c.mi_s,c.biko,
       ...[0,1,2].flatMap(i=>ks[i]?[ks[i].name,fn(ks[i].mitsumori),fn(ks[i].seikyuu),fn(ks[i].shiharai)]:['','','','']),
-      c.mitsumori_no||''
+      mnoText(c)
     ];
   })];
   const csv=rows.map(r=>r.map(csvSafe).join(',')).join('\n');
