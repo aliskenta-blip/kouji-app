@@ -4468,9 +4468,64 @@ function juchuMonthBasis(c){
   return cand[0];
 }
 function juchuMonthOf(c){ return juchuMonthBasis(c).m; }
-// 受注高・完成工事高・繰越工事高（D-021）。
+// アプリのデータが1年分そろう最初の事業年度（2026年3月〜。それより前は進行中の工事だけを取り込んだ）
+const KK_FIRST_FULL_FY=2026;
+const KK_DATA_FROM='2026-03';   // データが揃っている最初の月（画面に出す）
+// ★前期繰越の手入力（KK_FIRST_FULL_FY 年3月1日時点の繰越工事高。前期の決算変更届の数字・税込）。
+//   それより前のデータが欠けているので、アプリの記録から計算した前期繰越は実際より小さい。
+//   S.masters.kk_prev_kuri = { fy2026:{amount, at, by} }（キーを数字だけにすると Firebase が配列に変えることがあるので fy を付ける）
+function kkPrevManual(){
+  const m=(S.masters&&S.masters.kk_prev_kuri)||{};
+  const v=m['fy'+KK_FIRST_FULL_FY];
+  if(!v||v.amount===''||v.amount==null||!isFinite(Number(v.amount)))return null;
+  return {amount:Math.round(Number(v.amount)),at:v.at||'',by:v.by||''};
+}
+// 画面に出す値。手入力があれば、その年度以降は「手入力 ＋ 各年度の（受注 − 完成）」で前期繰越を積み上げる。
+// 検算の式（前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越）はどちらでも必ず成り立つ
+function kurikoshiView(startY){
+  const kk=kurikoshiStats(startY);
+  const man=kkPrevManual();
+  const r={prevKuri:kk.prevKuri,ju:kk.ju,kan:kk.kan,nextKuri:kk.nextKuri,calcPrev:kk.prevKuri,manual:null,manualOwn:false};
+  if(man&&startY>=KK_FIRST_FULL_FY){
+    let prev=man.amount;
+    for(let y=KK_FIRST_FULL_FY;y<startY;y++){const s=kurikoshiStats(y);prev+=s.ju-s.kan;}
+    r.prevKuri=prev;r.nextKuri=prev+kk.ju-kk.kan;r.manual=man;r.manualOwn=(startY===KK_FIRST_FULL_FY);
+  }
+  return r;
+}
+function kkEditPrev(){
+  if(!isMaster()){alert('前期繰越の手入力は管理者だけができます');return;}
+  const cur=kkPrevManual();
+  const calc=kurikoshiStats(KK_FIRST_FULL_FY).prevKuri;
+  const v=prompt(`${KK_FIRST_FULL_FY}年3月1日時点の繰越工事高（円・税込）を入れてください。\n`+
+    `前期の決算変更届に載っている数字です（決算書の「仕掛工事」は原価の繰越なので別のものです）。\n\n`+
+    `アプリの記録から計算した値: ¥${fmt(calc)}（欠けたデータからの値）`,cur?String(cur.amount):'');
+  if(v==null)return;
+  const t=String(v).replace(/[,，¥￥円\s]/g,'').replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0));
+  if(t===''){alert('金額が空です。消すときは「消す」を押してください');return;}
+  if(!/^\d+$/.test(t)){alert('金額は数字だけで入れてください（例: 52,340,000）');return;}
+  const n=parseInt(t,10);
+  if(!S.masters)S.masters={};
+  if(!S.masters.kk_prev_kuri)S.masters.kk_prev_kuri={};
+  S.masters.kk_prev_kuri['fy'+KK_FIRST_FULL_FY]={amount:n,at:new Date().toISOString().slice(0,10),by:(currentUser&&currentUser.name)||''};
+  sv();
+  addLog('edit',`${KK_FIRST_FULL_FY}年3月1日の前期繰越工事高を ${cur?'¥'+fmt(cur.amount):'（計算値）'} → ¥${fmt(n)} に手入力`);
+  renderDash();
+}
+function kkClearPrev(){
+  if(!isMaster())return;
+  const cur=kkPrevManual();if(!cur)return;
+  if(!confirm(`手入力した前期繰越 ¥${fmt(cur.amount)} を消して、アプリの記録から計算した値に戻しますか？`))return;
+  delete S.masters.kk_prev_kuri['fy'+KK_FIRST_FULL_FY];
+  sv();
+  addLog('edit',`${KK_FIRST_FULL_FY}年3月1日の前期繰越工事高の手入力 ¥${fmt(cur.amount)} を消した`);
+  renderDash();
+}
+// 受注高・完成工事高・繰越工事高（D-021）。金額は税込（発注アプリも税理士の元帳も税込・2026-11-11 確認）
 //  受注高    ＝ その事業年度に受注した契約金額
-//  完成工事高＝ その事業年度に請求した金額（★発生月 b.month ベース。経審に出す数字）
+//  完成工事高＝ その事業年度に請求した金額（★発生月 b.month ベース）。売上の計上は請求基準
+//              （支払通知書が届いた／請求を出した時点）なので、決算書の完成工事高と同じ基準（2026-11-11 けんた確認）
+//  ※決算書の「仕掛工事」は原価の繰越（未成工事支出金）で、ここの繰越工事高（契約額の受注残）とは別物。突き合わせない
 //  繰越工事高＝ 受注済みでまだ請求していない残り
 // 前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越 が必ず成り立つ形にする
 function kurikoshiStats(startY){
@@ -4583,31 +4638,56 @@ function renderDash(){
     <div style="display:flex;height:30px;border-radius:6px;overflow:hidden;background:#eceff1">${segs.map(seg).join('')}</div>
   </div>`;
   // ── 受注高・完成工事高・繰越工事高（D-021）──
-  const kk=kurikoshiStats(dashFY);
+  const kk=kurikoshiView(dashFY);
   // disp を渡すと金額の代わりにその文字を出す（計算そのものは変えない）
-  const kkBox=(l,v,sub,col,disp)=>`<div style="flex:1 1 150px;min-width:150px;background:#f8f9fc;border:1px solid #e3e7ef;border-radius:8px;padding:9px 11px">
+  const kkBox=(l,v,sub,col,disp,extra)=>`<div style="flex:1 1 150px;min-width:150px;background:#f8f9fc;border:1px solid #e3e7ef;border-radius:8px;padding:9px 11px">
     <div style="font-size:11px;font-weight:700;color:#555">${l}</div>
     <div style="font-size:17px;font-weight:800;color:${col}">${disp||('¥'+fmt(v))}</div>
-    <div style="font-size:10px;color:#888;margin-top:2px">${sub}</div></div>`;
-  // 前期繰越が負＝アプリ導入前から進行していた工事を導入月で登録したため、前期の受注が無い。
-  // 計算は正しいがデータの前提が満たされていないので、金額を出さず検算もしない
-  const kkNoPrev=kk.prevKuri<0;
+    <div style="font-size:10px;color:#888;margin-top:2px">${sub}</div>${extra||''}</div>`;
+  // ★データが揃っていない年度（KK_FIRST_FULL_FY より前）は、黙って数字だけ出さない（2026-11-11 けんた指示）。
+  //   アプリは 2026年4月から使い始め、2026年3月に進行中の工事だけを取り込んだので、それより前に終わった工事が無い。
+  //   2025年度は D-021 の完成工事高 54,920,600 円に対し決算書は 384,093,706 円（7倍違う）
+  const kkPartial=dashFY<KK_FIRST_FULL_FY;
+  // 前期繰越が負＝前期の受注が無いのに請求だけある（導入前の工事）。手入力が無いときだけ金額を伏せる
+  const kkNoPrev=!kk.manual&&kk.prevKuri<0;
   const kkNoPrevMsg='前期の受注データがありません（アプリ導入前の工事のため）。この年度は検算できません。';
-  const kkCard=`<div class="card"><div class="card-hdr ch-nav">📐 受注高・完成工事高・繰越工事高（${fyLabel(dashFY)}）</div><div class="card-body">
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      ${kkBox('前期繰越工事高',kk.prevKuri,kkNoPrev?kkNoPrevMsg:'前期までの受注 − 前期までの請求','#616161',kkNoPrev?'—':'')}
-      ${kkBox('当期 受注高',kk.ju,'この年度に受注した契約金額','var(--nav)')}
-      ${kkBox('当期 完成工事高',kk.kan,'この年度に請求した金額（経審に使う数字）','#1565c0')}
-      ${kkBox('次期繰越工事高',kk.nextKuri,'受注済みでまだ請求していない残り','#e65100')}
+  const kkFromLbl=`${KK_DATA_FROM.slice(0,4)}年${parseInt(KK_DATA_FROM.slice(5,7))}月`;
+  // 前期繰越の欄：手入力（前期の決算変更届）があればそれ、無ければアプリの記録から計算した値
+  const kkEditBtn=(dashFY>=KK_FIRST_FULL_FY&&isMaster())
+    ?`<div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap"><button class="btn bg btn-sm" onclick="kkEditPrev()" style="font-size:10px;padding:3px 8px">✏️ ${kk.manualOwn?'直す':(dashFY===KK_FIRST_FULL_FY?'決算変更届の数字を入れる':KK_FIRST_FULL_FY+'年度で入れる')}</button>${kk.manualOwn?`<button class="btn br btn-sm" onclick="kkClearPrev()" style="font-size:10px;padding:3px 8px">消す</button>`:''}</div>`:'';
+  let kkPrevSub;
+  if(kk.manual){
+    const mm=kk.manual;
+    kkPrevSub=kk.manualOwn
+      ?`手入力（前期の決算変更届）${mm.at?'・'+esc(mm.at):''}${mm.by?' '+esc(mm.by):''}<br>アプリの記録から計算すると ¥${fmt(kk.calcPrev)}`
+      :`${KK_FIRST_FULL_FY}年3月1日の手入力 ¥${fmt(mm.amount)} から積み上げ<br>アプリの記録だけだと ¥${fmt(kk.calcPrev)}`;
+  }else if(kkNoPrev){kkPrevSub=kkNoPrevMsg;}
+  else if(dashFY>=KK_FIRST_FULL_FY){kkPrevSub=`アプリの記録から計算（${kkFromLbl}より前が欠けているので実際より小さいはず）`;}
+  else kkPrevSub='前期までの受注 − 前期までの請求';
+  const kkWarnBox=(bg,bd,col,html)=>`<div style="margin-top:8px;padding:9px 11px;background:${bg};border:1.5px solid ${bd};border-radius:8px;font-size:11px;color:${col};line-height:1.8">${html}</div>`;
+  const kkCard=`<div class="card"${kkPartial?' style="border:2px solid #c62828"':''}><div class="card-hdr ch-nav">📐 受注高・完成工事高・繰越工事高（${fyLabel(dashFY)}）</div><div class="card-body">
+    ${kkPartial?`<div data-kk="partial" style="margin-bottom:10px;padding:10px 12px;background:#ffebee;border:2px solid #c62828;border-radius:8px;color:#b71c1c;line-height:1.8">
+      <div style="font-size:14px;font-weight:800">⚠ データが不足しています。決算の数字とは一致しません。</div>
+      <div style="font-size:11px;color:#5d1010">発注アプリのデータが揃っているのは <b>${kkFromLbl}から</b>です。アプリを使い始める前に終わった工事は入っていないので、下の数字はこの年度の一部だけです。
+      決算書・決算変更届・経審には使わないでください（決算と比べられるのは ${fyLabel(KK_FIRST_FULL_FY)} から）。</div></div>`:''}
+    <div style="display:flex;gap:8px;flex-wrap:wrap${kkPartial?';opacity:.6':''}">
+      ${kkBox('前期繰越工事高'+(kkPartial?'（不足）':''),kk.prevKuri,kkPrevSub,'#616161',kkNoPrev?'—':'',kkEditBtn)}
+      ${kkBox('当期 受注高'+(kkPartial?'（不足）':''),kk.ju,'この年度に受注した契約金額','var(--nav)')}
+      ${kkBox('当期 完成工事高'+(kkPartial?'（不足）':''),kk.kan,'この年度に請求した金額（決算書と同じ請求基準・税込）','#1565c0')}
+      ${kkBox('次期繰越工事高'+(kkPartial?'（不足）':''),kk.nextKuri,'受注済みでまだ請求していない残り','#e65100')}
     </div>
+    ${(!kkPartial&&!kk.manual&&dashFY>=KK_FIRST_FULL_FY)?kkWarnBox('#fff8e1','#ffe082','#6d4c00',
+      `⚠ 前期繰越（${KK_FIRST_FULL_FY}年3月1日時点の繰越工事高）がまだ手入力されていません。今の ¥${fmt(kk.prevKuri)} は欠けたデータから計算した値で、実際より小さいはずです。`+
+      `前期の決算変更届に載っている繰越工事高を入れてください${isMaster()?'（前期繰越の欄の ✏️）':'（管理者が入れます）'}。当期の受注高・完成工事高はそのまま使えます。`):''}
     ${kkNoPrev?`<div style="margin-top:10px;padding:9px 11px;background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;font-size:11px;color:#bf360c;line-height:1.9">
       📌 ${kkNoPrevMsg}<br>
-      　　<span style="color:#555">当期受注高・当期完成工事高はそのまま使えます。受注高は<b>記入月・最初の請求・工期開始のうち一番早い月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。</span>
+      　　<span style="color:#555">受注高は<b>記入月・最初の請求・工期開始のうち一番早い月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。</span>
     </div>`:`<div style="margin-top:10px;padding:9px 11px;background:#f5f7fa;border-radius:8px;font-size:11px;color:#555;line-height:1.9">
       📌 検算：<b>前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越</b><br>
       　　　　¥${fmt(kk.prevKuri)} ＋ ¥${fmt(kk.ju)} − ¥${fmt(kk.kan)} ＝ <b>¥${fmt(kk.nextKuri)}</b><br>
       　　　　この式が実感と合わないときは、発注額の入力漏れか請求の付け忘れがあります。<br>
-      　　　　受注高は<b>記入月・最初の請求・工期開始のうち一番早い月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。
+      　　　　受注高は<b>記入月・最初の請求・工期開始のうち一番早い月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。<br>
+      　　　　<span style="color:#888">※決算書の「仕掛工事」は原価の繰越（未成工事支出金）で、繰越工事高（契約額の受注残）とは別のものです。</span>
     </div>`}
   </div></div>`;
   const lg=(c,t)=>`<span style="white-space:nowrap"><span style="display:inline-block;width:11px;height:11px;background:${c};border-radius:2px;vertical-align:middle"></span> ${t}</span>`;
