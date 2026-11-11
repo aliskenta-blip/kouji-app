@@ -4448,8 +4448,26 @@ function kb2Input(el,ev){
 // ★変換の確定（compositionend）。属性の oncompositionend は Chromium で動かないので addEventListener で受ける。
 //   Chrome は確定の直前の input を isComposing=true で出し、確定のあとに input を出さないため、ここで見ないと全角数字が残る
 document.addEventListener('compositionend',e=>{if(e.target&&e.target.id==='f_kb2')kb2Input(e.target,e);},true);
-// 受注月＝初回記入月（date_orig を優先）。未請の繰越で記入月が動いても二重に数えない
-function juchuMonthOf(c){ return (c.date_orig||c.date||'').slice(0,7); }
+// 受注月＝「初回記入月(date_orig)・記入月(date)・最初の請求の月・工期開始」のうち一番早い月（2026-11-11）。
+//   date_orig が無かったころに繰り越した案件は記入月が後ろへ動いたままで、請求や工期開始より後になっていた
+//   （例: 奈良輪５期17棟 2025-10 から請求なのに記入月 2026-04）。受注は請求・着工より後にはならないので早い方を採る。
+//   データは書き換えない（計算で決める）。どれも無ければ ''（記入月「未定」の案件）
+function juchuMonthBasis(c){
+  const ym=v=>{const s=String(v||'');return /^\d{4}-\d{2}/.test(s)?s.slice(0,7):'';};
+  const cand=[];
+  const add=(m,why)=>{if(m)cand.push({m,why});};
+  add(ym(c&&c.date_orig),'初回記入月');
+  add(ym(c&&c.date),'記入月');
+  const bl=(c&&c.billings&&c.billings.length)?c.billings
+    :(fn(c&&c.jisha_s)>0?[{month:ym(c.seikyuu_t)||ym(c.date)}]:[]);
+  const fb=bl.map(b=>ym(b.month)).filter(Boolean).sort()[0];
+  add(fb,'最初の請求');
+  add(ym(c&&c.kouki_s),'工期開始');
+  if(!cand.length)return {m:'',why:''};
+  cand.sort((a,b)=>a.m<b.m?-1:a.m>b.m?1:0);
+  return cand[0];
+}
+function juchuMonthOf(c){ return juchuMonthBasis(c).m; }
 // 受注高・完成工事高・繰越工事高（D-021）。
 //  受注高    ＝ その事業年度に受注した契約金額
 //  完成工事高＝ その事業年度に請求した金額（★発生月 b.month ベース。経審に出す数字）
@@ -4584,12 +4602,12 @@ function renderDash(){
     </div>
     ${kkNoPrev?`<div style="margin-top:10px;padding:9px 11px;background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;font-size:11px;color:#bf360c;line-height:1.9">
       📌 ${kkNoPrevMsg}<br>
-      　　<span style="color:#555">当期受注高・当期完成工事高はそのまま使えます。受注高は<b>初回記入月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。</span>
+      　　<span style="color:#555">当期受注高・当期完成工事高はそのまま使えます。受注高は<b>記入月・最初の請求・工期開始のうち一番早い月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。</span>
     </div>`:`<div style="margin-top:10px;padding:9px 11px;background:#f5f7fa;border-radius:8px;font-size:11px;color:#555;line-height:1.9">
       📌 検算：<b>前期繰越 ＋ 当期受注 − 当期完成 ＝ 次期繰越</b><br>
       　　　　¥${fmt(kk.prevKuri)} ＋ ¥${fmt(kk.ju)} − ¥${fmt(kk.kan)} ＝ <b>¥${fmt(kk.nextKuri)}</b><br>
       　　　　この式が実感と合わないときは、発注額の入力漏れか請求の付け忘れがあります。<br>
-      　　　　受注高は<b>初回記入月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。
+      　　　　受注高は<b>記入月・最初の請求・工期開始のうち一番早い月</b>、完成工事高は<b>売上の発生月</b>で数えます（請求漏れでは動きません）。
     </div>`}
   </div></div>`;
   const lg=(c,t)=>`<span style="white-space:nowrap"><span style="display:inline-block;width:11px;height:11px;background:${c};border-radius:2px;vertical-align:middle"></span> ${t}</span>`;
