@@ -140,6 +140,8 @@ input[type="number"]{-moz-appearance:textfield}
 .grid{display:grid;gap:10px}
 .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr 1fr}
 @media(max-width:500px){.g2,.g3{grid-template-columns:1fr 1fr}}
+/* 工事区分＋区分2は1つの枠で横並び。スマホでは半分の幅だと「汚水の立ち上げ」が切れるので、この枠だけ行いっぱいにする */
+@media(max-width:500px){.g2 .fg.kbpair{grid-column:1 / -1}}
 @media(max-width:360px){.g2,.g3{grid-template-columns:1fr}}
 
 .ki{border:1.5px solid #e0e0e0;border-radius:8px;margin-bottom:8px;overflow:hidden}
@@ -1470,7 +1472,15 @@ C社 自社受注（空）  / 原価400万  → 無視される（原価400万�
     <div class="fg"><label>発注者</label><select id="f_cl"></select></div>
     <div class="fg"><label>支店</label><select id="f_br"></select></div>
     <div class="fg"><label>担当</label><select id="f_ta"></select></div>
-    <div class="fg"><label>工事区分</label><select id="f_kb"></select></div>
+    <!-- ★工事区分2（2026-11-11）。社内で見分けるためだけの手入力（蓋交換・U字溝・防草など）。工事区分のすぐ右に置く
+         （フォームは2列なので、別の枠にすると次の行へ落ちる。同じ枠の中で横に並べる）。
+         工事経歴書・業種別集計・完了工事表・受注表には一切使わない（あちらは「建設工事の種類」）。
+         kouji-cost へは orders.kubun2 として同期し、現場名は「区分/区分2」になる -->
+    <div class="fg kbpair"><label>工事区分 ／ 区分2 <span style="font-size:10px;color:#888;font-weight:400">（中身・社内用）</span></label>
+      <div style="display:flex;gap:6px"><select id="f_kb" style="flex:1 1 50%;min-width:0"></select>
+      <input type="text" id="f_kb2" lang="ja" style="ime-mode:active;flex:1 1 50%;min-width:0" autocomplete="off" maxlength="20" placeholder="例: 蓋交換" title="工事の中身（蓋交換・U字溝・防草など）。社内で見分けるためだけで、工事経歴書には使いません。数字と空白は入れられません"
+        oninput="kb2Input(this,event)"></div>
+      <div id="f_kb2_msg" role="alert" style="display:none;font-size:11px;color:#c62828;margin-top:3px;line-height:1.5"></div></div>
     <div class="fg" style="grid-column:span 2"><label>工事名・枝番</label><input type="text" id="f_kj" lang="ja" style="ime-mode:active" autocomplete="off"></div>
     <div class="fg" style="grid-column:span 2"><label>見積番号（kouji-cost）</label>
       <input type="text" id="f_mno" placeholder="2026-0020-2" autocomplete="off" maxlength="14" oninput="chkMno()">
@@ -3103,7 +3113,7 @@ function kyoSrchHits(c,srch){
 //   同じ関数を通す（Phase 16 までは再掲側だけ見積番号が抜けていた）
 function caseMatchesSrch(c,srch){
   if(!srch)return true;
-  return [c.place,c.client,c.tantou,c.kouji,c.kubun,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch))
+  return [c.place,c.client,c.tantou,c.kouji,c.kubun,c.kubun2,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(srch))
     ||kyoSrchHits(c,srch).length>0;
 }
 // 協力会社名で当たったときに場所の横に出すバッジ。なぜこの現場が出たのかを見せる
@@ -3295,7 +3305,7 @@ function renderSeikyuu(){
       <td ${ec} onclick="editCell('${c.id}','client',this)">${esc(c.client||'')}</td>
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${furikaeBadge(c)}</td>
-      <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
+      <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)" title="クリックで工事区分を変更（工事区分2は案件の編集画面で）">${esc(kubunLabel(c))}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)" title="クリックで出来高請求を編集">¥${fmt(bm)}</td>
       <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">${r.js>r.jh?`<span style="color:#c62828;font-weight:700" title="累計請求が発注額を超えています。金額を確認してください">▲¥${fmt(r.js-r.jh)}超過</span>`:'¥'+fmt(r.remaining)}</td>
@@ -4001,7 +4011,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
       <td class="ctr" ${ec} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
       <td ${ec} onclick="editCell('${c.id}','kouji',this)" style="white-space:nowrap">${esc(c.kouji||'')}${furikaeBadge(c)}${pdfs.join('')}</td>
       <td class="ctr" style="font-size:10px;white-space:nowrap;color:#555;cursor:pointer;min-width:96px" title="kouji-cost の見積番号。クリックで編集" onclick="editMnoCell('${c.id}',this)">${mnoCellTxt(c)}</td>
-      <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
+      <td class="ctr" ${ec} onclick="editCell('${c.id}','kubun',this)" title="クリックで工事区分を変更（工事区分2は案件の編集画面で）">${esc(kubunLabel(c))}</td>
       <td class="num big" ${ec} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${ec} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(bm)}</td>
       <td class="${r.remaining>0?'cl':'ca'}" style="cursor:pointer" title="発注額−累計請求額（まだ請求していない残り）" onclick="editBillings('${c.id}',this)">${r.js>r.jh?`<span style="color:#c62828;font-weight:700" title="累計請求が発注額を超えています。金額を確認してください">▲¥${fmt(r.js-r.jh)}超過</span>`:'¥'+fmt(r.remaining)}</td>
@@ -4061,7 +4071,7 @@ function renderMonthlyRest(cases,mk,ts,tn,tmi,tar,tky,tmp,trem){
         </div>
       </div>
       <div class="card-body">
-        ${c.kouji?`<div style="font-size:12px;color:#666;margin-bottom:8px">${c.kubun?'【'+esc(c.kubun)+'】':''} ${esc(c.kouji)}</div>`:''}
+        ${c.kouji?`<div style="font-size:12px;color:#666;margin-bottom:8px">${kubunLabel(c)?'【'+esc(kubunLabel(c))+'】':''} ${esc(c.kouji)}</div>`:''}
         ${c.mitsumori_no?`<div style="font-size:11px;color:#555;margin-bottom:8px">📄 見積番号: <b>${esc(c.mitsumori_no)}</b></div>`:''}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:10px">
           <div style="background:#f0f8f0;border-radius:6px;padding:8px"><div style="color:#888;font-size:10px">自社請求（税込）</div><div style="font-weight:700">¥${fmt(r.js)}</div></div>
@@ -4149,7 +4159,7 @@ function renderMaster(){
   if(fst==='misu') cases=cases.filter(c=>calc(c).misu>0);
   if(fst==='miharai') cases=cases.filter(c=>calc(c).miharai>0);
   if(fst==='done') cases=cases.filter(c=>isKankou(c));
-  if(ftx) cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.biko,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(ftx)));
+  if(ftx) cases=cases.filter(c=>[c.place,c.client,c.tantou,c.kouji,c.kubun,c.kubun2,c.biko,c.mitsumori_no].some(v=>(v||'').toLowerCase().includes(ftx)));
 
   // ソート適用
   cases=sortCases(cases,'master');
@@ -4188,7 +4198,7 @@ function renderMaster(){
       <td>${esc(c.place||'')}</td><td>${esc(c.client||'')}</td><td class="ctr">${esc(c.tantou||'')}</td>
       <td>${esc(c.kouji||'')}</td>
       <td class="ctr" style="font-size:11px;white-space:nowrap;cursor:pointer" title="kouji-cost の見積番号。クリックで編集" onclick="editMnoCell('${c.id}',this)">${mnoCellTxt(c)}</td>
-      <td class="ctr">${esc(c.kubun||'')}</td>
+      <td class="ctr">${esc(kubunLabel(c))}</td>
       <td class="ctr"><span class="sekou ${c.jisha_sekou==='✓'?(r.cnt>0?'sk-joint':'sk-self'):(r.cnt>0?'sk-other':'')}" style="font-size:9px">${c.jisha_sekou==='✓'?(r.cnt>0?'合同':'自社'):(r.cnt>0?'単独':'—')}</span></td>
       <td class="num" style="font-weight:700">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" style="cursor:pointer" onclick="editBillings('${c.id}',this)">¥${fmt(r.js)}</td>
@@ -4298,7 +4308,7 @@ function renderPrint(){
       <td class="ctr" ${pe} onclick="editCell('${c.id}','branch',this)">${esc(c.branch||'')}</td>
       <td class="ctr" ${pe} onclick="editCell('${c.id}','tantou',this)">${esc(c.tantou||'')}</td>
       <td ${pe} onclick="editCell('${c.id}','kouji',this)">${esc(c.kouji||'')}</td>
-      <td class="ctr" ${pe} onclick="editCell('${c.id}','kubun',this)">${esc(c.kubun||'')}</td>
+      <td class="ctr" ${pe} onclick="editCell('${c.id}','kubun',this)" title="クリックで工事区分を変更（工事区分2は案件の編集画面で）">${esc(kubunLabel(c))}</td>
       <td class="num" ${pe} onclick="editCell('${c.id}','jisha_h',this,'number')">¥${fmt(fn(c.jisha_h))}</td>
       <td class="num" ${pe} onclick="editBillings('${c.id}',this)" style="cursor:pointer;color:var(--nav2)">¥${fmt(r.js)}</td>
       <td class="ctr" ${pe} onclick="editCell('${c.id}','seikyuu_t',this,'month')">${c.seikyuu_t||''}</td>
@@ -4405,6 +4415,39 @@ function caseFYContrib(c,fySet){
   const ar=js*projArariRate(c);                                   // 当年度粗利＝当年度請求×率（率ベース）
   return {js,ny,ksr,jh,ar,mi:Math.max(0,js-ny),inFY:(js>0||ny>0||ksr>0||jh>0)};
 }
+// 区分の表示「造成/蓋交換」。区分2が空なら区分だけ（スラッシュも出さない）。
+//   ★表示と検索だけに使う。工種・区分別集計・帳票・CSV・発注書からの業種の推定は kubun だけを見る
+function kubunLabel(c){
+  const a=String((c&&c.kubun)||'').trim(), b=String((c&&c.kubun2)||'').trim();
+  return a&&b?a+'/'+b:(a||b);
+}
+// ★工事区分2に入れられない文字：数字（半角・全角・丸数字）と空白（半角・全角・タブ。前後も途中も）。
+//   kouji-cost の「同じ場所の現場」の鍵は現場名から作り、番地の数字や空白の区切りを見ているため、
+//   区分2に数字や空白が入ると同じ場所の現場が別の場所に見える（2026-11-11）。漢数字（三箇所）は入れてよい
+const KB2_BAD_CH='\\s\\u30000-9０-９①-⑳⑴-⒇⒈-⒛';
+const kb2Bad=v=>new RegExp('['+KB2_BAD_CH+']').test(String(v||''));
+const kb2Clean=v=>String(v||'').replace(new RegExp('['+KB2_BAD_CH+']','g'),'');
+const KB2_MSG='区分2には数字と空白は入れられません（kouji-cost の「同じ場所」の判定が崩れるため）。数は漢字で（例: 桝交換三箇所）。';
+function kb2Warn(on){
+  const el=document.getElementById('f_kb2'), msg=document.getElementById('f_kb2_msg');
+  if(msg){msg.textContent=on?'⚠ '+KB2_MSG:'';msg.style.display=on?'':'none';}
+  if(el)el.style.borderColor=on?'#c62828':'';
+  clearTimeout(kb2Warn._t);
+  if(on)kb2Warn._t=setTimeout(()=>kb2Warn(false),6000);   // 6秒で消す（出しっぱなしにしない）
+}
+// 打ったその場で外して知らせる。★変換中（IME）は触らない。確定したとき（compositionend）に見る
+function kb2Input(el,ev){
+  if(ev&&ev.isComposing)return;
+  const v=el.value, nv=kb2Clean(v);
+  if(nv===v)return;
+  const pos=Math.max(0,(el.selectionStart==null?nv.length:el.selectionStart)-(v.length-nv.length));
+  el.value=nv;
+  try{el.setSelectionRange(pos,pos);}catch(e){}
+  kb2Warn(true);
+}
+// ★変換の確定（compositionend）。属性の oncompositionend は Chromium で動かないので addEventListener で受ける。
+//   Chrome は確定の直前の input を isComposing=true で出し、確定のあとに input を出さないため、ここで見ないと全角数字が残る
+document.addEventListener('compositionend',e=>{if(e.target&&e.target.id==='f_kb2')kb2Input(e.target,e);},true);
 // 受注月＝初回記入月（date_orig を優先）。未請の繰越で記入月が動いても二重に数えない
 function juchuMonthOf(c){ return (c.date_orig||c.date||'').slice(0,7); }
 // 受注高・完成工事高・繰越工事高（D-021）。
@@ -5399,7 +5442,7 @@ document.addEventListener('keydown',function(e){
   if(el.tagName==='BUTTON'||el.type==='file')return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  const order=['f_dt','f_pl','f_cl','f_br','f_ta','f_kb','f_kj',
+  const order=['f_dt','f_pl','f_cl','f_br','f_ta','f_kb','f_kb2','f_kj',
     'f_jisha_sekou','f_furikae','f_kanryo_d',
     'f_moto','f_jv','f_haichi','f_gishi','f_kouji_type','f_genba',
     'f_jh','f_js','f_st','f_ny','f_m3','f_bk'];
@@ -5575,7 +5618,7 @@ function openAdd(){
   document.getElementById('f_furikae').checked=false;
   const fw=document.getElementById('f_furikae_wrap');fw.style.background='#fffdf5';fw.style.borderColor='#e0e0e0';
   vs('f_kanryo_d','');document.getElementById('f_kanryo_d_wrap').style.display='none';   // 新規は完工していない
-  vs('f_cl','');vs('f_br','');vs('f_ta','');vs('f_kb','');vs('f_moto','元請');vs('f_jv','');vs('f_gishi','');vs('f_kouji_type','');
+  vs('f_cl','');vs('f_br','');vs('f_ta','');vs('f_kb','');vs('f_kb2','');kb2Warn(false);vs('f_moto','元請');vs('f_jv','');vs('f_gishi','');vs('f_kouji_type','');
   adjHint();   // ★発注者・担当を空にしてから（前に開いた案件の担当者の残高を出さない）
   vs('f_dt',new Date().toISOString().slice(0,7));
   document.getElementById('f_bl_month').value=getMK(getYr(),getMo());
@@ -5776,6 +5819,7 @@ function editCase(id){
     updateTantouSel();
     ensureOption('f_ta',c.tantou);vs('f_ta',c.tantou);
     ensureOption('f_kb',c.kubun);vs('f_kb',c.kubun);
+    vs('f_kb2',c.kubun2||'');kb2Warn(false);
     vs('f_moto',c.moto_shita||'');vs('f_jv',c.jv||'');vs('f_gishi',c.gishi_type||'');
     ensureOption('f_kouji_type',c.kouji_type||'');vs('f_kouji_type',c.kouji_type||'');
     onGyoshuChange();
@@ -5788,6 +5832,8 @@ function closeMov(){document.getElementById('addMov').classList.remove('open');}
 
 function saveCase(cont){
   if(!vg('f_pl')&&!vg('f_cl')){alert('場所または発注者を入力してください');return;}
+  // ★工事区分2の数字・空白（打った時点で外しているが、念のため保存でも止める）
+  if(kb2Bad(vg('f_kb2'))){kb2Warn(true);alert(KB2_MSG);try{document.getElementById('f_kb2').focus();}catch(e){}return;}
   // 建設工事の種類（業種）は必須（工事経歴書・完成工事高集計の集計キー）
   const _gy=vg('f_kouji_type');
   if(!_gy){
@@ -5831,7 +5877,7 @@ function saveCase(cont){
   const base={
     id:editId||uid(),month:getMK(getYr(),getMo()),
     date:vg('f_dt')||new Date().toISOString().slice(0,7),place:vg('f_pl'),client:vg('f_cl'),branch:vg('f_br'),
-    tantou:vg('f_ta'),kubun:vg('f_kb'),kouji:vg('f_kj'),mitsumori_no:_mno,
+    tantou:vg('f_ta'),kubun:vg('f_kb'),kubun2:String(vg('f_kb2')||'').trim(),kouji:vg('f_kj'),mitsumori_no:_mno,
     // ★予算の調整（記録用）。発注額 jisha_h には触らない
     adj_kind:_adjK||'',adj_amount:_adjK?String(_adjA):'',adj_memo:_adjK?(vg('f_adj_memo')||'').trim():'',
     jisha_h:String(Math.round(parseFloat(vg('f_jh')||0)*10000)),
